@@ -36,6 +36,7 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 - [项目执行规则](docs/PROJECT_RULES.md)：后续设计、开发和评审的默认约束；
 - [开发计划](docs/DEVELOPMENT_PLAN.md)：实施范围、架构边界、里程碑和验收标准。
+- [实施计划](docs/IMPLEMENTATION_PLAN.md)：逐步开发任务、检查项、代码审查和提交门禁。
 
 ## 开源与归属
 
