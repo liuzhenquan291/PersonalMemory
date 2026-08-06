@@ -144,7 +144,7 @@ upstream v1.0.1: 505877cc5160d3ea5cdb5bbd72902db03c97dd10
 - 在独立临时 clone/worktree 精确检出 `505877cc5160d3ea5cdb5bbd72902db03c97dd10`；
 - 校验 tag 和提交签名/来源信息；
 - 固定 Node.js 和包管理器版本并执行上游原生 build、typecheck、Vitest 及可运行的集成测试；
-- 记录通过、失败、跳过、环境限制、支持矩阵、冷启动和基础搜索性能；
+- 记录通过、失败、跳过、环境限制、支持矩阵和构建耗时；standalone 冷启动、基础搜索和资源占用在 M0.4 黄金链路中实测；
 - 不修改上游文件，不为追求全绿而静默跳过或修复测试；
 - 扫描当前 tree 和将要引入的 tree 是否包含密钥；审查 lockfile、安装/生命周期脚本、许可证和新增二进制文件；生成初始依赖与 SBOM/许可证基线。
 
@@ -163,17 +163,21 @@ upstream v1.0.1: 505877cc5160d3ea5cdb5bbd72902db03c97dd10
 - 在集成分支添加/获取 `upstream` 并再次校验 tag SHA；
 - 使用 Runbook 指定的 `--no-commit --no-ff --allow-unrelated-histories` 合并精确 SHA；
 - 现有文档通过第一父历史原样保留，只解决实际路径冲突；禁止额外 cherry-pick、rebase 或历史改写；
+- 根据 M0.2 已确认的 P1，在合并暂停态移除工作树中的疑似硬编码凭据、生成锁文件并修复或裁剪 high/critical 依赖；这些安全基线调整必须逐项记录，不得夹带其他产品功能；
+- 在合并暂停态增加至少一组能被根项目 `npm test` 发现的核心 smoke 测试；
 - 在合并暂停态运行 diff、构建、类型、测试、许可证和秘密检查，并完成独立审查；
 - 通过后创建 merge commit，再运行一次完整集成回归；
 - 记录相对 M0.2 原始基线新增的失败或行为变化。
-- 记录 Node、包管理器、SQLite/sqlite-vec、Docker、操作系统、CPU 架构、磁盘空间和模型依赖支持矩阵；
-- 在目标开发设备校准冷启动、基础搜索延迟和资源占用，只建立基线，不提前承诺产品性能。
+- 记录 Node、包管理器、Docker、操作系统、CPU 架构、磁盘空间和构建耗时支持矩阵；
+- standalone 冷启动、基础搜索延迟、SQLite/sqlite-vec 与资源占用统一在 M0.4 黄金链路中校准。
+
+创建 merge commit 的最低门禁：根项目 build 通过；TypeScript SDK build 与 32 项测试通过；Python SDK 34 项测试通过；根项目至少一组核心 smoke 测试可被 `npm test` 发现并通过；秘密扫描无非占位凭据；根项目和 TypeScript SDK 的 npm audit 均无未接受的 high/critical。
 
 检查：merge commit 同时以旧 PersonalMemory 和上游提交为祖先；文档未丢失；无 v2 团队文件；集成结果相对原始基线的差异有解释。
 
 审查重点：冲突解决是否改动上游业务代码；Git 历史是否可持续同步；新增失败是否被掩盖。
 
-建议提交：`chore: 建立 TencentDB Agent Memory v1.0.1 基线`；必要修复在 merge 后单独使用 `fix`。
+建议提交：`chore: 建立 TencentDB Agent Memory v1.0.1 基线`。疑似凭据移除、锁文件、阻断级依赖修复和最小 smoke 测试属于本次安全基线，随 merge commit 一并落地；非阻断修复在 merge 后单独使用 `fix`。
 
 ### M0.4 跑通 standalone Gateway 黄金链路
 
