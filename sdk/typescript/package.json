@@ -19,11 +19,18 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "files": ["dist/", "src/", "README.md"],
+  "files": [
+    "dist/",
+    "src/",
+    "README.md"
+  ],
   "license": "MIT",
   "author": "TencentDB Agent Memory Team",
-  "engines": { "node": ">=18.0.0" },
+  "engines": {
+    "node": ">=22.16.0"
+  },
   "devDependencies": {
+    "@types/node": "^22.20.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.2"
   }
