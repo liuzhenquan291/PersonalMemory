@@ -103,7 +103,7 @@ Local storage
 
 工作：
 
-- 记录上游 fork 的准确提交 SHA、版本、许可证和依赖清单；
+- 以 TencentDB-Agent-Memory `v1.0.1`（提交 `505877cc5160d3ea5cdb5bbd72902db03c97dd10`，`feat/server` 代码线）建立上游基线，并记录许可证和依赖清单；
 - 跑通上游完整部署、测试与最小会话召回；
 - 建立 `upstream` remote、同步规范和差异补丁原则；
 - 写 5 个端到端验收场景及一份隐私威胁模型；
@@ -232,15 +232,14 @@ Local storage
 
 1. 首发 Agent 是 Codex、通用 MCP，还是 CodeBuddy；
 2. 默认推理使用本地模型还是允许配置远端模型；
-3. 上游采用稳定 tag 还是当前团队版分支；
-4. 事实源采用“数据库为主”还是“可读文件为主、索引可重建”；
-5. MVP 是否只含 Chat Memory，还是必须同时交付 Skill/Wiki。
+3. 事实源采用“数据库为主”还是“可读文件为主、索引可重建”；
+4. MVP 是否只含 Chat Memory，还是必须同时交付 Skill/Wiki。
 
-建议默认答案：**通用 MCP + 可配置模型（默认不外发）+ 稳定 tag + 可读资产可导出且索引可重建 + MVP 只做 Chat Memory。**
+已确认上游基线为 `v1.0.1`。其他建议默认答案：**通用 MCP + 可配置模型（默认不外发）+ 可读资产可导出且索引可重建 + MVP 只做 Chat Memory。**
 
 ## 9. 第一迭代任务拆分
 
-1. 创建 `upstream` remote，选择并记录基线 SHA。
+1. 创建 `upstream` remote，以 `v1.0.1` / `505877cc5160d3ea5cdb5bbd72902db03c97dd10` 建立代码基线。
 2. 保留上游 LICENSE，新增 THIRD_PARTY_NOTICES。
 3. 在干净机器/容器跑通上游服务和测试。
 4. 固化一个会话导入与召回的黄金样例。
