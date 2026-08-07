@@ -55,7 +55,7 @@ export interface MemoryClientConfig {
   serviceId: string;
   /** Request timeout in ms (default 30 000). */
   timeout?: number;
-  /** Whether to reject invalid TLS certificates. Default: false (self-signed friendly). */
+  /** Whether to reject invalid TLS certificates. Default: true. */
   rejectUnauthorized?: boolean;
 }
 
@@ -64,6 +64,7 @@ export interface MemoryClientConfig {
  */
 export interface Transport {
   post<T>(path: string, body?: Record<string, unknown>): Promise<T>;
+  close?(): Promise<void> | void;
 }
 
 export class MemoryClient {
@@ -152,6 +153,11 @@ export class MemoryClient {
 
   writeCore(params: CoreWriteRequest): Promise<CoreWriteData> {
     return this.http.post(`${V2}/core/write`, params as unknown as Record<string, unknown>);
+  }
+
+  /** Release HTTP connection pools. Safe to call more than once. */
+  async close(): Promise<void> {
+    await this.http.close?.();
   }
 
   // -- Offload (Compaction + Ingest) ------------------------------------

@@ -446,6 +446,29 @@ export class TdaiGateway {
   async stop(): Promise<void> {
     this.logger.info("Shutting down gateway...");
 
+    // Stop accepting requests before tearing down any backend they may use.
+    if (this.server) {
+      const server = this.server;
+      this.server = null;
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        let forceTimer: NodeJS.Timeout;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(forceTimer);
+          resolve();
+        };
+        server.close(finish);
+        server.closeIdleConnections?.();
+        forceTimer = setTimeout(() => {
+          this.logger.warn("Gateway shutdown exceeded 2s; closing remaining HTTP connections");
+          server.closeAllConnections?.();
+          finish();
+        }, 2_000);
+      });
+    }
+
     // 优雅关闭 OTel SDK（flush 剩余 Span/Log）
     try {
       await shutdownOTelSDK();
@@ -467,18 +490,23 @@ export class TdaiGateway {
       this.logger.info("State Backend closed");
     }
     if (this.storePool) {
+      // Process shutdown has already stopped accepting work at the service
+      // layer; do not retain the per-instance 30s eviction grace period.
+      this.storePool.setGraceCloseDelay(0);
       await this.storePool.closeAll();
       this.logger.info("Store Pool closed");
     }
 
-    if (this.server) {
-      await new Promise<void>((resolve) => {
-        this.server!.close(() => resolve());
-      });
-    }
-
     await this.core.destroy();
     this.logger.info("Gateway stopped");
+  }
+
+  getListeningAddress(): { host: string; port: number } {
+    const address = this.server?.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Gateway is not listening on a TCP address");
+    }
+    return { host: address.address, port: address.port };
   }
 
   // ============================
