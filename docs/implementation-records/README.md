@@ -10,5 +10,6 @@
 | M0.3 | completed | [合并上游并执行集成回归](M0.3.md) |
 | M0.4 | completed | [standalone Gateway 黄金链路](M0.4.md) |
 | M0.5 | completed | [架构清单、威胁模型与 ADR](M0.5.md) |
+| M0.6 | completed | [上游同步 Runbook 与只读演练](M0.6.md) |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。
