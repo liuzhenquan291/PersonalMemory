@@ -24,3 +24,11 @@ export {
   type PersonalMemoryConfig,
 } from "./config.js";
 export { initializeDataDirectory } from "./data-directory.js";
+export {
+  ImportIdempotencyConflictError,
+  ImportLedger,
+  type ImportItem,
+  type ImportJobStatus,
+  type ImportJobView,
+  type ImportRoundPayload,
+} from "./import-ledger.js";

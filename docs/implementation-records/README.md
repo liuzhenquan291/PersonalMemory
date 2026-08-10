@@ -17,5 +17,6 @@
 | M1.4 | completed | [Web 应用壳](M1.4.md)                         |
 | M1.5 | completed | [开发环境联合启动](M1.5.md)                   |
 | M2.1 | completed | [黄金测试数据和验收场景](M2.1.md)             |
+| M2.2 | completed | [会话捕获与批量导入](M2.2.md)                 |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

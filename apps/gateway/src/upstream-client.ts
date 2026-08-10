@@ -121,6 +121,7 @@ export class FetchUpstreamGatewayClient implements UpstreamGatewayClient {
     body: unknown;
     requestId: string;
     timeoutMs: number;
+    signal?: AbortSignal;
   }): Promise<{ status: number; body: unknown }> {
     if (!ALLOWED_UPSTREAM_PATHS.has(input.path)) {
       throw new UpstreamGatewayError(
@@ -135,7 +136,10 @@ export class FetchUpstreamGatewayClient implements UpstreamGatewayClient {
         "UPSTREAM_INVALID_RESPONSE",
       );
     }
-    const signal = AbortSignal.timeout(input.timeoutMs);
+    const timeoutSignal = AbortSignal.timeout(input.timeoutMs);
+    const signal = input.signal
+      ? AbortSignal.any([timeoutSignal, input.signal])
+      : timeoutSignal;
     try {
       const response = await this.transport({
         target,
@@ -159,7 +163,7 @@ export class FetchUpstreamGatewayClient implements UpstreamGatewayClient {
       return { status: response.status, body };
     } catch (error) {
       if (error instanceof UpstreamGatewayError) throw error;
-      if (signal.aborted) {
+      if (timeoutSignal.aborted) {
         throw new UpstreamGatewayError(
           "The upstream Gateway timed out",
           "UPSTREAM_TIMEOUT",

@@ -1,18 +1,33 @@
-import { initializeDataDirectory, loadConfig } from "@personalmemory/core";
+import {
+  defaultMigrations,
+  ImportLedger,
+  initializeDataDirectory,
+  loadConfig,
+  migrateDatabase,
+} from "@personalmemory/core";
+import { DatabaseSync } from "node:sqlite";
+import { join } from "node:path";
 import process from "node:process";
 
 import { createGatewayApp } from "./app.js";
 import { PersonalMemoryGatewayServer } from "./server.js";
 import { FetchUpstreamGatewayClient } from "./upstream-client.js";
+import { ConversationImportManager } from "./import-manager.js";
 
 let server: PersonalMemoryGatewayServer | undefined;
 let stopping = false;
+let database: DatabaseSync | undefined;
+let importManager: ConversationImportManager | undefined;
 
 async function stop(signal: string): Promise<void> {
   if (stopping) return;
   stopping = true;
   try {
     await server?.stop();
+    await importManager?.shutdown();
+    importManager = undefined;
+    database?.close();
+    database = undefined;
     process.stdout.write(`PersonalMemory Gateway stopped (${signal})\n`);
     process.exitCode = 0;
   } catch (error) {
@@ -26,11 +41,18 @@ async function stop(signal: string): Promise<void> {
 async function main(): Promise<void> {
   try {
     const { config } = loadConfig();
-    initializeDataDirectory(config.dataDirectory);
+    const dataDirectory = initializeDataDirectory(config.dataDirectory);
+    database = new DatabaseSync(join(dataDirectory, "personalmemory.sqlite"));
+    migrateDatabase(database, defaultMigrations);
     const upstream = new FetchUpstreamGatewayClient(
       config.server.upstreamBaseUrl,
     );
-    const app = createGatewayApp({ config, upstream });
+    importManager = new ConversationImportManager(
+      new ImportLedger(database),
+      upstream,
+      config.server.upstreamTimeoutMs,
+    );
+    const app = createGatewayApp({ config, upstream, importManager });
     server = new PersonalMemoryGatewayServer(app, config);
 
     process.on("SIGINT", () => void stop("SIGINT"));

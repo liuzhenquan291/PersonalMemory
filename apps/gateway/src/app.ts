@@ -1,5 +1,8 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { PERSONAL_MEMORY_SCHEMA_VERSION } from "@personalmemory/core";
+import {
+  getModelOutboundDisclosure,
+  PERSONAL_MEMORY_SCHEMA_VERSION,
+} from "@personalmemory/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -11,12 +14,118 @@ import type {
   GatewayLogger,
 } from "./types.js";
 import { UpstreamGatewayError } from "./upstream-client.js";
+import { ImportIdempotencyConflictError } from "./import-manager.js";
+import type { ImportJobView, ImportRoundPayload } from "@personalmemory/core";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const MAX_BROWSER_SESSIONS = 32;
 const MAX_FAILED_AUTH_ATTEMPTS_PER_MINUTE = 120;
+const MAX_IMPORT_ROUNDS = 500;
+
+const importMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1).max(32_768),
+  })
+  .strict();
+
+const importSessionSchema = z
+  .object({
+    session_key: z.string().min(1).max(256),
+    session_id: z.string().min(1).max(256).optional(),
+    messages: z.array(importMessageSchema).min(2).max(200),
+  })
+  .strict()
+  .superRefine((session, context) => {
+    if (session.messages.length % 2 !== 0) {
+      context.addIssue({
+        code: "custom",
+        message: "Messages must form complete user/assistant pairs",
+        path: ["messages"],
+      });
+      return;
+    }
+    for (let index = 0; index < session.messages.length; index += 2) {
+      const roles = new Set([
+        session.messages[index]?.role,
+        session.messages[index + 1]?.role,
+      ]);
+      if (!roles.has("user") || !roles.has("assistant")) {
+        context.addIssue({
+          code: "custom",
+          message: "Each message pair must contain one user and one assistant",
+          path: ["messages", index],
+        });
+      }
+    }
+  });
+
+const singleImportSchema = z
+  .object({
+    idempotency_key: z.string().min(1).max(200),
+    model_outbound_acknowledged: z.boolean().optional(),
+    session: importSessionSchema,
+  })
+  .strict();
+
+const batchImportSchema = z
+  .object({
+    idempotency_key: z.string().min(1).max(200),
+    model_outbound_acknowledged: z.boolean().optional(),
+    sessions: z.array(importSessionSchema).min(1).max(50),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const rounds = input.sessions.reduce(
+      (total, session) => total + session.messages.length / 2,
+      0,
+    );
+    if (rounds > MAX_IMPORT_ROUNDS) {
+      context.addIssue({
+        code: "custom",
+        message: `An import may contain at most ${MAX_IMPORT_ROUNDS} rounds`,
+        path: ["sessions"],
+      });
+    }
+  });
+
+function toImportRounds(
+  sessions: z.infer<typeof importSessionSchema>[],
+): ImportRoundPayload[] {
+  return sessions.flatMap((session) => {
+    const rounds: ImportRoundPayload[] = [];
+    for (let index = 0; index < session.messages.length; index += 2) {
+      const messages = session.messages.slice(index, index + 2);
+      const user = messages.find(({ role }) => role === "user")!;
+      const assistant = messages.find(({ role }) => role === "assistant")!;
+      rounds.push({
+        sessionKey: session.session_key,
+        ...(session.session_id ? { sessionId: session.session_id } : {}),
+        userContent: user.content,
+        assistantContent: assistant.content,
+        messages,
+      });
+    }
+    return rounds;
+  });
+}
+
+function importJobResponse(job: ImportJobView): Record<string, unknown> {
+  return {
+    id: job.id,
+    status: job.status,
+    cancel_requested: job.cancelRequested,
+    progress: {
+      total: job.totalItems,
+      completed: job.completedItems,
+      failed: job.failedItems,
+    },
+    created_at: job.createdAt,
+    updated_at: job.updatedAt,
+  };
+}
 
 export type GatewayEnv = { Variables: { requestId: string } };
 
@@ -210,6 +319,11 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/session",
       "DELETE /api/v1/session",
       ...proxyRoutes.map((route) => `POST ${route.route}`),
+      "POST /api/v1/conversations/capture",
+      "POST /api/v1/conversations/imports",
+      "GET /api/v1/conversations/imports/:id",
+      "POST /api/v1/conversations/imports/:id/retry",
+      "POST /api/v1/conversations/imports/:id/cancel",
     ]);
     return known.has(key) ? key : "<unmatched>";
   };
@@ -372,7 +486,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       context.header("vary", "Origin");
       context.header("access-control-allow-credentials", "true");
       if (context.req.method === "OPTIONS") {
-        context.header("access-control-allow-methods", "POST, DELETE, OPTIONS");
+        context.header(
+          "access-control-allow-methods",
+          "GET, POST, DELETE, OPTIONS",
+        );
         context.header(
           "access-control-allow-headers",
           "Authorization, Content-Type, X-CSRF-Token, X-Request-ID",
@@ -402,14 +519,24 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       schemaVersion: PERSONAL_MEMORY_SCHEMA_VERSION,
     }),
   );
-  app.get("/api/v1/config/status", (context) =>
-    context.json({
+  app.get("/api/v1/config/status", (context) => {
+    const disclosure = getModelOutboundDisclosure(options.config);
+    return context.json({
       authenticationConfigured:
         options.config.server.authenticationEnabled &&
         !!options.config.server.authenticationToken,
       modelConfigured: options.config.model.enabled,
-    }),
-  );
+      modelOutboundDisclosure: disclosure
+        ? {
+            ...disclosure,
+            sentFields: [
+              ...disclosure.sentFields,
+              "imported conversation messages",
+            ],
+          }
+        : undefined,
+    });
+  });
 
   const requireBearer = (authorization: string | undefined): void => {
     if (
@@ -482,7 +609,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     return new Response(null, { status: 204 });
   });
 
-  const authenticateMemoryRequest = (context: Context<GatewayEnv>): void => {
+  const authenticateMemoryRequest = (
+    context: Context<GatewayEnv>,
+    requireCsrf = true,
+  ): void => {
     if (
       !options.config.server.authenticationEnabled ||
       !options.config.server.authenticationToken
@@ -507,7 +637,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       );
     }
     const csrfToken = context.req.header("x-csrf-token");
-    if (!csrfToken || !safeEqual(csrfToken, session.csrfToken)) {
+    if (
+      requireCsrf &&
+      (!csrfToken || !safeEqual(csrfToken, session.csrfToken))
+    ) {
       enforceFailedAuthRateLimit();
       throw new GatewayHttpError(
         403,
@@ -517,6 +650,110 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     }
     enforceBusinessRateLimit();
   };
+
+  const requireImportManager = () => {
+    if (!options.importManager) {
+      throw new GatewayHttpError(
+        503,
+        "IMPORT_UNAVAILABLE",
+        "Conversation import is not available",
+      );
+    }
+    return options.importManager;
+  };
+
+  const submitImport = async (
+    context: Context<GatewayEnv>,
+    schema: typeof singleImportSchema | typeof batchImportSchema,
+  ): Promise<Response> => {
+    authenticateMemoryRequest(context);
+    const input = await readLimitedJson(
+      context.req.raw,
+      options.config.server.requestBodyLimitBytes,
+    );
+    const parsed = schema.safeParse(input);
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the import contract",
+      );
+    }
+    const sessions =
+      "session" in parsed.data ? [parsed.data.session] : parsed.data.sessions;
+    const disclosure = getModelOutboundDisclosure(options.config);
+    if (disclosure && parsed.data.model_outbound_acknowledged !== true) {
+      throw new GatewayHttpError(
+        409,
+        "MODEL_OUTBOUND_CONSENT_REQUIRED",
+        `Confirm model outbound fields (${[
+          ...disclosure.sentFields,
+          "imported conversation messages",
+        ].join(", ")}) to ${disclosure.provider} at ${disclosure.targetOrigin}`,
+      );
+    }
+    try {
+      const result = requireImportManager().submit({
+        idempotencyKey: parsed.data.idempotency_key,
+        rounds: toImportRounds(sessions),
+      });
+      return jsonResponse(
+        importJobResponse(result.job),
+        result.created ? 202 : 200,
+      );
+    } catch (error) {
+      if (error instanceof ImportIdempotencyConflictError) {
+        throw new GatewayHttpError(409, "IDEMPOTENCY_CONFLICT", error.message);
+      }
+      throw error;
+    }
+  };
+
+  app.post("/api/v1/conversations/capture", (context) =>
+    submitImport(context, singleImportSchema),
+  );
+  app.post("/api/v1/conversations/imports", (context) =>
+    submitImport(context, batchImportSchema),
+  );
+  app.get("/api/v1/conversations/imports/:id", (context) => {
+    authenticateMemoryRequest(context, false);
+    const job = requireImportManager().get(context.req.param("id"));
+    if (!job)
+      throw new GatewayHttpError(404, "IMPORT_NOT_FOUND", "Import not found");
+    return jsonResponse(importJobResponse(job), 200);
+  });
+  app.post("/api/v1/conversations/imports/:id/retry", (context) => {
+    authenticateMemoryRequest(context);
+    const manager = requireImportManager();
+    const current = manager.get(context.req.param("id"));
+    if (!current)
+      throw new GatewayHttpError(404, "IMPORT_NOT_FOUND", "Import not found");
+    if (!["failed", "partial", "cancelled"].includes(current.status)) {
+      throw new GatewayHttpError(
+        409,
+        "IMPORT_NOT_RETRYABLE",
+        "Import is not retryable",
+      );
+    }
+    const job = manager.retry(current.id)!;
+    return jsonResponse(importJobResponse(job), 202);
+  });
+  app.post("/api/v1/conversations/imports/:id/cancel", (context) => {
+    authenticateMemoryRequest(context);
+    const manager = requireImportManager();
+    const current = manager.get(context.req.param("id"));
+    if (!current)
+      throw new GatewayHttpError(404, "IMPORT_NOT_FOUND", "Import not found");
+    if (!["pending", "running"].includes(current.status)) {
+      throw new GatewayHttpError(
+        409,
+        "IMPORT_NOT_CANCELLABLE",
+        "Import is not active",
+      );
+    }
+    const job = manager.cancel(current.id)!;
+    return jsonResponse(importJobResponse(job), 202);
+  });
 
   for (const route of proxyRoutes) {
     app.post(route.route, async (context) => {

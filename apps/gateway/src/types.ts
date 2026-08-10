@@ -1,4 +1,5 @@
 import type { PersonalMemoryConfig } from "@personalmemory/core";
+import type { ConversationImportManager } from "./import-manager.js";
 
 export interface GatewayErrorEnvelope {
   error: {
@@ -29,12 +30,14 @@ export interface UpstreamGatewayClient {
     body: unknown;
     requestId: string;
     timeoutMs: number;
+    signal?: AbortSignal;
   }): Promise<{ status: number; body: unknown }>;
 }
 
 export interface GatewayAppOptions {
   config: PersonalMemoryConfig;
   upstream: UpstreamGatewayClient;
+  importManager?: ConversationImportManager;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

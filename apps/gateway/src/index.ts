@@ -6,6 +6,7 @@ export {
   FetchUpstreamGatewayClient,
   UpstreamGatewayError,
 } from "./upstream-client.js";
+export { ConversationImportManager } from "./import-manager.js";
 export type {
   UpstreamTransport,
   UpstreamTransportResponse,

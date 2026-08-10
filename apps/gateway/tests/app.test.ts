@@ -1,8 +1,16 @@
-import { loadConfig, type PersonalMemoryConfig } from "@personalmemory/core";
+import {
+  ImportLedger,
+  defaultMigrations,
+  loadConfig,
+  migrateDatabase,
+  type PersonalMemoryConfig,
+} from "@personalmemory/core";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it, vi } from "vitest";
 import { createGatewayApp } from "../src/app.js";
 import type { GatewayLogEvent, UpstreamGatewayClient } from "../src/types.js";
 import { UpstreamGatewayError } from "../src/upstream-client.js";
+import { ConversationImportManager } from "../src/import-manager.js";
 
 function createConfig(
   overrides: Partial<PersonalMemoryConfig["server"]> = {},
@@ -32,9 +40,19 @@ function createHarness(options: {
         body: { path, body },
       })),
     } satisfies UpstreamGatewayClient);
+  const database = new DatabaseSync(":memory:");
+  migrateDatabase(database, defaultMigrations);
+  let importSequence = 0;
+  const importManager = new ConversationImportManager(
+    new ImportLedger(database),
+    upstream,
+    (options.config ?? createConfig()).server.upstreamTimeoutMs,
+    () => `import-job-${++importSequence}`,
+  );
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
+    importManager,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -42,13 +60,35 @@ function createHarness(options: {
       error: (event) => logs.push(event),
     },
   });
-  return { app, upstream, logs };
+  return { app, upstream, logs, importManager };
+}
+
+async function waitForImport(
+  app: ReturnType<typeof createGatewayApp>,
+  id: string,
+): Promise<ImportJobResponse> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await app.request(`/api/v1/conversations/imports/${id}`, {
+      headers: authHeaders,
+    });
+    const job = (await response.json()) as ImportJobResponse;
+    if (!["pending", "running"].includes(job.status)) return job;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("import did not settle");
 }
 
 const authHeaders = {
   authorization: "Bearer test-auth-secret",
   "content-type": "application/json",
 };
+
+interface ImportJobResponse {
+  id: string;
+  status: string;
+  progress: { total: number; completed: number; failed: number };
+  cancel_requested?: boolean;
+}
 
 describe("PersonalMemory Gateway app", () => {
   it("serves public health and version with request IDs", async () => {
@@ -66,7 +106,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 1,
+      schemaVersion: 2,
     });
   });
 
@@ -109,6 +149,306 @@ describe("PersonalMemory Gateway app", () => {
     expect(invalid.headers.get("x-frame-options")).toBe("DENY");
     expect(await invalid.json()).toMatchObject({
       error: { code: "INVALID_REQUEST" },
+    });
+  });
+
+  it("captures one session idempotently without sending expected data externally", async () => {
+    const { app, upstream, logs } = createHarness({});
+    const body = {
+      idempotency_key: "single-key",
+      session: {
+        session_key: "session-1",
+        messages: [
+          { role: "assistant", content: "private assistant body" },
+          { role: "user", content: "private user body" },
+        ],
+      },
+    };
+    const created = await app.request("/api/v1/conversations/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(body),
+    });
+    expect(created.status).toBe(202);
+    const job = (await created.json()) as { id: string };
+    await expect(waitForImport(app, job.id)).resolves.toMatchObject({
+      status: "completed",
+      progress: { total: 1, completed: 1, failed: 0 },
+    });
+    expect(upstream.request).toHaveBeenCalledTimes(1);
+    expect(upstream.request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: "/capture",
+        body: expect.objectContaining({
+          user_content: "private user body",
+          assistant_content: "private assistant body",
+        }),
+      }),
+    );
+
+    const duplicate = await app.request("/api/v1/conversations/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(body),
+    });
+    expect(duplicate.status).toBe(200);
+    expect((await duplicate.json()) as { id: string }).toMatchObject({
+      id: job.id,
+    });
+    expect(upstream.request).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(logs)).not.toMatch(
+      /private assistant body|private user body/,
+    );
+    expect(
+      (
+        await app.request(`/api/v1/conversations/imports/${job.id}/retry`, {
+          method: "POST",
+          headers: authHeaders,
+        })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await app.request(`/api/v1/conversations/imports/${job.id}/cancel`, {
+          method: "POST",
+          headers: authHeaders,
+        })
+      ).status,
+    ).toBe(409);
+  });
+
+  it("requires explicit model outbound acknowledgement and discloses fields first", async () => {
+    const { config } = loadConfig({
+      environment: {
+        PERSONALMEMORY_AUTH_ENABLED: "true",
+        PERSONALMEMORY_AUTH_TOKEN: "test-auth-secret",
+        PERSONALMEMORY_MODEL_ENABLED: "true",
+        PERSONALMEMORY_MODEL_PROVIDER: "openai-compatible",
+        PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
+        PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
+        PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+      },
+    });
+    const { app, upstream } = createHarness({ config });
+    const status = await app.request("/api/v1/config/status");
+    expect(await status.json()).toMatchObject({
+      modelOutboundDisclosure: {
+        provider: "openai-compatible",
+        targetOrigin: "https://models.example.test",
+        sentFields: [
+          "model input",
+          "selected memory context",
+          "imported conversation messages",
+        ],
+      },
+    });
+    const payload = {
+      idempotency_key: "outbound-key",
+      session: {
+        session_key: "session-1",
+        messages: [
+          { role: "user", content: "private user" },
+          { role: "assistant", content: "private assistant" },
+        ],
+      },
+    };
+    const denied = await app.request("/api/v1/conversations/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(payload),
+    });
+    expect(denied.status).toBe(409);
+    expect(await denied.json()).toMatchObject({
+      error: { code: "MODEL_OUTBOUND_CONSENT_REQUIRED" },
+    });
+    expect(upstream.request).not.toHaveBeenCalled();
+
+    const accepted = await app.request("/api/v1/conversations/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        ...payload,
+        model_outbound_acknowledged: true,
+      }),
+    });
+    expect(accepted.status).toBe(202);
+  });
+
+  it("reports partial batch failure and retries only the failed round", async () => {
+    let sessionTwoAttempts = 0;
+    const upstream: UpstreamGatewayClient = {
+      async request({ body }) {
+        const session = (body as { session_key: string }).session_key;
+        if (session === "session-2" && sessionTwoAttempts++ === 0) {
+          throw new UpstreamGatewayError(
+            "safe failure",
+            "UPSTREAM_UNAVAILABLE",
+          );
+        }
+        return { status: 200, body: { ok: true } };
+      },
+    };
+    const { app } = createHarness({ upstream });
+    const created = await app.request("/api/v1/conversations/imports", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        idempotency_key: "batch-key",
+        sessions: ["session-1", "session-2"].map((session_key) => ({
+          session_key,
+          messages: [
+            { role: "user", content: `user-${session_key}` },
+            { role: "assistant", content: `assistant-${session_key}` },
+          ],
+        })),
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await expect(waitForImport(app, id)).resolves.toMatchObject({
+      status: "partial",
+      progress: { completed: 1, failed: 1 },
+    });
+    const retried = await app.request(
+      `/api/v1/conversations/imports/${id}/retry`,
+      { method: "POST", headers: authHeaders },
+    );
+    expect(retried.status).toBe(202);
+    await expect(waitForImport(app, id)).resolves.toMatchObject({
+      status: "completed",
+      progress: { completed: 2, failed: 0 },
+    });
+    expect(sessionTwoAttempts).toBe(2);
+  });
+
+  it("rejects illegal roles, incomplete pairs, oversized fields, and changed idempotent input", async () => {
+    const { app } = createHarness({});
+    const submit = (messages: unknown[], key = "validation-key") =>
+      app.request("/api/v1/conversations/capture", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          idempotency_key: key,
+          session: { session_key: "session-1", messages },
+        }),
+      });
+    expect(
+      (
+        await submit([
+          { role: "system", content: "not allowed" },
+          { role: "assistant", content: "answer" },
+        ])
+      ).status,
+    ).toBe(400);
+    expect(
+      (await submit([{ role: "user", content: "incomplete" }])).status,
+    ).toBe(400);
+    expect(
+      (
+        await submit([
+          { role: "user", content: "x".repeat(32_769) },
+          { role: "assistant", content: "answer" },
+        ])
+      ).status,
+    ).toBe(400);
+
+    const original = [
+      { role: "user", content: "first" },
+      { role: "assistant", content: "answer" },
+    ];
+    expect((await submit(original, "same-key")).status).toBe(202);
+    const conflict = await submit(
+      [
+        { role: "user", content: "changed" },
+        { role: "assistant", content: "answer" },
+      ],
+      "same-key",
+    );
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toMatchObject({
+      error: { code: "IDEMPOTENCY_CONFLICT" },
+    });
+  });
+
+  it("cancels in-flight and pending import work", async () => {
+    let started!: () => void;
+    const startPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const upstream: UpstreamGatewayClient = {
+      async request({ signal }) {
+        started();
+        await new Promise((_resolve, reject) =>
+          signal!.addEventListener("abort", () => reject(signal!.reason), {
+            once: true,
+          }),
+        );
+        return { status: 200, body: {} };
+      },
+    };
+    const { app } = createHarness({ upstream });
+    const created = await app.request("/api/v1/conversations/imports", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        idempotency_key: "cancel-key",
+        sessions: ["session-1", "session-2"].map((session_key) => ({
+          session_key,
+          messages: [
+            { role: "user", content: "user" },
+            { role: "assistant", content: "assistant" },
+          ],
+        })),
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await startPromise;
+    const cancelled = await app.request(
+      `/api/v1/conversations/imports/${id}/cancel`,
+      { method: "POST", headers: authHeaders },
+    );
+    expect(cancelled.status).toBe(202);
+    await expect(waitForImport(app, id)).resolves.toMatchObject({
+      status: "cancelled",
+      cancel_requested: true,
+    });
+  });
+
+  it("settles active imports before shutdown returns", async () => {
+    let started!: () => void;
+    const startPromise = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const upstream: UpstreamGatewayClient = {
+      async request({ signal }) {
+        started();
+        await new Promise((_resolve, reject) =>
+          signal!.addEventListener("abort", () => reject(signal!.reason), {
+            once: true,
+          }),
+        );
+        return { status: 200, body: {} };
+      },
+    };
+    const { app, importManager } = createHarness({ upstream });
+    const created = await app.request("/api/v1/conversations/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        idempotency_key: "shutdown-key",
+        session: {
+          session_key: "session-1",
+          messages: [
+            { role: "user", content: "user" },
+            { role: "assistant", content: "assistant" },
+          ],
+        },
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await startPromise;
+    await importManager.shutdown();
+    await expect(waitForImport(app, id)).resolves.toMatchObject({
+      status: "cancelled",
     });
   });
 
