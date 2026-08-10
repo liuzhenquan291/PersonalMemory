@@ -48,6 +48,57 @@ describe("PersonalMemory configuration", () => {
     expect(loaded.config.dataDirectory).toBe("/from-environment");
   });
 
+  it("configures Gateway controls and keeps the upstream on loopback", () => {
+    const loaded = loadConfig({
+      file: {
+        server: {
+          requestBodyLimitBytes: 2_048,
+          upstreamTimeoutMs: 2_000,
+          rateLimitPerMinute: 30,
+          sessionTtlSeconds: 120,
+          upstreamBaseUrl: "http://localhost:8420",
+        },
+      },
+      environment: {
+        PERSONALMEMORY_CORS_ORIGINS: "http://127.0.0.1:5173",
+        PERSONALMEMORY_RATE_LIMIT_PER_MINUTE: "40",
+      },
+    });
+    expect(loaded.config.server).toMatchObject({
+      corsOrigins: ["http://127.0.0.1:5173"],
+      requestBodyLimitBytes: 2_048,
+      upstreamTimeoutMs: 2_000,
+      rateLimitPerMinute: 40,
+      sessionTtlSeconds: 120,
+    });
+    expect(loaded.config.server.upstreamBaseUrl.href).toBe(
+      "http://localhost:8420/",
+    );
+  });
+
+  it("rejects remote, credential-bearing, or path-prefixed upstream URLs", () => {
+    for (const upstream of [
+      "https://gateway.example.test",
+      "http://user:password@127.0.0.1:8420",
+      "http://127.0.0.1:8420/base",
+    ]) {
+      expect(() =>
+        loadConfig({
+          environment: { PERSONALMEMORY_UPSTREAM_BASE_URL: upstream },
+        }),
+      ).toThrow(/credential-free loopback/);
+    }
+  });
+
+  it("accepts a credential-free IPv6 loopback upstream", () => {
+    const { config } = loadConfig({
+      environment: {
+        PERSONALMEMORY_UPSTREAM_BASE_URL: "http://[::1]:8420",
+      },
+    });
+    expect(config.server.upstreamBaseUrl.hostname).toBe("[::1]");
+  });
+
   it("rejects unknown configuration including file-based secrets", () => {
     expect(() =>
       loadConfig({
@@ -170,7 +221,7 @@ describe("PersonalMemory configuration", () => {
           PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
         },
       }),
-    ).toThrow(/allowlist origins require HTTPS/);
+    ).toThrow(/MODEL_ALLOWED_ORIGINS require HTTPS/);
 
     const loaded = loadConfig({
       environment: {
@@ -217,11 +268,16 @@ describe("PersonalMemory configuration", () => {
     ).toThrow(/must be true, false, 1, or 0/);
     expect(() =>
       loadConfig({
+        environment: { PERSONALMEMORY_SESSION_TTL_SECONDS: "59" },
+      }),
+    ).toThrow(/greater than or equal to 60/);
+    expect(() =>
+      loadConfig({
         environment: {
           PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "not-a-url",
         },
       }),
-    ).toThrow(/must contain absolute URLs/);
+    ).toThrow(/must contain absolute origin URLs/);
     expect(() =>
       loadConfig({
         environment: {
@@ -229,6 +285,6 @@ describe("PersonalMemory configuration", () => {
             "https://models.example.test/v1",
         },
       }),
-    ).toThrow(/must contain absolute URLs/);
+    ).toThrow(/must contain absolute origin URLs/);
   });
 });

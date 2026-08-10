@@ -20,6 +20,12 @@ M1.2 建立唯一配置入口 `loadConfig()`。优先级固定为：安全默认
 | ----------------------------------------------------------- | ------------------------------ |
 | `PERSONALMEMORY_HOST` / `PERSONALMEMORY_PORT`               | Gateway 监听地址               |
 | `PERSONALMEMORY_AUTH_ENABLED` / `PERSONALMEMORY_AUTH_TOKEN` | 非 loopback 认证               |
+| `PERSONALMEMORY_CORS_ORIGINS`                               | 浏览器 origin 白名单           |
+| `PERSONALMEMORY_UPSTREAM_BASE_URL`                          | 上游 Gateway loopback 地址     |
+| `PERSONALMEMORY_REQUEST_BODY_LIMIT_BYTES`                   | API 请求体上限                 |
+| `PERSONALMEMORY_UPSTREAM_TIMEOUT_MS`                        | 上游请求超时                   |
+| `PERSONALMEMORY_RATE_LIMIT_PER_MINUTE`                      | 单用户基础分钟限流             |
+| `PERSONALMEMORY_SESSION_TTL_SECONDS`                        | 浏览器会话有效期               |
 | `PERSONALMEMORY_DATA_DIR`                                   | 本地数据目录                   |
 | `PERSONALMEMORY_TELEMETRY_ENABLED`                          | 显式启用遥测，默认关闭         |
 | `PERSONALMEMORY_MODEL_ENABLED`                              | 显式启用模型访问，默认关闭     |

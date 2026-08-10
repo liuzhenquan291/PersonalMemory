@@ -42,7 +42,7 @@
     "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
     "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
     "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
-    "test:products": "npm run test -w @personalmemory/core",
+    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway",
     "test:upstream": "vitest run",
     "test:golden": "vitest run -c vitest.e2e.config.ts src/gateway/standalone-golden.e2e.test.ts",
     "test:oss": "vitest run -c vitest.oss.config.ts",

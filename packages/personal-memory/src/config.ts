@@ -2,7 +2,7 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "[::1]", "localhost"]);
 const booleanFromEnvironment = z
   .enum(["true", "false", "1", "0"])
   .transform((value) => value === "true" || value === "1");
@@ -14,6 +14,12 @@ const fileConfigSchema = z
         host: z.string().min(1).optional(),
         port: z.number().int().min(1).max(65_535).optional(),
         authenticationEnabled: z.boolean().optional(),
+        corsOrigins: z.array(z.url()).optional(),
+        requestBodyLimitBytes: z.number().int().min(1).optional(),
+        upstreamTimeoutMs: z.number().int().min(1).optional(),
+        rateLimitPerMinute: z.number().int().min(1).optional(),
+        sessionTtlSeconds: z.number().int().min(60).optional(),
+        upstreamBaseUrl: z.url().optional(),
       })
       .strict()
       .optional(),
@@ -39,6 +45,12 @@ export interface PersonalMemoryConfig {
     port: number;
     authenticationEnabled: boolean;
     authenticationToken?: SecretValue;
+    corsOrigins: readonly string[];
+    requestBodyLimitBytes: number;
+    upstreamTimeoutMs: number;
+    rateLimitPerMinute: number;
+    sessionTtlSeconds: number;
+    upstreamBaseUrl: URL;
   };
   dataDirectory: string;
   telemetryEnabled: boolean;
@@ -140,7 +152,26 @@ function parsePort(environment: NodeJS.ProcessEnv): number | undefined {
   return port;
 }
 
-function normalizeOrigins(origins: readonly string[]): string[] {
+function parsePositiveInteger(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  minimum = 1,
+): number | undefined {
+  const value = environment[name];
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new ConfigurationError(
+      `${name} must be an integer greater than or equal to ${minimum}`,
+    );
+  }
+  return parsed;
+}
+
+function normalizeOrigins(
+  origins: readonly string[],
+  settingName: string,
+): string[] {
   try {
     return [
       ...new Set(
@@ -157,7 +188,7 @@ function normalizeOrigins(origins: readonly string[]): string[] {
           }
           if (!isLoopback(url.hostname) && url.protocol !== "https:") {
             throw new ConfigurationError(
-              "Remote model allowlist origins require HTTPS",
+              `Remote origins in ${settingName} require HTTPS`,
             );
           }
           return url.origin;
@@ -167,7 +198,7 @@ function normalizeOrigins(origins: readonly string[]): string[] {
   } catch (error) {
     if (error instanceof ConfigurationError) throw error;
     throw new ConfigurationError(
-      "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS must contain absolute URLs",
+      `${settingName} must contain absolute origin URLs without paths, queries, fragments, or credentials`,
       { cause: error },
     );
   }
@@ -202,6 +233,40 @@ export function loadConfig(
     file.server?.authenticationEnabled ??
     false;
   const authenticationTokenValue = environment.PERSONALMEMORY_AUTH_TOKEN;
+  const corsOrigins = normalizeOrigins(
+    environment.PERSONALMEMORY_CORS_ORIGINS === undefined
+      ? (file.server?.corsOrigins ?? [])
+      : environment.PERSONALMEMORY_CORS_ORIGINS.split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+    "PERSONALMEMORY_CORS_ORIGINS",
+  );
+  const upstreamBaseUrlValue =
+    environment.PERSONALMEMORY_UPSTREAM_BASE_URL ??
+    file.server?.upstreamBaseUrl ??
+    "http://127.0.0.1:8420";
+  let upstreamBaseUrl: URL;
+  try {
+    upstreamBaseUrl = new URL(upstreamBaseUrlValue);
+  } catch (error) {
+    throw new ConfigurationError(
+      "PERSONALMEMORY_UPSTREAM_BASE_URL must be an absolute URL",
+      { cause: error },
+    );
+  }
+  if (
+    upstreamBaseUrl.protocol !== "http:" ||
+    !isLoopback(upstreamBaseUrl.hostname) ||
+    upstreamBaseUrl.username ||
+    upstreamBaseUrl.password ||
+    upstreamBaseUrl.pathname !== "/" ||
+    upstreamBaseUrl.search ||
+    upstreamBaseUrl.hash
+  ) {
+    throw new ConfigurationError(
+      "The upstream Gateway must use a credential-free loopback HTTP URL",
+    );
+  }
 
   if (!isLoopback(host) && !authenticationEnabled) {
     throw new ConfigurationError(
@@ -248,6 +313,7 @@ export function loadConfig(
           .split(",")
           .map((value) => value.trim())
           .filter(Boolean),
+    "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS",
   );
   const apiKeyValue = environment.PERSONALMEMORY_MODEL_API_KEY;
 
@@ -295,6 +361,37 @@ export function loadConfig(
       host,
       port,
       authenticationEnabled,
+      corsOrigins,
+      requestBodyLimitBytes:
+        parsePositiveInteger(
+          environment,
+          "PERSONALMEMORY_REQUEST_BODY_LIMIT_BYTES",
+        ) ??
+        file.server?.requestBodyLimitBytes ??
+        1_048_576,
+      upstreamTimeoutMs:
+        parsePositiveInteger(
+          environment,
+          "PERSONALMEMORY_UPSTREAM_TIMEOUT_MS",
+        ) ??
+        file.server?.upstreamTimeoutMs ??
+        10_000,
+      rateLimitPerMinute:
+        parsePositiveInteger(
+          environment,
+          "PERSONALMEMORY_RATE_LIMIT_PER_MINUTE",
+        ) ??
+        file.server?.rateLimitPerMinute ??
+        120,
+      sessionTtlSeconds:
+        parsePositiveInteger(
+          environment,
+          "PERSONALMEMORY_SESSION_TTL_SECONDS",
+          60,
+        ) ??
+        file.server?.sessionTtlSeconds ??
+        3_600,
+      upstreamBaseUrl,
       ...(authenticationTokenValue
         ? {
             authenticationToken: new SecretValue(

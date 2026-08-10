@@ -13,5 +13,6 @@
 | M0.6 | completed | [上游同步 Runbook 与只读演练](M0.6.md)         |
 | M1.1 | completed | [PersonalMemory workspace 与迁移骨架](M1.1.md) |
 | M1.2 | completed | [配置、数据目录和密钥边界](M1.2.md)            |
+| M1.3 | completed | [PersonalMemory Gateway 外观层](M1.3.md)       |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。
