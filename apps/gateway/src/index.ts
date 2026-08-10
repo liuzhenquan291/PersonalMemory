@@ -7,6 +7,14 @@ export {
   UpstreamGatewayError,
 } from "./upstream-client.js";
 export { ConversationImportManager } from "./import-manager.js";
+export {
+  RecallService,
+  recallLevelSchema,
+  unifiedRecallRequestSchema,
+  type RecallItem,
+  type RecallLevel,
+  type UnifiedRecallResult,
+} from "./recall-service.js";
 export type {
   UpstreamTransport,
   UpstreamTransportResponse,

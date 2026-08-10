@@ -152,6 +152,49 @@ describe("PersonalMemory Gateway app", () => {
     });
   });
 
+  it("exposes unified recall with explicit levels and hard budgets", async () => {
+    const upstream: UpstreamGatewayClient = {
+      async request({ path }) {
+        expect(path).toBe("/v2/atomic/search");
+        return {
+          status: 200,
+          body: {
+            code: 0,
+            data: {
+              items: [{ id: "memory-1", content: "x".repeat(400), score: 0.9 }],
+            },
+          },
+        };
+      },
+    };
+    const { app } = createHarness({ upstream });
+    const response = await app.request("/api/v1/recall/query", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        query: "local memory",
+        levels: ["L1"],
+        budget: {
+          max_items: 1,
+          max_chars: 300,
+          max_tokens: 64,
+          timeout_ms: 1_000,
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      items: [{ id: "memory-1", level: "L1", truncated: true }],
+      degraded_levels: [],
+      budget: {
+        used_items: 1,
+        used_chars: 256,
+        estimated_tokens: 64,
+        exhausted: true,
+      },
+    });
+  });
+
   it("captures one session idempotently without sending expected data externally", async () => {
     const { app, upstream, logs } = createHarness({});
     const body = {

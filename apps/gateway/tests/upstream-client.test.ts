@@ -67,6 +67,33 @@ describe("FetchUpstreamGatewayClient", () => {
     expect(transport).not.toHaveBeenCalled();
   });
 
+  it("adds fixed internal authentication only for allowlisted v2 read routes", async () => {
+    const transport = vi.fn(async () => ({
+      status: 200,
+      async json() {
+        return { code: 0, data: { content: null } };
+      },
+    }));
+    const client = new FetchUpstreamGatewayClient(
+      new URL("http://127.0.0.1:8420"),
+      transport,
+    );
+    await client.request({
+      path: "/v2/core/read",
+      body: {},
+      requestId: "request-123",
+      timeoutMs: 100,
+    });
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: "Bearer personalmemory-loopback",
+          "x-tdai-service-id": "personalmemory",
+        }),
+      }),
+    );
+  });
+
   it("rejects remote or credential-bearing base URLs", () => {
     expect(
       () => new FetchUpstreamGatewayClient(new URL("https://example.test")),

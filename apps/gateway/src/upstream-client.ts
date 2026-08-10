@@ -76,6 +76,11 @@ const ALLOWED_UPSTREAM_PATHS = new Set([
   "/search/memories",
   "/search/conversations",
   "/session/end",
+  "/v2/conversation/search",
+  "/v2/atomic/search",
+  "/v2/scenario/ls",
+  "/v2/scenario/read",
+  "/v2/core/read",
 ]);
 
 export class UpstreamGatewayError extends Error {
@@ -146,6 +151,12 @@ export class FetchUpstreamGatewayClient implements UpstreamGatewayClient {
         headers: {
           "content-type": "application/json",
           "x-request-id": input.requestId,
+          ...(input.path.startsWith("/v2/")
+            ? {
+                authorization: "Bearer personalmemory-loopback",
+                "x-tdai-service-id": "personalmemory",
+              }
+            : {}),
         },
         body: JSON.stringify(input.body),
         signal,

@@ -16,6 +16,7 @@ import type {
 import { UpstreamGatewayError } from "./upstream-client.js";
 import { ImportIdempotencyConflictError } from "./import-manager.js";
 import type { ImportJobView, ImportRoundPayload } from "@personalmemory/core";
+import { RecallService, unifiedRecallRequestSchema } from "./recall-service.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -307,6 +308,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
   const now = options.now ?? Date.now;
   const randomId = options.randomId ?? randomUUID;
   const sessions = new Map<string, BrowserSession>();
+  const recallService = new RecallService(
+    options.upstream,
+    options.config.server.upstreamTimeoutMs,
+  );
   let businessRateLimit = { windowStart: 0, count: 0 };
   let failedAuthRateLimit = { windowStart: 0, count: 0 };
 
@@ -324,6 +329,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "GET /api/v1/conversations/imports/:id",
       "POST /api/v1/conversations/imports/:id/retry",
       "POST /api/v1/conversations/imports/:id/cancel",
+      "POST /api/v1/recall/query",
     ]);
     return known.has(key) ? key : "<unmatched>";
   };
@@ -753,6 +759,58 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     }
     const job = manager.cancel(current.id)!;
     return jsonResponse(importJobResponse(job), 202);
+  });
+
+  app.post("/api/v1/recall/query", async (context) => {
+    authenticateMemoryRequest(context);
+    const input = await readLimitedJson(
+      context.req.raw,
+      options.config.server.requestBodyLimitBytes,
+    );
+    const parsed = unifiedRecallRequestSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the recall contract",
+      );
+    }
+    const result = await recallService.recall(
+      parsed.data,
+      context.get("requestId"),
+    );
+    return jsonResponse(
+      {
+        items: result.items.map((item) => ({
+          id: item.id,
+          level: item.level,
+          content: item.content,
+          ...(item.score === undefined ? {} : { score: item.score }),
+          ...(item.source === undefined ? {} : { source: item.source }),
+          ...(item.createdAt === undefined
+            ? {}
+            : { created_at: item.createdAt }),
+          ...(item.updatedAt === undefined
+            ? {}
+            : { updated_at: item.updatedAt }),
+          truncated: item.truncated,
+        })),
+        degraded_levels: result.degradedLevels.map((entry) => ({
+          level: entry.level,
+          code: entry.code,
+        })),
+        budget: {
+          max_items: result.budget.maxItems,
+          max_chars: result.budget.maxChars,
+          max_tokens: result.budget.maxTokens,
+          used_items: result.budget.usedItems,
+          used_chars: result.budget.usedChars,
+          estimated_tokens: result.budget.estimatedTokens,
+          exhausted: result.budget.exhausted,
+        },
+      },
+      200,
+    );
   });
 
   for (const route of proxyRoutes) {
