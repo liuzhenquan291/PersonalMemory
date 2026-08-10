@@ -1,0 +1,2829 @@
+{
+  "schemaVersion": "1.0.0",
+  "evaluationVersion": "m2.1-v1",
+  "license": "CC0-1.0",
+  "provenance": "Fully synthetic; contains no real personal information.",
+  "generatedAt": "2026-08-10T00:00:00.000Z",
+  "categories": {
+    "preference": 18,
+    "fact": 18,
+    "decision": 16,
+    "conflict": 16,
+    "expired": 16,
+    "no_answer": 16
+  },
+  "samples": [
+    {
+      "id": "golden-001",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-001-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-001-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色1号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色1号",
+        "sourceMessageIds": ["m-001-1"]
+      }
+    },
+    {
+      "id": "golden-002",
+      "category": "preference",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-002-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-002-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-2 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-2",
+        "sourceMessageIds": ["m-002-1"]
+      }
+    },
+    {
+      "id": "golden-003",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-003-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-003-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色3号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色3号",
+        "sourceMessageIds": ["m-003-1"]
+      }
+    },
+    {
+      "id": "golden-004",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-004-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-004-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-4 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-4",
+        "sourceMessageIds": ["m-004-1"]
+      }
+    },
+    {
+      "id": "golden-005",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-005-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-005-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色5号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色5号",
+        "sourceMessageIds": ["m-005-1"]
+      }
+    },
+    {
+      "id": "golden-006",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-006-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-006-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-6 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-6",
+        "sourceMessageIds": ["m-006-1"]
+      }
+    },
+    {
+      "id": "golden-007",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-007-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-007-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色7号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色7号",
+        "sourceMessageIds": ["m-007-1"]
+      }
+    },
+    {
+      "id": "golden-008",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-008-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-008-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-8 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-8",
+        "sourceMessageIds": ["m-008-1"]
+      }
+    },
+    {
+      "id": "golden-009",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-009-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-009-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色9号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色9号",
+        "sourceMessageIds": ["m-009-1"]
+      }
+    },
+    {
+      "id": "golden-010",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-010-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-010-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-10 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-10",
+        "sourceMessageIds": ["m-010-1"]
+      }
+    },
+    {
+      "id": "golden-011",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-011-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-011-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色11号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色11号",
+        "sourceMessageIds": ["m-011-1"]
+      }
+    },
+    {
+      "id": "golden-012",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-012-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-012-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-12 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-12",
+        "sourceMessageIds": ["m-012-1"]
+      }
+    },
+    {
+      "id": "golden-013",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-013-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-013-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色13号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色13号",
+        "sourceMessageIds": ["m-013-1"]
+      }
+    },
+    {
+      "id": "golden-014",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-014-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-014-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-14 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-14",
+        "sourceMessageIds": ["m-014-1"]
+      }
+    },
+    {
+      "id": "golden-015",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-015-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-015-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色15号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色15号",
+        "sourceMessageIds": ["m-015-1"]
+      }
+    },
+    {
+      "id": "golden-016",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-016-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-016-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-16 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-16",
+        "sourceMessageIds": ["m-016-1"]
+      }
+    },
+    {
+      "id": "golden-017",
+      "category": "preference",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-017-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-017-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我偏好的界面主题是深蓝色17号。"
+        }
+      ],
+      "query": "我偏好的界面主题是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "深蓝色17号",
+        "sourceMessageIds": ["m-017-1"]
+      }
+    },
+    {
+      "id": "golden-018",
+      "category": "preference",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-018-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-018-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "I prefer teal-18 as my dashboard accent."
+        }
+      ],
+      "query": "What is my preferred dashboard accent?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "teal-18",
+        "sourceMessageIds": ["m-018-1"]
+      }
+    },
+    {
+      "id": "golden-019",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-019-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-019-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-01。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-01",
+        "sourceMessageIds": ["m-019-1"]
+      }
+    },
+    {
+      "id": "golden-020",
+      "category": "fact",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-020-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-020-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-02."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-02",
+        "sourceMessageIds": ["m-020-1"]
+      }
+    },
+    {
+      "id": "golden-021",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-021-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-021-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-03。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-03",
+        "sourceMessageIds": ["m-021-1"]
+      }
+    },
+    {
+      "id": "golden-022",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-022-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-022-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-04."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-04",
+        "sourceMessageIds": ["m-022-1"]
+      }
+    },
+    {
+      "id": "golden-023",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-023-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-023-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-05。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-05",
+        "sourceMessageIds": ["m-023-1"]
+      }
+    },
+    {
+      "id": "golden-024",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-024-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-024-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-06."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-06",
+        "sourceMessageIds": ["m-024-1"]
+      }
+    },
+    {
+      "id": "golden-025",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-025-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-025-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-07。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-07",
+        "sourceMessageIds": ["m-025-1"]
+      }
+    },
+    {
+      "id": "golden-026",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-026-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-026-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-08."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-08",
+        "sourceMessageIds": ["m-026-1"]
+      }
+    },
+    {
+      "id": "golden-027",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-027-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-027-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-09。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-09",
+        "sourceMessageIds": ["m-027-1"]
+      }
+    },
+    {
+      "id": "golden-028",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-028-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-028-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-10."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-10",
+        "sourceMessageIds": ["m-028-1"]
+      }
+    },
+    {
+      "id": "golden-029",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-029-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-029-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-11。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-11",
+        "sourceMessageIds": ["m-029-1"]
+      }
+    },
+    {
+      "id": "golden-030",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-030-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-030-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-12."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-12",
+        "sourceMessageIds": ["m-030-1"]
+      }
+    },
+    {
+      "id": "golden-031",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-031-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-031-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-13。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-13",
+        "sourceMessageIds": ["m-031-1"]
+      }
+    },
+    {
+      "id": "golden-032",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-032-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-032-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-14."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-14",
+        "sourceMessageIds": ["m-032-1"]
+      }
+    },
+    {
+      "id": "golden-033",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-033-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-033-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-15。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-15",
+        "sourceMessageIds": ["m-033-1"]
+      }
+    },
+    {
+      "id": "golden-034",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-034-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-034-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-16."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-16",
+        "sourceMessageIds": ["m-034-1"]
+      }
+    },
+    {
+      "id": "golden-035",
+      "category": "fact",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-035-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-035-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "我的备用设备型号是Orchid-17。"
+        }
+      ],
+      "query": "我的备用设备型号是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-17",
+        "sourceMessageIds": ["m-035-1"]
+      }
+    },
+    {
+      "id": "golden-036",
+      "category": "fact",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-036-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-036-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "My backup device code is Orchid-18."
+        }
+      ],
+      "query": "What is my backup device code?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Orchid-18",
+        "sourceMessageIds": ["m-036-1"]
+      }
+    },
+    {
+      "id": "golden-037",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-037-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-037-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三2点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三2点",
+        "sourceMessageIds": ["m-037-1"]
+      }
+    },
+    {
+      "id": "golden-038",
+      "category": "decision",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-038-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-038-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 3 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 3 PM",
+        "sourceMessageIds": ["m-038-1"]
+      }
+    },
+    {
+      "id": "golden-039",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-039-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-039-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三4点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三4点",
+        "sourceMessageIds": ["m-039-1"]
+      }
+    },
+    {
+      "id": "golden-040",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-040-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-040-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 1 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 1 PM",
+        "sourceMessageIds": ["m-040-1"]
+      }
+    },
+    {
+      "id": "golden-041",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-041-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-041-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三2点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三2点",
+        "sourceMessageIds": ["m-041-1"]
+      }
+    },
+    {
+      "id": "golden-042",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-042-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-042-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 3 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 3 PM",
+        "sourceMessageIds": ["m-042-1"]
+      }
+    },
+    {
+      "id": "golden-043",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-043-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-043-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三4点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三4点",
+        "sourceMessageIds": ["m-043-1"]
+      }
+    },
+    {
+      "id": "golden-044",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-044-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-044-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 1 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 1 PM",
+        "sourceMessageIds": ["m-044-1"]
+      }
+    },
+    {
+      "id": "golden-045",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-045-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-045-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三2点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三2点",
+        "sourceMessageIds": ["m-045-1"]
+      }
+    },
+    {
+      "id": "golden-046",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-046-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-046-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 3 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 3 PM",
+        "sourceMessageIds": ["m-046-1"]
+      }
+    },
+    {
+      "id": "golden-047",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-047-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-047-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三4点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三4点",
+        "sourceMessageIds": ["m-047-1"]
+      }
+    },
+    {
+      "id": "golden-048",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-048-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-048-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 1 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 1 PM",
+        "sourceMessageIds": ["m-048-1"]
+      }
+    },
+    {
+      "id": "golden-049",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-049-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-049-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三2点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三2点",
+        "sourceMessageIds": ["m-049-1"]
+      }
+    },
+    {
+      "id": "golden-050",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-050-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-050-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 3 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 3 PM",
+        "sourceMessageIds": ["m-050-1"]
+      }
+    },
+    {
+      "id": "golden-051",
+      "category": "decision",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-051-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-051-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "已经决定：周报发送日定在星期三4点。"
+        }
+      ],
+      "query": "周报发送日定在什么时候？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "星期三4点",
+        "sourceMessageIds": ["m-051-1"]
+      }
+    },
+    {
+      "id": "golden-052",
+      "category": "decision",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-052-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-052-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "Decision: schedule the weekly review day for Wednesday at 1 PM."
+        }
+      ],
+      "query": "When is the weekly review day?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Wednesday at 1 PM",
+        "sourceMessageIds": ["m-052-1"]
+      }
+    },
+    {
+      "id": "golden-053",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-053-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-053-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-1。"
+        },
+        {
+          "id": "m-053-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-1，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-1",
+        "sourceMessageIds": ["m-053-1", "m-053-2"]
+      }
+    },
+    {
+      "id": "golden-054",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-054-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-054-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-2 as the default export format."
+        },
+        {
+          "id": "m-054-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-2; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-2",
+        "sourceMessageIds": ["m-054-1", "m-054-2"]
+      }
+    },
+    {
+      "id": "golden-055",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-055-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-055-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-3。"
+        },
+        {
+          "id": "m-055-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-3，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-3",
+        "sourceMessageIds": ["m-055-1", "m-055-2"]
+      }
+    },
+    {
+      "id": "golden-056",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-056-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-056-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-4 as the default export format."
+        },
+        {
+          "id": "m-056-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-4; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-4",
+        "sourceMessageIds": ["m-056-1", "m-056-2"]
+      }
+    },
+    {
+      "id": "golden-057",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-057-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-057-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-5。"
+        },
+        {
+          "id": "m-057-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-5，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-5",
+        "sourceMessageIds": ["m-057-1", "m-057-2"]
+      }
+    },
+    {
+      "id": "golden-058",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-058-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-058-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-6 as the default export format."
+        },
+        {
+          "id": "m-058-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-6; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-6",
+        "sourceMessageIds": ["m-058-1", "m-058-2"]
+      }
+    },
+    {
+      "id": "golden-059",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-059-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-059-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-7。"
+        },
+        {
+          "id": "m-059-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-7，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-7",
+        "sourceMessageIds": ["m-059-1", "m-059-2"]
+      }
+    },
+    {
+      "id": "golden-060",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-060-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-060-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-8 as the default export format."
+        },
+        {
+          "id": "m-060-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-8; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-8",
+        "sourceMessageIds": ["m-060-1", "m-060-2"]
+      }
+    },
+    {
+      "id": "golden-061",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-061-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-061-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-9。"
+        },
+        {
+          "id": "m-061-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-9，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-9",
+        "sourceMessageIds": ["m-061-1", "m-061-2"]
+      }
+    },
+    {
+      "id": "golden-062",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-062-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-062-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-10 as the default export format."
+        },
+        {
+          "id": "m-062-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-10; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-10",
+        "sourceMessageIds": ["m-062-1", "m-062-2"]
+      }
+    },
+    {
+      "id": "golden-063",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-063-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-063-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-11。"
+        },
+        {
+          "id": "m-063-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-11，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-11",
+        "sourceMessageIds": ["m-063-1", "m-063-2"]
+      }
+    },
+    {
+      "id": "golden-064",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-064-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-064-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-12 as the default export format."
+        },
+        {
+          "id": "m-064-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-12; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-12",
+        "sourceMessageIds": ["m-064-1", "m-064-2"]
+      }
+    },
+    {
+      "id": "golden-065",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-065-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-065-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-13。"
+        },
+        {
+          "id": "m-065-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-13，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-13",
+        "sourceMessageIds": ["m-065-1", "m-065-2"]
+      }
+    },
+    {
+      "id": "golden-066",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-066-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-066-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-14 as the default export format."
+        },
+        {
+          "id": "m-066-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-14; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-14",
+        "sourceMessageIds": ["m-066-1", "m-066-2"]
+      }
+    },
+    {
+      "id": "golden-067",
+      "category": "conflict",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-067-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-067-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "默认默认导出格式先用纯文本-15。"
+        },
+        {
+          "id": "m-067-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "更正：默认默认导出格式改为Markdown-15，替代之前的设置。"
+        }
+      ],
+      "query": "当前默认默认导出格式是什么？",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-15",
+        "sourceMessageIds": ["m-067-1", "m-067-2"]
+      }
+    },
+    {
+      "id": "golden-068",
+      "category": "conflict",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-068-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-068-1",
+          "role": "user",
+          "occurredAt": "2026-01-09T08:00:00.000Z",
+          "content": "Use plain-text-16 as the default export format."
+        },
+        {
+          "id": "m-068-2",
+          "role": "user",
+          "occurredAt": "2026-01-11T08:00:00.000Z",
+          "content": "Correction: change the default export format to Markdown-16; this replaces the earlier setting."
+        }
+      ],
+      "query": "What is the current default export format?",
+      "expected": {
+        "outcome": "answer",
+        "answer": "Markdown-16",
+        "sourceMessageIds": ["m-068-1", "m-068-2"]
+      }
+    },
+    {
+      "id": "golden-069",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-069-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-069-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼1室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-070",
+      "category": "expired",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-070-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-070-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 2 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-071",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-071-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-071-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼3室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-072",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-072-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-072-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 4 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-073",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-073-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-073-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼5室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-074",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-074-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-074-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 6 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-075",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-075-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-075-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼7室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-076",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-076-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-076-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 8 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-077",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-077-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-077-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼9室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-078",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-078-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-078-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 10 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-079",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-079-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-079-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼11室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-080",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-080-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-080-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 12 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-081",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-081-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-081-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼13室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-082",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-082-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-082-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 14 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-083",
+      "category": "expired",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-083-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-083-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "本月临时临时办公地点是北楼15室，月底后失效。"
+        }
+      ],
+      "query": "我现在的临时办公地点在哪里？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-084",
+      "category": "expired",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-084-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-084-1",
+          "role": "user",
+          "occurredAt": "2025-12-01T08:00:00.000Z",
+          "validUntil": "2025-12-31T23:59:59.000Z",
+          "content": "My temporary office is North Annex 16 for December only; it expires at month end."
+        }
+      ],
+      "query": "Where is my current temporary office?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-085",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-085-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-085-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点1号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-086",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": true,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-086-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-086-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 2."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-087",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-087-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-087-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点3号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-088",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-088-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-088-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 4."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-089",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-089-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-089-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点5号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-090",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-090-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-090-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 6."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-091",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-091-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-091-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点7号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-092",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-092-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-092-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 8."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-093",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-093-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-093-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点9号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-094",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-094-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-094-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 10."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-095",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-095-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-095-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点11号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-096",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-096-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-096-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 12."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-097",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-097-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-097-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点13号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-098",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-098-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-098-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 14."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-099",
+      "category": "no_answer",
+      "locale": "zh-CN",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-099-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "请告诉我一项需要在后续会话中正确记住或避免猜测的信息。"
+        },
+        {
+          "id": "m-099-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "今天讨论了午餐地点15号的营业时间。"
+        }
+      ],
+      "query": "我常用编辑器是什么？",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    },
+    {
+      "id": "golden-100",
+      "category": "no_answer",
+      "locale": "en",
+      "smoke": false,
+      "evaluationTime": "2026-01-15T12:00:00.000Z",
+      "messages": [
+        {
+          "id": "m-100-0",
+          "role": "assistant",
+          "occurredAt": "2026-01-08T08:00:00.000Z",
+          "content": "Tell me one item that should be remembered accurately or left unanswered later."
+        },
+        {
+          "id": "m-100-1",
+          "role": "user",
+          "occurredAt": "2026-01-10T08:00:00.000Z",
+          "content": "We discussed opening hours for lunch location 16."
+        }
+      ],
+      "query": "What is my preferred editor?",
+      "expected": {
+        "outcome": "no_answer",
+        "answer": null,
+        "sourceMessageIds": []
+      }
+    }
+  ]
+}
