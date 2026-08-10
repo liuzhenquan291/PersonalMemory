@@ -20,6 +20,8 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "test:dev": "node --test scripts/dev-runtime.test.mjs",
     "install:all": "npm ci && npm --prefix sdk/typescript ci",
     "build": "npm run build:upstream && npm run build:products",
     "build:upstream": "npm run build:plugin && npm run build:scripts",
@@ -38,11 +40,11 @@
     "seed-v2": "node ./bin/seed-v2.mjs",
     "typecheck": "npm run typecheck:products && npm --prefix sdk/typescript run build",
     "typecheck:products": "npm run typecheck -w @personalmemory/core && npm run typecheck -w @personalmemory/gateway && npm run typecheck -w @personalmemory/mcp-server && npm run typecheck -w @personalmemory/web",
-    "format:check": "prettier --check 'apps/**/*.{ts,tsx,css,json,html}' 'packages/**/*.{ts,json}' 'scripts/{clean-product-builds,verify-workspace-boundaries*}.mjs' tsconfig.base.json eslint.config.mjs",
-    "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
+    "format:check": "prettier --check 'apps/**/*.{ts,tsx,css,json,html}' 'packages/**/*.{ts,json}' 'scripts/{clean-product-builds,dev*,verify-workspace-boundaries*}.mjs' tsconfig.base.json eslint.config.mjs",
+    "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/dev*.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
     "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
     "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
-    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/web",
+    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/web && npm run test:dev",
     "test:upstream": "vitest run",
     "test:golden": "vitest run -c vitest.e2e.config.ts src/gateway/standalone-golden.e2e.test.ts",
     "test:oss": "vitest run -c vitest.oss.config.ts",

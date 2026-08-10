@@ -3,6 +3,7 @@ node_modules/
 
 # Runtime workspace
 workspace/
+.personalmemory-dev*/
 
 # Environment variables
 .env

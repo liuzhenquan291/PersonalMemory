@@ -43,4 +43,4 @@ M1.3 在腾讯上游 standalone Gateway 外侧建立稳定的个人版 `/api/v1`
 
 ## 生命周期
 
-`PersonalMemoryGatewayServer` 使用 idle/starting/running/stopping 状态机，支持端口 `0` 测试、端口占用错误、失败后重试、启动中立即停止、并发 stop、停止接受新连接、关闭 idle/active connection 和 stop 后重启。M1.5 再把个人版 Gateway 与 Web、上游 standalone 进程纳入统一开发启动和健康检查。
+`PersonalMemoryGatewayServer` 使用 idle/starting/running/stopping 状态机，支持端口 `0` 测试、端口占用错误、失败后重试、启动中立即停止、并发 stop、停止接受新连接、关闭 idle/active connection 和 stop 后重启。M1.5 已把个人版 Gateway 与 Web 纳入统一开发启动和健康检查；腾讯上游 standalone 在 M2 接入真实记忆操作时再纳入生命周期。

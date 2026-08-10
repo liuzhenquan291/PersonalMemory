@@ -1,6 +1,8 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const gatewayPort = process.env.PERSONALMEMORY_DEV_GATEWAY_PORT ?? "8787";
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -8,7 +10,7 @@ export default defineConfig({
     port: 4173,
     strictPort: true,
     proxy: {
-      "/api": "http://127.0.0.1:8787",
+      "/api": `http://127.0.0.1:${gatewayPort}`,
     },
   },
   preview: {
