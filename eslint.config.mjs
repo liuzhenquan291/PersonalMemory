@@ -8,7 +8,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ["apps/**/*.ts", "packages/**/*.ts"],
+    files: ["apps/**/*.{ts,tsx}", "packages/**/*.ts"],
     rules: {
       "@typescript-eslint/consistent-type-imports": "error",
       "@typescript-eslint/no-import-type-side-effects": "error",
