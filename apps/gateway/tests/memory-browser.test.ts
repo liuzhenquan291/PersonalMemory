@@ -25,6 +25,7 @@ describe("MemoryBrowser", () => {
             type: "fact",
             content: "second",
             updated_at: "2026-01-02T00:00:00Z",
+            source_message_ids: ["source-2"],
           },
         ],
         total: 3,
@@ -45,7 +46,9 @@ describe("MemoryBrowser", () => {
       total: 3,
       hasPrevious: true,
       hasNext: true,
-      items: [{ id: "m2", source: { status: "unavailable" } }],
+      items: [
+        { id: "m2", source: { status: "original", label: "1 条对话原文" } },
+      ],
     });
   });
 

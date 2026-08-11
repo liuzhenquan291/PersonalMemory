@@ -78,6 +78,7 @@ export interface AtomicDetail {
   background?: string;
   created_at: string;
   updated_at: string;
+  source_message_ids?: string[];
 }
 
 export interface AtomicUpdateRequest {

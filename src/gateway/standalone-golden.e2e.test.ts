@@ -205,6 +205,7 @@ observability:
       return result.items.length > 0 ? result.items[0] : undefined;
     });
     expect(atomic.content).toContain("本地优先");
+    expect(atomic.source_message_ids).toContain(added.accepted_ids[0]);
 
     const recordFiles = await readdir(join(dataDir, "records"));
     const records = (await Promise.all(

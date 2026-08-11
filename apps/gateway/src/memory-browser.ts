@@ -60,6 +60,7 @@ const l1Schema = z.object({
       content: z.string(),
       updated_at: z.string(),
       score: z.number().optional(),
+      source_message_ids: z.array(z.string()).optional(),
     }),
   ),
   total: z.number().int().nonnegative().optional(),
@@ -143,12 +144,17 @@ export class MemoryBrowser {
         updatedAt: item.updated_at,
         ...(item.score === undefined ? {} : { score: item.score }),
         state: { status: "active" as const, revision: 0 },
-        source: {
-          status: "unavailable" as const,
-          label: "来源未记录",
-          explanation:
-            "这是一条由对话沉淀的结构化记忆，但当前存储未保留可验证的原消息引用。",
-        },
+        source: item.source_message_ids?.length
+          ? {
+              status: "original" as const,
+              label: `${item.source_message_ids.length} 条对话原文`,
+              explanation: `来源消息 ID：${item.source_message_ids.join(", ")}`,
+            }
+          : {
+              status: "unavailable" as const,
+              label: "来源未记录",
+              explanation: "这条结构化记忆没有可验证的原消息引用。",
+            },
       }));
     } else {
       const parsed = data(response, l0Schema);

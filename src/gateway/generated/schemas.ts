@@ -88,8 +88,9 @@ export const atomicDetailSchema = z.object({
 "background": z.optional(z.string().describe("笔记产生的上下文背景信息（由调用方 / 内核沉淀策略自行\n界定语义，对外仅做存储与透传）。可通过\n`POST /atomic/update` 按 `id` 更新。\n")),
 "content": z.string().describe("记忆笔记文本，调用方直接消费。"),
 "created_at": z.iso.datetime().describe("笔记首次沉淀时间。"),
-"updated_at": z.iso.datetime().describe("笔记最近一次更新时间，作为时间窗筛选 / 排序的事实时间。")
-    }).describe("L1 记忆笔记对外视图。一期对外暴露下列 6 个字段；笔记本身在\n内核侧还会带有 `scene_name` / `priority` / `timestamp_start` /\n`timestamp_end` / `source_message_ids` / `metadata` 等沉淀属性，\n本期 query / search 接口均不外露，后续版本如需要再按需开放。\n") as unknown as z.ZodType<AtomicDetail>
+"updated_at": z.iso.datetime().describe("笔记最近一次更新时间，作为时间窗筛选 / 排序的事实时间。"),
+"source_message_ids": z.optional(z.array(z.string()))
+    }).describe("L1 记忆笔记对外视图；来源可验证时返回 source_message_ids。") as unknown as z.ZodType<AtomicDetail>
 
 /**
  * @description L1 记忆笔记按 id 更新请求。`id` 定位目标笔记；`content` 为本次\n更新后的笔记正文全量值（整体覆盖旧值，不做 diff / merge）；\n`background` **选填**——传入则整体覆盖背景字段，不传（字段\n缺省）则保持原值不变。本接口不支持\"按 id 不存在则创建\"的\nupsert 语义；若 `id` 不存在或不属于当前调用上下文，统一返回\n业务错误码 `404`。\n

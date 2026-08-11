@@ -183,7 +183,7 @@ export type ConversationDeleteData = {
 };
 
 /**
- * @description L1 记忆笔记对外视图。一期对外暴露下列 6 个字段；笔记本身在\n内核侧还会带有 `scene_name` / `priority` / `timestamp_start` /\n`timestamp_end` / `source_message_ids` / `metadata` 等沉淀属性，\n本期 query / search 接口均不外露，后续版本如需要再按需开放。\n
+ * @description L1 记忆笔记对外视图。`source_message_ids` 在来源可验证时返回；旧数据缺少来源时为空或缺省。\n
 */
 export type AtomicDetail = {
     /**
@@ -216,6 +216,8 @@ export type AtomicDetail = {
      * @type string, date-time
     */
     updated_at: string;
+    /** IDs of the original L0 messages used to derive this memory. */
+    source_message_ids?: string[];
 };
 
 /**

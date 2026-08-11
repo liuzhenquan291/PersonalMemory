@@ -62,6 +62,13 @@ function rowToMemoryRecord(row: L1RecordRow): MemoryRecord {
   } catch {
     // malformed JSON — use empty object
   }
+  let sourceMessageIds: string[] = [];
+  try {
+    const parsed = JSON.parse(row.source_message_ids_json ?? "[]");
+    if (Array.isArray(parsed)) sourceMessageIds = parsed.map(String);
+  } catch {
+    // malformed JSON — use empty source list
+  }
 
   // Reconstruct timestamps array from timestamp_start / timestamp_end
   const timestamps: string[] = [];
@@ -77,7 +84,7 @@ function rowToMemoryRecord(row: L1RecordRow): MemoryRecord {
     type: row.type as MemoryType,
     priority: row.priority,
     scene_name: row.scene_name,
-    source_message_ids: [], // not stored in SQLite (vector search doesn't need them)
+    source_message_ids: sourceMessageIds,
     metadata,
     timestamps,
     createdAt: row.created_time,

@@ -584,6 +584,7 @@ async function handleAtomicQuery(body: unknown, _auth: V2AuthContext, requestId:
       id: r.record_id, type: r.type, content: r.content,
       background: r.scene_name || undefined,
       created_at: r.created_time, updated_at: r.updated_time,
+      source_message_ids: JSON.parse(r.source_message_ids_json || "[]") as string[],
     }));
     return successEnvelope<AtomicQueryData>({ items, total: result.total }, requestId);
   }
@@ -600,6 +601,7 @@ async function handleAtomicQuery(body: unknown, _auth: V2AuthContext, requestId:
     id: r.record_id, type: r.type, content: r.content,
     background: r.scene_name || undefined,
     created_at: r.created_time, updated_at: r.updated_time,
+    source_message_ids: JSON.parse(r.source_message_ids_json || "[]") as string[],
   }));
 
   return successEnvelope<AtomicQueryData>({ items, total }, requestId);
@@ -672,6 +674,7 @@ async function handleAtomicSearch(body: unknown, auth: V2AuthContext, requestId:
     id: r.id, type: r.type, content: r.content,
     background: r.scene_name || undefined,
     created_at: r.created_at, updated_at: r.updated_at, score: r.score,
+    source_message_ids: r.source_message_ids,
   }));
 
   return successEnvelope<AtomicSearchData>({ items }, requestId);

@@ -65,6 +65,7 @@ export interface VectorSearchResult {
   session_id: string;
   /** Raw metadata JSON string (e.g., contains activity_start_time / activity_end_time for episodic) */
   metadata_json: string;
+  source_message_ids_json?: string;
 }
 
 /** L0 single-message vector search result. */
@@ -561,9 +562,16 @@ export class VectorStore implements IMemoryStore {
         timestamp_end TEXT DEFAULT '',
         created_time TEXT DEFAULT '',
         updated_time TEXT DEFAULT '',
-        metadata_json TEXT DEFAULT '{}'
+        metadata_json TEXT DEFAULT '{}',
+        source_message_ids_json TEXT DEFAULT '[]'
       )
     `);
+
+    try {
+      this.db.exec("ALTER TABLE l1_records ADD COLUMN source_message_ids_json TEXT DEFAULT '[]'");
+    } catch {
+      // Column already exists.
+    }
 
     // Indexes for common queries
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_l1_type ON l1_records(type)");
@@ -595,8 +603,8 @@ export class VectorStore implements IMemoryStore {
       INSERT INTO l1_records (
         record_id, content, type, priority, scene_name, session_key, session_id,
         timestamp_str, timestamp_start, timestamp_end,
-        created_time, updated_time, metadata_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_time, updated_time, metadata_json, source_message_ids_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(record_id) DO UPDATE SET
         content=excluded.content,
         type=excluded.type,
@@ -606,7 +614,8 @@ export class VectorStore implements IMemoryStore {
         timestamp_start=excluded.timestamp_start,
         timestamp_end=excluded.timestamp_end,
         updated_time=excluded.updated_time,
-        metadata_json=excluded.metadata_json
+        metadata_json=excluded.metadata_json,
+        source_message_ids_json=excluded.source_message_ids_json
     `);
 
     if (this.dimensions > 0) {
@@ -617,7 +626,7 @@ export class VectorStore implements IMemoryStore {
 
     this.stmtGetMeta = this.db.prepare(`
       SELECT content, type, priority, scene_name, session_key, session_id,
-             timestamp_str, timestamp_start, timestamp_end, metadata_json
+             timestamp_str, timestamp_start, timestamp_end, metadata_json, source_message_ids_json
       FROM l1_records WHERE record_id = ?
     `);
 
@@ -792,11 +801,12 @@ export class VectorStore implements IMemoryStore {
       this.stmtL1FtsDelete = this.db.prepare("DELETE FROM l1_fts WHERE record_id = ?");
 
       this.stmtL1FtsSearch = this.db.prepare(`
-        SELECT record_id, content_original AS content, type, priority, scene_name,
-               session_key, session_id, timestamp_str, timestamp_start, timestamp_end,
-               metadata_json,
+        SELECT l1_fts.record_id, content_original AS content, l1_fts.type, l1_fts.priority, l1_fts.scene_name,
+               l1_fts.session_key, l1_fts.session_id, l1_fts.timestamp_str, l1_fts.timestamp_start, l1_fts.timestamp_end,
+               l1_fts.metadata_json, l1_records.source_message_ids_json,
                bm25(l1_fts) AS rank
         FROM l1_fts
+        JOIN l1_records ON l1_records.record_id = l1_fts.record_id
         WHERE l1_fts MATCH ?
         ORDER BY rank ASC
         LIMIT ?
@@ -849,7 +859,7 @@ export class VectorStore implements IMemoryStore {
     // L1 query statements (for l1-reader)
     const l1QueryCols = `record_id, content, type, priority, scene_name, session_key, session_id,
       timestamp_str, timestamp_start, timestamp_end,
-      created_time, updated_time, metadata_json`;
+      created_time, updated_time, metadata_json, source_message_ids_json`;
 
     this.stmtQueryBySessionId = this.db.prepare(`
       SELECT ${l1QueryCols} FROM l1_records
@@ -1039,6 +1049,7 @@ export class VectorStore implements IMemoryStore {
           record.createdAt,
           record.updatedAt,
           JSON.stringify(record.metadata),
+          JSON.stringify(record.source_message_ids),
         );
 
         if (!skipVec) {
@@ -1156,6 +1167,7 @@ export class VectorStore implements IMemoryStore {
               timestamp_start: string;
               timestamp_end: string;
               metadata_json: string;
+              source_message_ids_json: string;
             }
           | undefined;
 
@@ -1183,6 +1195,7 @@ export class VectorStore implements IMemoryStore {
           session_key: meta.session_key,
           session_id: meta.session_id,
           metadata_json: meta.metadata_json,
+          source_message_ids_json: meta.source_message_ids_json,
         });
       }
 
@@ -2123,7 +2136,7 @@ export class VectorStore implements IMemoryStore {
       const total = countRow?.cnt ?? 0;
 
       // Fetch page
-      const dataSql = `SELECT record_id, content, type, priority, scene_name, session_key, session_id, timestamp_str, timestamp_start, timestamp_end, created_time, updated_time, metadata_json FROM l1_records ${where} ORDER BY updated_time DESC LIMIT ? OFFSET ?`;
+      const dataSql = `SELECT record_id, content, type, priority, scene_name, session_key, session_id, timestamp_str, timestamp_start, timestamp_end, created_time, updated_time, metadata_json, source_message_ids_json FROM l1_records ${where} ORDER BY updated_time DESC LIMIT ? OFFSET ?`;
       const rows = this.db.prepare(dataSql).all(...params, filter.limit, filter.offset) as unknown as L1RecordRow[];
 
       return { rows, total };
@@ -2195,6 +2208,7 @@ export class VectorStore implements IMemoryStore {
         timestamp_start: string;
         timestamp_end: string;
         metadata_json: string;
+        source_message_ids_json: string;
         rank: number;
       }>;
 
@@ -2211,6 +2225,7 @@ export class VectorStore implements IMemoryStore {
         session_key: r.session_key,
         session_id: r.session_id,
         metadata_json: r.metadata_json,
+        source_message_ids_json: r.source_message_ids_json,
       }));
     } catch (err) {
       this.logger?.warn(

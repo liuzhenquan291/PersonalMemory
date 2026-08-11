@@ -28,6 +28,7 @@ export interface MemorySearchResultItem {
   score: number;
   created_at: string;
   updated_at: string;
+  source_message_ids?: string[];
 }
 
 export interface MemorySearchResult {
@@ -151,6 +152,7 @@ export async function executeMemorySearch(params: {
       score: r.score,
       created_at: r.timestamp_start,
       updated_at: r.timestamp_end,
+      source_message_ids: JSON.parse(r.source_message_ids_json ?? "[]") as string[],
     }));
 
     // Apply secondary filters
@@ -190,6 +192,7 @@ export async function executeMemorySearch(params: {
           score: r.score,
           created_at: r.timestamp_start,
           updated_at: r.timestamp_end,
+          source_message_ids: JSON.parse(r.source_message_ids_json ?? "[]") as string[],
         }));
       } catch (err) {
         logger?.warn?.(
@@ -219,6 +222,7 @@ export async function executeMemorySearch(params: {
           score: r.score,
           created_at: r.timestamp_start,
           updated_at: r.timestamp_end,
+          source_message_ids: JSON.parse(r.source_message_ids_json ?? "[]") as string[],
         }));
       } catch (err) {
         logger?.warn?.(
