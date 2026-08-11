@@ -102,6 +102,84 @@ describe("PersonalMemory Web", () => {
     );
     expect(await screen.findByText("已接受所选记忆。")).toBeVisible();
   });
+
+  it("creates a conflict only after the user selects a candidate", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/memories?")) {
+          const candidate = url.includes("query=%E5%80%99%E9%80%89");
+          const item = candidate
+            ? {
+                id: "candidate",
+                level: "L1",
+                title: "候选事实",
+                content: "候选事实内容",
+              }
+            : {
+                id: "current",
+                level: "L1",
+                title: "当前事实",
+                content: "当前事实内容",
+              };
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    ...item,
+                    state: { status: "active", revision: 0 },
+                    source: {
+                      status: "original",
+                      label: "对话原文",
+                      explanation: "source",
+                    },
+                    governance: {
+                      recallable: true,
+                      validity: {
+                        level: "L1",
+                        memoryId: item.id,
+                        revision: 0,
+                      },
+                      relations: [],
+                    },
+                  },
+                ],
+                page: 1,
+                page_size: 12,
+                total: 1,
+                has_previous: false,
+                has_next: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        expect(init?.method).toBe("POST");
+        return Promise.resolve(
+          new Response(JSON.stringify({ relation: { id: "relation-1" } }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          }),
+        );
+      });
+    renderRoute("/memories");
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("当前事实"));
+    await user.click(screen.getByRole("button", { name: "治理冲突" }));
+    await user.type(screen.getByLabelText("查找相似候选"), "候选");
+    await user.click(await screen.findByRole("radio"));
+    await user.type(screen.getByLabelText("判断依据"), "用户确认存在矛盾");
+    await user.click(screen.getByRole("button", { name: "确认治理关系" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/memory-relations",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"kind":"conflicts_with"'),
+      }),
+    );
+  });
   it("renders a personal empty state without team concepts", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(

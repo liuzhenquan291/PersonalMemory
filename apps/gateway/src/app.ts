@@ -30,6 +30,13 @@ import {
   MemoryReviewService,
   memoryReviewBatchSchema,
 } from "./memory-reviews.js";
+import {
+  MemoryGovernanceService,
+  MemoryGovernanceServiceError,
+  memoryRelationSchema,
+  memoryValiditySchema,
+  relationRevokeSchema,
+} from "./memory-governance.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -326,12 +333,14 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     options.config.server.upstreamTimeoutMs,
     options.memoryStates,
     options.memoryReviews,
+    options.memoryGovernance,
   );
   const memoryBrowser = new MemoryBrowser(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
     options.memoryStates,
     options.memoryReviews,
+    options.memoryGovernance,
   );
   const memoryMutations = options.memoryStates
     ? new MemoryMutationService(
@@ -345,6 +354,14 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         options.memoryReviews,
         options.upstream,
         options.config.server.upstreamTimeoutMs,
+      )
+    : undefined;
+  const memoryGovernance = options.memoryGovernance
+    ? new MemoryGovernanceService(
+        options.memoryGovernance,
+        options.upstream,
+        options.config.server.upstreamTimeoutMs,
+        randomId,
       )
     : undefined;
   let businessRateLimit = { windowStart: 0, count: 0 };
@@ -367,6 +384,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/recall/query",
       "GET /api/v1/memories",
       "POST /api/v1/memory-reviews",
+      "GET /api/v1/memories/:level/:id/governance",
+      "POST /api/v1/memories/:level/:id/validity",
+      "POST /api/v1/memory-relations",
+      "POST /api/v1/memory-relations/:id/revoke",
       "POST /api/v1/memories/:level/:id/update",
       "POST /api/v1/memories/:level/:id/invalidate",
       "POST /api/v1/memories/:level/:id/delete",
@@ -879,6 +900,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           state: item.state,
           source: item.source,
           ...(item.review ? { review: item.review } : {}),
+          ...(item.governance ? { governance: item.governance } : {}),
         })),
         page: result.page,
         page_size: result.pageSize,
@@ -920,6 +942,132 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       { results },
       results.every((result) => result.ok) ? 200 : 207,
     );
+  });
+
+  const requireMemoryGovernance = (): MemoryGovernanceService => {
+    if (!memoryGovernance) {
+      throw new GatewayHttpError(
+        503,
+        "MEMORY_GOVERNANCE_UNAVAILABLE",
+        "Memory governance state is not available",
+      );
+    }
+    return memoryGovernance;
+  };
+
+  const translateGovernanceError = (error: unknown): never => {
+    if (error instanceof MemoryGovernanceServiceError) {
+      const definitions = {
+        CONFLICT: [
+          409,
+          "MEMORY_GOVERNANCE_CONFLICT",
+          "Governance state changed; reload and retry",
+        ],
+        CYCLE: [
+          409,
+          "MEMORY_RELATION_CYCLE",
+          "The relation would create a supersedes cycle",
+        ],
+        UPSTREAM_REJECTED: [
+          502,
+          "UPSTREAM_REJECTED",
+          "The local memory kernel rejected merged content",
+        ],
+      } as const;
+      const [status, code, message] = definitions[error.code];
+      throw new GatewayHttpError(status, code, message);
+    }
+    throw error;
+  };
+
+  app.get("/api/v1/memories/:level/:id/governance", (context) => {
+    authenticateMemoryRequest(context, false);
+    const target = mutationTarget(context);
+    return jsonResponse(
+      requireMemoryGovernance().get(target.level, target.id),
+      200,
+    );
+  });
+
+  app.post("/api/v1/memories/:level/:id/validity", async (context) => {
+    authenticateMemoryRequest(context);
+    const target = mutationTarget(context);
+    const parsed = memoryValiditySchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(400, "INVALID_REQUEST", "Validity is invalid");
+    }
+    try {
+      return jsonResponse(
+        {
+          validity: requireMemoryGovernance().setValidity(
+            target.level,
+            target.id,
+            parsed.data,
+          ),
+        },
+        200,
+      );
+    } catch (error) {
+      return translateGovernanceError(error);
+    }
+  });
+
+  app.post("/api/v1/memory-relations", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = memoryRelationSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(400, "INVALID_REQUEST", "Relation is invalid");
+    }
+    try {
+      return jsonResponse(
+        {
+          relation: await requireMemoryGovernance().addRelation(
+            parsed.data,
+            context.get("requestId"),
+          ),
+        },
+        200,
+      );
+    } catch (error) {
+      return translateGovernanceError(error);
+    }
+  });
+
+  app.post("/api/v1/memory-relations/:id/revoke", async (context) => {
+    authenticateMemoryRequest(context);
+    const id = context.req.param("id");
+    const parsed = relationRevokeSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!id || id.length > 2_048 || !parsed.success) {
+      throw new GatewayHttpError(400, "INVALID_REQUEST", "Revoke is invalid");
+    }
+    try {
+      return jsonResponse(
+        {
+          relation: requireMemoryGovernance().revoke(
+            id,
+            parsed.data.expected_revision,
+          ),
+        },
+        200,
+      );
+    } catch (error) {
+      return translateGovernanceError(error);
+    }
   });
 
   const requireMemoryMutations = (): MemoryMutationService => {

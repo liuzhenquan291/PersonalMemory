@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { UpstreamGatewayError } from "./upstream-client.js";
 import type {
+  MemoryGovernanceLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
 } from "@personalmemory/core";
@@ -147,6 +148,7 @@ export class RecallService {
     private readonly upstreamTimeoutMs: number,
     private readonly states?: MemoryStateLedger,
     private readonly reviews?: MemoryReviewLedger,
+    private readonly governance?: MemoryGovernanceLedger,
   ) {}
 
   async recall(
@@ -193,6 +195,11 @@ export class RecallService {
         item.level === "L1" && this.reviews
           ? this.reviews.isApproved("L1", item.id)
           : true,
+      )
+      .filter((item) =>
+        item.level === "L0" || !this.governance
+          ? true
+          : this.governance.isRecallable(item.level, item.id),
       );
     const items: RecallItem[] = [];
     let usedChars = 0;

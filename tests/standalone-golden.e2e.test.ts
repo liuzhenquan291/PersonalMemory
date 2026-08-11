@@ -13,6 +13,7 @@ import { ConversationImportManager } from "../apps/gateway/src/import-manager.js
 import { FetchUpstreamGatewayClient } from "../apps/gateway/src/upstream-client.js";
 import {
   ImportLedger,
+  MemoryGovernanceLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
   createReadableExport,
@@ -293,6 +294,7 @@ observability:
         importManager: imports,
         memoryStates: new MemoryStateLedger(database),
         memoryReviews: new MemoryReviewLedger(database),
+        memoryGovernance: new MemoryGovernanceLedger(database),
         logger: { info() {}, error() {} },
       });
       return { app, database, imports };
@@ -378,6 +380,51 @@ observability:
       items: [{ id: memory.id, level: "L1" }],
     });
 
+    const allMemories = await product.app.request(
+      "/api/v1/memories?level=L1&page_size=50",
+      { headers: authHeaders },
+    );
+    const other = (
+      (await allMemories.json()) as { items: Array<{ id: string }> }
+    ).items.find((item) => item.id !== memory.id);
+    expect(other).toBeDefined();
+    const related = await product.app.request("/api/v1/memory-relations", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        level: "L1",
+        kind: "supersedes",
+        source_id: memory.id,
+        target_id: other!.id,
+        reason: "M3.2 golden merge",
+      }),
+    });
+    expect(related.status).toBe(200);
+    const relation = (await related.json()) as {
+      relation: { id: string; revision: number };
+    };
+    const suppressed = await product.app.request(
+      `/api/v1/memories/L1/${encodeURIComponent(other!.id)}/governance`,
+      { headers: authHeaders },
+    );
+    expect(await suppressed.json()).toMatchObject({ recallable: false });
+    const undone = await product.app.request(
+      `/api/v1/memory-relations/${relation.relation.id}/revoke`,
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          expected_revision: relation.relation.revision,
+        }),
+      },
+    );
+    expect(undone.status).toBe(200);
+    const restored = await product.app.request(
+      `/api/v1/memories/L1/${encodeURIComponent(other!.id)}/governance`,
+      { headers: authHeaders },
+    );
+    expect(await restored.json()).toMatchObject({ recallable: true });
+
     const corrected = await product.app.request(
       `/api/v1/memories/L1/${encodeURIComponent(memory.id)}/update`,
       {
@@ -405,6 +452,7 @@ observability:
       expect(exported.counts.memories).toBeGreaterThan(0);
       expect(exported.counts.states).toBeGreaterThan(0);
       expect(exported.counts.reviews).toBeGreaterThan(0);
+      expect(exported.counts.relations).toBeGreaterThan(0);
     } finally {
       await rm(exportFile, { force: true });
     }

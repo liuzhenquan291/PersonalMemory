@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 4;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 5;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -64,6 +64,42 @@ CREATE TABLE personalmemory_memory_reviews (
 ) STRICT
 `;
 
+const MEMORY_VALIDITY_SQL = `
+CREATE TABLE personalmemory_memory_validity (
+  level TEXT NOT NULL CHECK (level IN ('L1', 'L2', 'L3')),
+  memory_id TEXT NOT NULL,
+  valid_from TEXT,
+  expires_at TEXT,
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (level, memory_id),
+  CHECK (valid_from IS NULL OR expires_at IS NULL OR valid_from < expires_at)
+) STRICT
+`;
+
+const MEMORY_RELATIONS_SQL = `
+CREATE TABLE personalmemory_memory_relations (
+  id TEXT PRIMARY KEY NOT NULL,
+  level TEXT NOT NULL CHECK (level IN ('L1', 'L2', 'L3')),
+  kind TEXT NOT NULL CHECK (kind IN ('conflicts_with', 'supersedes')),
+  source_memory_id TEXT NOT NULL,
+  target_memory_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'revoked')),
+  reason TEXT NOT NULL,
+  merged_content_hash TEXT,
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK (source_memory_id <> target_memory_id)
+) STRICT
+`;
+
+const MEMORY_RELATIONS_INDEX_SQL = `
+CREATE UNIQUE INDEX personalmemory_active_memory_relations
+ON personalmemory_memory_relations(level, kind, source_memory_id, target_memory_id)
+WHERE status = 'active'
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -92,5 +128,17 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_memory_review_inbox",
     checksum: checksum(MEMORY_REVIEWS_SQL),
     statements: [MEMORY_REVIEWS_SQL],
+  },
+  {
+    version: 5,
+    name: "add_memory_conflict_governance",
+    checksum: checksum(
+      `${MEMORY_VALIDITY_SQL}\n${MEMORY_RELATIONS_SQL}\n${MEMORY_RELATIONS_INDEX_SQL}`,
+    ),
+    statements: [
+      MEMORY_VALIDITY_SQL,
+      MEMORY_RELATIONS_SQL,
+      MEMORY_RELATIONS_INDEX_SQL,
+    ],
   },
 ]);

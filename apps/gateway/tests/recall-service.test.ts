@@ -6,6 +6,7 @@ import {
 import { UpstreamGatewayError } from "../src/upstream-client.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
 import {
+  MemoryGovernanceLedger,
   MemoryStateLedger,
   MemoryReviewLedger,
   defaultMigrations,
@@ -292,6 +293,71 @@ describe("RecallService", () => {
         "request-1",
       );
       expect(result.items.map(({ id }) => id)).toEqual(["active"]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("excludes future, expired, and superseded memories from recall", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      migrateDatabase(database, defaultMigrations);
+      const governance = new MemoryGovernanceLedger(
+        database,
+        () => "2026-08-12T00:00:00.000Z",
+      );
+      governance.setValidity(
+        "L1",
+        "expired",
+        undefined,
+        "2026-08-11T00:00:00.000Z",
+        0,
+      );
+      governance.setValidity(
+        "L1",
+        "future",
+        "2026-08-13T00:00:00.000Z",
+        undefined,
+        0,
+      );
+      governance.addRelation({
+        id: "supersedes-1",
+        level: "L1",
+        kind: "supersedes",
+        sourceMemoryId: "current",
+        targetMemoryId: "old",
+        reason: "merged",
+      });
+      governance.addRelation({
+        id: "conflict-1",
+        level: "L1",
+        kind: "conflicts_with",
+        sourceMemoryId: "conflict-a",
+        targetMemoryId: "conflict-b",
+        reason: "user confirmed conflict",
+      });
+      const upstream: UpstreamGatewayClient = {
+        async request() {
+          return envelope({
+            items: [
+              { id: "expired", content: "expired", score: 1 },
+              { id: "future", content: "future", score: 0.9 },
+              { id: "old", content: "old", score: 0.8 },
+              { id: "current", content: "current", score: 0.7 },
+              { id: "conflict-a", content: "a", score: 0.6 },
+              { id: "conflict-b", content: "b", score: 0.5 },
+            ],
+          });
+        },
+      };
+      const result = await new RecallService(
+        upstream,
+        1_000,
+        undefined,
+        undefined,
+        governance,
+      ).recall(parse({ query: "query", levels: ["L1"] }), "request-1");
+      expect(result.items.map(({ id }) => id)).toEqual(["current"]);
     } finally {
       database.close();
     }

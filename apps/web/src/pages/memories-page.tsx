@@ -1,10 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
+  addMemoryRelation,
   fetchMemories,
   deleteMemory,
   GatewayRequestError,
   invalidateMemory,
+  revokeMemoryRelation,
+  setMemoryValidity,
   updateMemory,
   type MemoryLevel,
   type MemoryListItem,
@@ -17,6 +20,14 @@ const levelLabels: Record<MemoryLevel, string> = {
   L3: "核心画像",
 };
 
+function localDateTimeValue(value: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
 export function MemoriesPage() {
   const queryClient = useQueryClient();
   const [level, setLevel] = useState<MemoryLevel>("L1");
@@ -25,18 +36,37 @@ export function MemoriesPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<MemoryListItem | null>(null);
   const [action, setAction] = useState<
-    "view" | "edit" | "invalidate" | "delete"
+    "view" | "edit" | "invalidate" | "delete" | "governance" | "validity"
   >("view");
   const [content, setContent] = useState("");
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [mutationMessage, setMutationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidateId, setCandidateId] = useState("");
+  const [relationKind, setRelationKind] = useState<
+    "conflicts_with" | "supersedes"
+  >("conflicts_with");
+  const [validFrom, setValidFrom] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const memories = useQuery({
     queryKey: ["memories", level, query, page],
     queryFn: ({ signal }) => fetchMemories({ level, query, page }, signal),
+  });
+  const candidates = useQuery({
+    queryKey: ["memory-candidates", candidateQuery],
+    queryFn: ({ signal }) =>
+      fetchMemories(
+        { level: "L1", query: candidateQuery.trim(), page: 1 },
+        signal,
+      ),
+    enabled:
+      action === "governance" &&
+      selected?.level === "L1" &&
+      candidateQuery.trim().length > 0,
   });
 
   useEffect(() => {
@@ -46,6 +76,11 @@ export function MemoriesPage() {
       setReason("");
       setConfirmation("");
       setMutationMessage("");
+      setCandidateQuery("");
+      setCandidateId("");
+      setRelationKind("conflicts_with");
+      setValidFrom(selected.governance?.validity.validFrom ?? "");
+      setExpiresAt(selected.governance?.validity.expiresAt ?? "");
       closeButtonRef.current?.focus();
     } else previousFocusRef.current?.focus();
   }, [selected]);
@@ -65,6 +100,21 @@ export function MemoriesPage() {
         await invalidateMemory(selected, reason.trim());
       if (action === "delete")
         await deleteMemory(selected, reason.trim(), confirmation);
+      if (action === "validity")
+        await setMemoryValidity(selected, validFrom, expiresAt);
+      if (action === "governance" && selected.level === "L1") {
+        await addMemoryRelation({
+          level: "L1",
+          kind: relationKind,
+          sourceId: selected.id,
+          targetId: candidateId,
+          reason: reason.trim(),
+          ...(relationKind === "supersedes" &&
+          content.trim() !== selected.content
+            ? { mergedContent: content.trim() }
+            : {}),
+        });
+      }
       await finishMutation();
     } catch (error) {
       setMutationMessage(
@@ -171,6 +221,9 @@ export function MemoriesPage() {
                 <span className={`source-badge is-${item.source.status}`}>
                   {item.source.label}
                 </span>
+                {item.governance && !item.governance.recallable ? (
+                  <span className="governance-badge">不参与召回</span>
+                ) : null}
               </span>
               <span className="memory-card-title">{item.title}</span>
               <span className="memory-card-preview">{item.content}</span>
@@ -240,6 +293,114 @@ export function MemoriesPage() {
                   onChange={(event) => setContent(event.target.value)}
                 />
               </label>
+            ) : action === "validity" ? (
+              <div className="memory-action-form">
+                <label className="memory-action-field">
+                  <strong>生效时间（可留空）</strong>
+                  <input
+                    type="datetime-local"
+                    value={localDateTimeValue(validFrom)}
+                    onChange={(event) =>
+                      setValidFrom(
+                        event.target.value
+                          ? new Date(event.target.value).toISOString()
+                          : "",
+                      )
+                    }
+                  />
+                </label>
+                <label className="memory-action-field">
+                  <strong>过期时间（可留空）</strong>
+                  <input
+                    type="datetime-local"
+                    value={localDateTimeValue(expiresAt)}
+                    onChange={(event) =>
+                      setExpiresAt(
+                        event.target.value
+                          ? new Date(event.target.value).toISOString()
+                          : "",
+                      )
+                    }
+                  />
+                </label>
+                <p className="action-explanation">
+                  未生效或已过期的记忆仍可查看，但不会参与自动召回。
+                </p>
+              </div>
+            ) : action === "governance" ? (
+              <div className="memory-action-form governance-form">
+                <label className="memory-action-field">
+                  <strong>查找相似候选</strong>
+                  <input
+                    type="search"
+                    value={candidateQuery}
+                    placeholder="输入关键词；系统只提供候选，不自动判定冲突"
+                    onChange={(event) => {
+                      setCandidateQuery(event.target.value);
+                      setCandidateId("");
+                    }}
+                  />
+                </label>
+                {candidates.data ? (
+                  <fieldset className="candidate-list">
+                    <legend>选择另一条记忆</legend>
+                    {candidates.data.items.filter(
+                      (item) => item.id !== selected.id,
+                    ).length === 0 ? (
+                      <span className="action-explanation">
+                        没有其他匹配记忆，请换一个关键词。
+                      </span>
+                    ) : (
+                      candidates.data.items
+                        .filter((item) => item.id !== selected.id)
+                        .map((item) => (
+                          <label key={item.id}>
+                            <input
+                              type="radio"
+                              name="candidate"
+                              value={item.id}
+                              checked={candidateId === item.id}
+                              onChange={() => setCandidateId(item.id)}
+                            />
+                            <span>{item.content}</span>
+                          </label>
+                        ))
+                    )}
+                  </fieldset>
+                ) : null}
+                <label className="memory-action-field">
+                  <strong>处理方式</strong>
+                  <select
+                    value={relationKind}
+                    onChange={(event) =>
+                      setRelationKind(
+                        event.target.value as "conflicts_with" | "supersedes",
+                      )
+                    }
+                  >
+                    <option value="conflicts_with">标记为互相冲突</option>
+                    <option value="supersedes">当前记忆合并并替代候选</option>
+                  </select>
+                </label>
+                {relationKind === "supersedes" ? (
+                  <label className="memory-action-field">
+                    <strong>合并后的当前记忆</strong>
+                    <textarea
+                      rows={6}
+                      value={content}
+                      onChange={(event) => setContent(event.target.value)}
+                    />
+                  </label>
+                ) : null}
+                <label className="memory-action-field">
+                  <strong>判断依据</strong>
+                  <input
+                    value={reason}
+                    maxLength={500}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+              </div>
             ) : (
               <div className="memory-action-form">
                 <label className="memory-action-field">
@@ -283,6 +444,55 @@ export function MemoriesPage() {
               <strong>{selected.source.label}</strong>
               <p>{selected.source.explanation}</p>
             </aside>
+            {selected.governance ? (
+              <aside className="governance-panel" aria-label="冲突与有效期">
+                <strong>
+                  {selected.governance.recallable
+                    ? "当前可参与召回"
+                    : "当前不参与召回"}
+                </strong>
+                <p>
+                  {selected.governance.validity.validFrom
+                    ? `生效：${selected.governance.validity.validFrom}`
+                    : "立即生效"}
+                  {selected.governance.validity.expiresAt
+                    ? ` · 过期：${selected.governance.validity.expiresAt}`
+                    : " · 长期有效"}
+                </p>
+                {selected.governance.relations.map((relation) => (
+                  <div className="relation-row" key={relation.id}>
+                    <span>
+                      {relation.kind === "conflicts_with" ? "冲突" : "替代"} ·
+                      {relation.status === "active" ? "生效中" : "已撤销"} ·
+                      关联记忆
+                      {relation.sourceMemoryId === selected.id
+                        ? relation.targetMemoryId
+                        : relation.sourceMemoryId}
+                      · {relation.reason}
+                    </span>
+                    {relation.status === "active" ? (
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() => {
+                          setIsSubmitting(true);
+                          void revokeMemoryRelation(relation)
+                            .then(finishMutation)
+                            .catch(() =>
+                              setMutationMessage(
+                                "撤销未完成，请重新加载后再试。",
+                              ),
+                            )
+                            .finally(() => setIsSubmitting(false));
+                        }}
+                      >
+                        撤销
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </aside>
+            ) : null}
             {mutationMessage ? (
               <p className="mutation-message" role="alert">
                 {mutationMessage}
@@ -300,14 +510,25 @@ export function MemoriesPage() {
                 <button type="button" onClick={() => setAction("invalidate")}>
                   标记失效
                 </button>
+                <button type="button" onClick={() => setAction("validity")}>
+                  设置有效期
+                </button>
                 {selected.level === "L1" ? (
-                  <button
-                    className="is-danger"
-                    type="button"
-                    onClick={() => setAction("delete")}
-                  >
-                    受控删除
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setAction("governance")}
+                    >
+                      治理冲突
+                    </button>
+                    <button
+                      className="is-danger"
+                      type="button"
+                      onClick={() => setAction("delete")}
+                    >
+                      受控删除
+                    </button>
+                  </>
                 ) : null}
               </div>
             ) : (
@@ -321,7 +542,12 @@ export function MemoriesPage() {
                   disabled={
                     isSubmitting ||
                     (action === "edit" && !content.trim()) ||
-                    (action !== "edit" && !reason.trim()) ||
+                    (["invalidate", "delete", "governance"].includes(action) &&
+                      !reason.trim()) ||
+                    (action === "governance" && !candidateId) ||
+                    (action === "governance" &&
+                      relationKind === "supersedes" &&
+                      !content.trim()) ||
                     (action === "delete" &&
                       confirmation !== `DELETE L1:${selected.id}`)
                   }
@@ -331,9 +557,13 @@ export function MemoriesPage() {
                     ? "正在处理…"
                     : action === "edit"
                       ? "保存修改"
-                      : action === "invalidate"
-                        ? "确认失效"
-                        : "确认受控删除"}
+                      : action === "validity"
+                        ? "保存有效期"
+                        : action === "governance"
+                          ? "确认治理关系"
+                          : action === "invalidate"
+                            ? "确认失效"
+                            : "确认受控删除"}
                 </button>
               </div>
             )}

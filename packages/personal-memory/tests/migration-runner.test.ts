@@ -32,10 +32,10 @@ describe("migrateDatabase", () => {
 
       expect(result).toEqual({
         initialVersion: 0,
-        currentVersion: 4,
-        appliedVersions: [1, 2, 3, 4],
+        currentVersion: 5,
+        appliedVersions: [1, 2, 3, 4, 5],
       });
-      expect(getAppliedMigrations(database)).toHaveLength(4);
+      expect(getAppliedMigrations(database)).toHaveLength(5);
       expect(
         database
           .prepare("SELECT COUNT(*) AS count FROM personalmemory_metadata")
@@ -52,14 +52,14 @@ describe("migrateDatabase", () => {
       const second = migrateDatabase(database, defaultMigrations);
 
       expect(second).toEqual({
-        initialVersion: 4,
-        currentVersion: 4,
+        initialVersion: 5,
+        currentVersion: 5,
         appliedVersions: [],
       });
       expect(
         database.prepare("SELECT value FROM legacy_fixture WHERE id = 1").get(),
       ).toEqual({ value: "preserve-me" });
-      expect(getAppliedMigrations(database)).toHaveLength(4);
+      expect(getAppliedMigrations(database)).toHaveLength(5);
     });
   });
 
@@ -74,8 +74,8 @@ describe("migrateDatabase", () => {
 
       expect(migrateDatabase(database, defaultMigrations)).toEqual({
         initialVersion: 1,
-        currentVersion: 4,
-        appliedVersions: [2, 3, 4],
+        currentVersion: 5,
+        appliedVersions: [2, 3, 4, 5],
       });
       expect(
         database
@@ -89,7 +89,7 @@ describe("migrateDatabase", () => {
     withDatabase((database) => {
       migrateDatabase(database, defaultMigrations);
       const failingMigration: Migration = {
-        version: 5,
+        version: 6,
         name: "failing_fixture",
         checksum: "test-only-failing-fixture-v1",
         statements: [
@@ -103,7 +103,7 @@ describe("migrateDatabase", () => {
       ).toThrow(MigrationError);
       expect(
         getAppliedMigrations(database).map(({ version }) => version),
-      ).toEqual([1, 2, 3, 4]);
+      ).toEqual([1, 2, 3, 4, 5]);
       expect(
         database
           .prepare(
@@ -137,7 +137,7 @@ describe("migrateDatabase", () => {
         .prepare(
           `
         INSERT INTO personalmemory_schema_migrations (version, name, checksum, applied_at)
-          VALUES (5, 'future_migration', 'future-checksum', ?)
+          VALUES (6, 'future_migration', 'future-checksum', ?)
       `,
         )
         .run(new Date().toISOString());
@@ -153,22 +153,22 @@ describe("migrateDatabase", () => {
       const migrations: Migration[] = [
         ...defaultMigrations,
         {
-          version: 5,
-          name: "fourth",
-          checksum: "fourth-v1",
+          version: 6,
+          name: "sixth",
+          checksum: "sixth-v1",
           statements: ["SELECT 1"],
         },
         {
-          version: 6,
-          name: "fifth",
-          checksum: "fifth-v1",
+          version: 7,
+          name: "seventh",
+          checksum: "seventh-v1",
           statements: ["SELECT 1"],
         },
       ];
       migrateDatabase(database, migrations);
       database
         .prepare(
-          "DELETE FROM personalmemory_schema_migrations WHERE version = 5",
+          "DELETE FROM personalmemory_schema_migrations WHERE version = 6",
         )
         .run();
 
@@ -180,9 +180,9 @@ describe("migrateDatabase", () => {
 
   it("rejects configured migrations with a version gap", () => {
     const migrationWithGap: Migration = {
-      version: 6,
-      name: "fifth",
-      checksum: "fifth-v1",
+      version: 7,
+      name: "seventh",
+      checksum: "seventh-v1",
       statements: ["SELECT 1"],
     };
 
@@ -210,7 +210,7 @@ describe("migrateDatabase", () => {
 
       expect(
         migrateDatabase(contender, defaultMigrations).appliedVersions,
-      ).toEqual([1, 2, 3, 4]);
+      ).toEqual([1, 2, 3, 4, 5]);
       expect(
         migrateDatabase(contender, defaultMigrations).appliedVersions,
       ).toEqual([]);

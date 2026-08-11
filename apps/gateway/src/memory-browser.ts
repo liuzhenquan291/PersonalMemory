@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type {
+  MemoryGovernanceLedger,
+  MemoryRelation,
+  MemoryValidity,
   MemoryReviewLedger,
   MemoryReviewStatus,
   MemoryStateLedger,
@@ -44,6 +47,11 @@ export interface BrowsedMemory {
     explanation: string;
   };
   review?: { status: MemoryReviewStatus; revision: number; reason?: string };
+  governance?: {
+    recallable: boolean;
+    validity: MemoryValidity;
+    relations: MemoryRelation[];
+  };
 }
 
 export interface MemoryBrowseResult {
@@ -112,6 +120,7 @@ export class MemoryBrowser {
     private readonly timeoutMs: number,
     private readonly states?: MemoryStateLedger,
     private readonly reviews?: MemoryReviewLedger,
+    private readonly governance?: MemoryGovernanceLedger,
   ) {}
 
   async browse(
@@ -120,18 +129,24 @@ export class MemoryBrowser {
   ): Promise<MemoryBrowseResult> {
     const offset = (input.page - 1) * input.page_size;
     if (input.level === "L2") {
-      return this.applyReviews(
-        input,
-        this.applyStates(
-          input.level,
-          await this.browseL2(input, requestId, offset),
+      return this.applyGovernance(
+        input.level,
+        this.applyReviews(
+          input,
+          this.applyStates(
+            input.level,
+            await this.browseL2(input, requestId, offset),
+          ),
         ),
       );
     }
     if (input.level === "L3") {
-      return this.applyReviews(
-        input,
-        this.applyStates(input.level, await this.browseL3(input, requestId)),
+      return this.applyGovernance(
+        input.level,
+        this.applyReviews(
+          input,
+          this.applyStates(input.level, await this.browseL3(input, requestId)),
+        ),
       );
     }
 
@@ -203,18 +218,21 @@ export class MemoryBrowser {
         ? allItems.slice(offset, offset + input.page_size)
         : allItems;
     const total = searching ? null : (upstreamTotal ?? allItems.length);
-    return this.applyReviews(
-      input,
-      this.applyStates(input.level, {
-        items,
-        page: input.page,
-        pageSize: input.page_size,
-        total,
-        hasPrevious: input.page > 1,
-        hasNext: searching
-          ? allItems.length > offset + input.page_size
-          : offset + items.length < (total ?? 0),
-      }),
+    return this.applyGovernance(
+      input.level,
+      this.applyReviews(
+        input,
+        this.applyStates(input.level, {
+          items,
+          page: input.page,
+          pageSize: input.page_size,
+          total,
+          hasPrevious: input.page > 1,
+          hasNext: searching
+            ? allItems.length > offset + input.page_size
+            : offset + items.length < (total ?? 0),
+        }),
+      ),
     );
   }
 
@@ -400,6 +418,24 @@ export class MemoryBrowser {
       hasNext: input.review_status
         ? matched.length > offset + input.page_size
         : result.hasNext,
+    };
+  }
+
+  private applyGovernance(
+    level: MemoryLayer,
+    result: MemoryBrowseResult,
+  ): MemoryBrowseResult {
+    if (!this.governance || level === "L0") return result;
+    return {
+      ...result,
+      items: result.items.map((item) => ({
+        ...item,
+        governance: {
+          recallable: this.governance!.isRecallable(level, item.id),
+          validity: this.governance!.getValidity(level, item.id),
+          relations: this.governance!.listRelations(level, item.id),
+        },
+      })),
     };
   }
 }

@@ -106,6 +106,29 @@ interface ExportReviewRow {
   updated_at: string;
 }
 
+interface ExportValidityRow {
+  level: string;
+  memory_id: string;
+  valid_from: string | null;
+  expires_at: string | null;
+  revision: number;
+  updated_at: string;
+}
+
+interface ExportRelationRow {
+  id: string;
+  level: string;
+  kind: string;
+  source_memory_id: string;
+  target_memory_id: string;
+  status: string;
+  reason: string;
+  merged_content_hash: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ReadableExport {
   format: "personalmemory-export";
   format_version: number;
@@ -117,6 +140,8 @@ export interface ReadableExport {
   core: { path: "persona.md"; content: string } | null;
   states: ExportStateRow[];
   reviews: ExportReviewRow[];
+  validity: ExportValidityRow[];
+  relations: ExportRelationRow[];
 }
 
 function resolved(value: string): string {
@@ -666,6 +691,8 @@ async function readableExport(
   const database = new DatabaseSync(databasePath, { readOnly: true });
   let states: ExportStateRow[];
   let reviews: ExportReviewRow[];
+  let validity: ExportValidityRow[];
+  let relations: ExportRelationRow[];
   try {
     states = database
       .prepare(
@@ -679,6 +706,19 @@ async function readableExport(
          FROM personalmemory_memory_reviews ORDER BY level, memory_id`,
       )
       .all() as unknown as ExportReviewRow[];
+    validity = database
+      .prepare(
+        `SELECT level, memory_id, valid_from, expires_at, revision, updated_at
+         FROM personalmemory_memory_validity ORDER BY level, memory_id`,
+      )
+      .all() as unknown as ExportValidityRow[];
+    relations = database
+      .prepare(
+        `SELECT id, level, kind, source_memory_id, target_memory_id, status,
+                reason, merged_content_hash, revision, created_at, updated_at
+         FROM personalmemory_memory_relations ORDER BY created_at, id`,
+      )
+      .all() as unknown as ExportRelationRow[];
   } finally {
     database.close();
   }
@@ -696,6 +736,8 @@ async function readableExport(
     core,
     states,
     reviews,
+    validity,
+    relations,
   };
 }
 
@@ -723,6 +765,8 @@ function markdownExport(snapshot: ReadableExport): string {
   sections.push("## L3 核心画像", "", snapshot.core?.content ?? "_无记录_", "");
   appendJson("PersonalMemory 状态与 tombstone", snapshot.states);
   appendJson("PersonalMemory 审核状态", snapshot.reviews);
+  appendJson("PersonalMemory 有效期", snapshot.validity);
+  appendJson("PersonalMemory 冲突与替代关系", snapshot.relations);
   return `${sections.join("\n")}\n`;
 }
 
@@ -771,6 +815,8 @@ export async function createReadableExport(
       core: snapshot.core ? 1 : 0,
       states: snapshot.states.length,
       reviews: snapshot.reviews.length,
+      validity: snapshot.validity.length,
+      relations: snapshot.relations.length,
     },
   };
 }

@@ -13,6 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   MemoryReviewLedger,
+  MemoryGovernanceLedger,
   MemoryStateLedger,
   acquireRuntimeMarker,
   assertDataDirectoryOffline,
@@ -53,6 +54,25 @@ function fixture(root: string, recordCount = 1): string {
     "approved",
     0,
   );
+  const governance = new MemoryGovernanceLedger(
+    product,
+    () => "2026-08-12T00:00:00.000Z",
+  );
+  governance.setValidity(
+    "L1",
+    "memory-1",
+    undefined,
+    "2027-01-01T00:00:00.000Z",
+    0,
+  );
+  governance.addRelation({
+    id: "relation-1",
+    level: "L1",
+    kind: "conflicts_with",
+    sourceMemoryId: "memory-1",
+    targetMemoryId: "memory-2",
+    reason: "test conflict",
+  });
   product.close();
   const vectors = new DatabaseSync(join(data, "vectors.db"));
   vectors.exec(
@@ -124,6 +144,11 @@ describe("portable PersonalMemory data", () => {
       memory_id: "memory-1",
       status: "approved",
     });
+    expect(exported.validity[0]).toMatchObject({ memory_id: "memory-1" });
+    expect(exported.relations[0]).toMatchObject({
+      id: "relation-1",
+      kind: "conflicts_with",
+    });
     expect(readFileSync(markdownPath, "utf8")).toContain(
       "PersonalMemory 状态与 tombstone",
     );
@@ -137,6 +162,8 @@ describe("portable PersonalMemory data", () => {
       core: 1,
       states: 1,
       reviews: 1,
+      validity: 1,
+      relations: 1,
     });
   });
 

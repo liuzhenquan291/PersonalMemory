@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import process from "node:process";
+import { URL } from "node:url";
 
 const server = createServer((request, response) => {
   response.setHeader("content-type", "application/json");
@@ -18,22 +19,35 @@ const server = createServer((request, response) => {
   }
   if (request.url?.startsWith("/api/v1/memories?")) {
     const inbox = request.url.includes("review_status=pending");
+    const query = new URL(request.url, "http://127.0.0.1").searchParams.get(
+      "query",
+    );
+    const candidate = query === "候选";
     response.end(
       JSON.stringify({
         items: [
           {
-            id: "memory-1",
+            id: candidate ? "memory-2" : "memory-1",
             level: "L1",
-            title: "用户偏好简洁回答",
-            content: "用户希望回答清晰、简洁，并说明信息来源。",
+            title: candidate ? "用户偏好详细回答" : "用户偏好简洁回答",
+            content: candidate
+              ? "用户希望获得详细回答。"
+              : "用户希望回答清晰、简洁，并说明信息来源。",
             state: { status: "active", revision: 2 },
-            ...(inbox
-              ? { review: { status: "pending", revision: 0 } }
-              : {}),
+            ...(inbox ? { review: { status: "pending", revision: 0 } } : {}),
             source: {
               status: "unavailable",
               label: "来源未记录",
               explanation: "当前存储未保留可验证的原消息引用。",
+            },
+            governance: {
+              recallable: true,
+              validity: {
+                level: "L1",
+                memoryId: candidate ? "memory-2" : "memory-1",
+                revision: 0,
+              },
+              relations: [],
             },
           },
         ],
@@ -44,6 +58,29 @@ const server = createServer((request, response) => {
         has_next: false,
       }),
     );
+    return;
+  }
+  if (request.url === "/api/v1/memory-relations") {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+    });
+    request.on("end", () => {
+      const body = JSON.parse(raw);
+      if (
+        body.kind !== "conflicts_with" ||
+        body.source_id !== "memory-1" ||
+        body.target_id !== "memory-2" ||
+        !body.reason
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "INVALID_REQUEST" } }));
+        return;
+      }
+      response.end(
+        JSON.stringify({ relation: { id: "relation-1", revision: 1 } }),
+      );
+    });
     return;
   }
   if (request.url === "/api/v1/memory-reviews") {

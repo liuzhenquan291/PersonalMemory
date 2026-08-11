@@ -40,6 +40,15 @@ export {
   type MemoryReviewStatus,
 } from "./memory-review-ledger.js";
 export {
+  MemoryGovernanceConflictError,
+  MemoryGovernanceCycleError,
+  MemoryGovernanceLedger,
+  type GovernedMemoryLevel,
+  type MemoryRelation,
+  type MemoryRelationKind,
+  type MemoryValidity,
+} from "./memory-governance-ledger.js";
+export {
   PortableDataError,
   createPortableBackup,
   createReadableExport,

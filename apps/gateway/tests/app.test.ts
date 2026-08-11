@@ -1,5 +1,6 @@
 import {
   ImportLedger,
+  MemoryGovernanceLedger,
   MemoryStateLedger,
   MemoryReviewLedger,
   defaultMigrations,
@@ -32,6 +33,7 @@ function createHarness(options: {
   upstream?: UpstreamGatewayClient;
   now?: () => number;
   withReviews?: boolean;
+  withGovernance?: boolean;
 }) {
   const logs: GatewayLogEvent[] = [];
   let sequence = 0;
@@ -56,12 +58,16 @@ function createHarness(options: {
   const memoryReviews = options.withReviews
     ? new MemoryReviewLedger(database)
     : undefined;
+  const memoryGovernance = options.withGovernance
+    ? new MemoryGovernanceLedger(database)
+    : undefined;
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
     importManager,
     memoryStates,
     memoryReviews,
+    memoryGovernance,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -69,7 +75,15 @@ function createHarness(options: {
       error: (event) => logs.push(event),
     },
   });
-  return { app, upstream, logs, importManager, memoryStates, memoryReviews };
+  return {
+    app,
+    upstream,
+    logs,
+    importManager,
+    memoryStates,
+    memoryReviews,
+    memoryGovernance,
+  };
 }
 
 async function waitForImport(
@@ -115,7 +129,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 4,
+      schemaVersion: 5,
     });
   });
 
@@ -144,6 +158,44 @@ describe("PersonalMemory Gateway app", () => {
       ],
     });
     expect(memoryReviews?.isApproved("L1", "memory-1")).toBe(true);
+  });
+
+  it("creates and revokes an explicit supersedes relation", async () => {
+    const { app } = createHarness({ withGovernance: true });
+    const created = await app.request("/api/v1/memory-relations", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        level: "L1",
+        kind: "supersedes",
+        source_id: "current",
+        target_id: "old",
+        reason: "用户确认新事实替代旧事实",
+      }),
+    });
+    expect(created.status).toBe(200);
+    const body = (await created.json()) as {
+      relation: { id: string; revision: number };
+    };
+    const governance = await app.request("/api/v1/memories/L1/old/governance", {
+      headers: authHeaders,
+    });
+    expect(await governance.json()).toMatchObject({
+      recallable: false,
+      relations: [{ status: "active" }],
+    });
+    const revoked = await app.request(
+      `/api/v1/memory-relations/${body.relation.id}/revoke`,
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ expected_revision: body.relation.revision }),
+      },
+    );
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({
+      relation: { status: "revoked", revision: 2 },
+    });
   });
 
   it("keeps memory access closed until authentication is configured", async () => {

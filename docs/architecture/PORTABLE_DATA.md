@@ -16,6 +16,7 @@ PersonalMemory Gateway 启动时写入只含 PID 的 `.personalmemory-running`�
 - L1 `records/*.jsonl` 原始对象，包括现有 `source_message_ids` 等来源字段；
 - L2 `scene_blocks/*.md` 与 L3 `persona.md`；
 - `personalmemory_memory_states` 中 active、invalidated、deleted 状态、原因和 revision。
+- 记忆审核状态、有效期以及活动/已撤销的冲突和替代关系。
 
 解析错误不会被跳过。命令返回输出 SHA-256 和各层计数。导出是可读迁移资产，不包含检索索引，不能单独冒充可直接启动的完整备份。
 单次导出最多读取 256 MiB 文本和 1,000,000 条 JSONL 记录；超过预算会明确失败，避免异常数据耗尽本地进程内存。

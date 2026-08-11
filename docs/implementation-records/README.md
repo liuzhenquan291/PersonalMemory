@@ -24,5 +24,6 @@
 | M2.6 | completed | [导出、备份和恢复](M2.6.md)                    |
 | M2   | completed | [个人记忆闭环退出验收](M2-EXIT.md)             |
 | M3.1 | completed | [记忆审核收件箱](M3.1.md)                      |
+| M3.2 | completed | [冲突、合并和替代关系](M3.2.md)                |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

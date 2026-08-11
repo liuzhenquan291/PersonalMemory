@@ -22,6 +22,13 @@ export {
   type MemoryReviewResult,
 } from "./memory-reviews.js";
 export {
+  MemoryGovernanceService,
+  MemoryGovernanceServiceError,
+  memoryRelationSchema,
+  memoryValiditySchema,
+  relationRevokeSchema,
+} from "./memory-governance.js";
+export {
   MemoryBrowser,
   memoryBrowseQuerySchema,
   memoryLayerSchema,

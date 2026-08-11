@@ -1,4 +1,5 @@
 import type {
+  MemoryGovernanceLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
   PersonalMemoryConfig,
@@ -44,6 +45,7 @@ export interface GatewayAppOptions {
   importManager?: ConversationImportManager;
   memoryStates?: MemoryStateLedger;
   memoryReviews?: MemoryReviewLedger;
+  memoryGovernance?: MemoryGovernanceLedger;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

@@ -65,6 +65,19 @@ test("reviews a pending memory from the inbox on a narrow screen", async ({
   expect(widths.content).toBe(widths.viewport);
 });
 
+test("keeps conflict judgment under explicit user control", async ({
+  page,
+}) => {
+  await page.goto("/memories");
+  await page.getByText("用户偏好简洁回答").click();
+  await page.getByRole("button", { name: "治理冲突" }).click();
+  await page.getByLabel("查找相似候选").fill("候选");
+  await page.getByRole("radio").check();
+  await page.getByLabel("判断依据").fill("这两条偏好互相矛盾");
+  await page.getByRole("button", { name: "确认治理关系" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+});
+
 test("honors reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/memories");

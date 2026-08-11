@@ -50,6 +50,35 @@ export interface MemoryListItem {
     readonly revision: number;
     readonly reason?: string;
   };
+  readonly governance?: MemoryGovernance;
+}
+
+export interface MemoryValidity {
+  readonly level: "L1" | "L2" | "L3";
+  readonly memoryId: string;
+  readonly validFrom?: string;
+  readonly expiresAt?: string;
+  readonly revision: number;
+  readonly updatedAt?: string;
+}
+
+export interface MemoryRelation {
+  readonly id: string;
+  readonly level: "L1" | "L2" | "L3";
+  readonly kind: "conflicts_with" | "supersedes";
+  readonly sourceMemoryId: string;
+  readonly targetMemoryId: string;
+  readonly status: "active" | "revoked";
+  readonly reason: string;
+  readonly revision: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface MemoryGovernance {
+  readonly recallable: boolean;
+  readonly validity: MemoryValidity;
+  readonly relations: MemoryRelation[];
 }
 
 export interface MemoryMutationState {
@@ -219,6 +248,78 @@ export async function reviewMemories(items: ReviewBatchItem[]): Promise<void> {
         "REVIEW_FAILED",
     );
   }
+}
+
+async function governanceRequest(
+  path: string,
+  body: unknown,
+): Promise<Record<string, unknown>> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(sessionStorage.getItem(CSRF_STORAGE_KEY)
+        ? { "X-CSRF-Token": sessionStorage.getItem(CSRF_STORAGE_KEY)! }
+        : {}),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
+  });
+  const result = (await response.json().catch(() => ({}))) as Record<
+    string,
+    unknown
+  >;
+  if (!response.ok) {
+    const error = result.error as { code?: string } | undefined;
+    throw new GatewayRequestError(
+      response.status,
+      error?.code ?? "GOVERNANCE_FAILED",
+    );
+  }
+  return result;
+}
+
+export async function setMemoryValidity(
+  item: MemoryListItem,
+  validFrom?: string,
+  expiresAt?: string,
+): Promise<void> {
+  await governanceRequest(
+    `/api/v1/memories/${item.level}/${encodeURIComponent(item.id)}/validity`,
+    {
+      valid_from: validFrom || null,
+      expires_at: expiresAt || null,
+      expected_revision: item.governance?.validity.revision ?? 0,
+    },
+  );
+}
+
+export async function addMemoryRelation(input: {
+  level: "L1" | "L2" | "L3";
+  kind: "conflicts_with" | "supersedes";
+  sourceId: string;
+  targetId: string;
+  reason: string;
+  mergedContent?: string;
+}): Promise<void> {
+  await governanceRequest("/api/v1/memory-relations", {
+    level: input.level,
+    kind: input.kind,
+    source_id: input.sourceId,
+    target_id: input.targetId,
+    reason: input.reason,
+    ...(input.mergedContent ? { merged_content: input.mergedContent } : {}),
+  });
+}
+
+export async function revokeMemoryRelation(
+  relation: MemoryRelation,
+): Promise<void> {
+  await governanceRequest(
+    `/api/v1/memory-relations/${encodeURIComponent(relation.id)}/revoke`,
+    { expected_revision: relation.revision },
+  );
 }
 
 export async function fetchGatewayStatus(
