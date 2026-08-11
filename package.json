@@ -51,7 +51,7 @@
     "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/web && npm run test:dev && npm run test:data",
     "test:data": "node --test scripts/personalmemory-data.test.mjs",
     "test:upstream": "vitest run",
-    "test:golden": "vitest run -c vitest.e2e.config.ts src/gateway/standalone-golden.e2e.test.ts",
+    "test:golden": "vitest run -c vitest.e2e.config.ts tests/standalone-golden.e2e.test.ts",
     "test:oss": "vitest run -c vitest.oss.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

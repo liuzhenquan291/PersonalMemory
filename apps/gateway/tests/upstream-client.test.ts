@@ -88,7 +88,7 @@ describe("FetchUpstreamGatewayClient", () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           authorization: "Bearer personalmemory-loopback",
-          "x-tdai-service-id": "personalmemory",
+          "x-tdai-service-id": "default",
         }),
       }),
     );

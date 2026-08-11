@@ -160,7 +160,7 @@ export class FetchUpstreamGatewayClient implements UpstreamGatewayClient {
           ...(input.path.startsWith("/v2/")
             ? {
                 authorization: "Bearer personalmemory-loopback",
-                "x-tdai-service-id": "personalmemory",
+                "x-tdai-service-id": "default",
               }
             : {}),
         },
