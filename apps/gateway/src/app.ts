@@ -17,6 +17,7 @@ import { UpstreamGatewayError } from "./upstream-client.js";
 import { ImportIdempotencyConflictError } from "./import-manager.js";
 import type { ImportJobView, ImportRoundPayload } from "@personalmemory/core";
 import { RecallService, unifiedRecallRequestSchema } from "./recall-service.js";
+import { MemoryBrowser, memoryBrowseQuerySchema } from "./memory-browser.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -312,6 +313,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     options.upstream,
     options.config.server.upstreamTimeoutMs,
   );
+  const memoryBrowser = new MemoryBrowser(
+    options.upstream,
+    options.config.server.upstreamTimeoutMs,
+  );
   let businessRateLimit = { windowStart: 0, count: 0 };
   let failedAuthRateLimit = { windowStart: 0, count: 0 };
 
@@ -330,6 +335,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/retry",
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
+      "GET /api/v1/memories",
     ]);
     return known.has(key) ? key : "<unmatched>";
   };
@@ -808,6 +814,41 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           estimated_tokens: result.budget.estimatedTokens,
           exhausted: result.budget.exhausted,
         },
+      },
+      200,
+    );
+  });
+
+  app.get("/api/v1/memories", async (context) => {
+    authenticateMemoryRequest(context, false);
+    const parsed = memoryBrowseQuerySchema.safeParse(context.req.query());
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Query parameters do not match the memory browsing contract",
+      );
+    }
+    const result = await memoryBrowser.browse(
+      parsed.data,
+      context.get("requestId"),
+    );
+    return jsonResponse(
+      {
+        items: result.items.map((item) => ({
+          id: item.id,
+          level: item.level,
+          title: item.title,
+          content: item.content,
+          ...(item.updatedAt ? { updated_at: item.updatedAt } : {}),
+          ...(item.score === undefined ? {} : { score: item.score }),
+          source: item.source,
+        })),
+        page: result.page,
+        page_size: result.pageSize,
+        total: result.total,
+        has_previous: result.hasPrevious,
+        has_next: result.hasNext,
       },
       200,
     );

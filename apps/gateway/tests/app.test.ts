@@ -195,6 +195,52 @@ describe("PersonalMemory Gateway app", () => {
     });
   });
 
+  it("exposes authenticated read-only memory browsing with pagination metadata", async () => {
+    const upstream: UpstreamGatewayClient = {
+      async request({ path, body }) {
+        expect(path).toBe("/v2/atomic/query");
+        expect(body).toEqual({ limit: 12, offset: 12 });
+        return {
+          status: 200,
+          body: {
+            code: 0,
+            data: {
+              items: [
+                {
+                  id: "memory-13",
+                  type: "fact",
+                  content: "第十三条记忆",
+                  updated_at: "2026-08-11T00:00:00Z",
+                },
+              ],
+              total: 13,
+            },
+          },
+        };
+      },
+    };
+    const { app } = createHarness({ upstream });
+    const response = await app.request(
+      "/api/v1/memories?level=L1&page=2&page_size=12",
+      { headers: authHeaders },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      items: [
+        {
+          id: "memory-13",
+          level: "L1",
+          source: { status: "unavailable", label: "来源未记录" },
+        },
+      ],
+      page: 2,
+      page_size: 12,
+      total: 13,
+      has_previous: true,
+      has_next: false,
+    });
+  });
+
   it("captures one session idempotently without sending expected data externally", async () => {
     const { app, upstream, logs } = createHarness({});
     const body = {

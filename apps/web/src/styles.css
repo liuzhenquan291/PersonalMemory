@@ -26,7 +26,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -301,6 +302,239 @@ a {
   color: var(--muted);
 }
 
+.search-action,
+.pagination button,
+.memory-state button {
+  padding: 0.72rem 0.9rem;
+  border: 1px solid var(--night);
+  border-radius: 0.65rem;
+  color: #fff;
+  background: var(--night);
+  cursor: pointer;
+}
+
+.level-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.level-tabs button {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  text-align: left;
+}
+
+.level-tabs button[aria-pressed="true"] {
+  border-color: var(--night);
+  color: var(--night);
+  box-shadow: inset 0 -3px 0 var(--signal);
+}
+
+.level-tabs strong {
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+.level-tabs span {
+  font-size: 0.75rem;
+}
+
+.memory-state {
+  display: grid;
+  min-height: 14rem;
+  place-content: center;
+  gap: 0.6rem;
+  padding: 2rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  color: var(--muted);
+  background: var(--paper);
+  text-align: center;
+}
+
+.memory-state strong {
+  color: var(--night);
+  font-size: 1.2rem;
+}
+
+.memory-state button {
+  justify-self: center;
+  margin-top: 0.4rem;
+}
+
+.memory-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.memory-card {
+  display: grid;
+  min-width: 0;
+  min-height: 15rem;
+  align-content: start;
+  gap: 0.9rem;
+  padding: 1.15rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  color: var(--ink);
+  background: var(--paper);
+  cursor: pointer;
+  text-align: left;
+}
+
+.memory-card:hover {
+  border-color: #8090a5;
+  transform: translateY(-2px);
+}
+
+.memory-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font:
+    0.7rem ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.source-badge {
+  padding: 0.25rem 0.42rem;
+  border-radius: 999px;
+  color: #755d19;
+  background: #fff1b9;
+}
+
+.source-badge.is-original {
+  color: #175846;
+  background: #d7f8ed;
+}
+
+.memory-card-title {
+  overflow: hidden;
+  color: var(--night);
+  font:
+    600 1.08rem/1.35 "Iowan Old Style",
+    "Songti SC",
+    Georgia,
+    serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-card-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--muted);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.memory-card-action {
+  align-self: end;
+  margin-top: auto;
+  color: #32695b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1.4rem;
+  color: var(--muted);
+}
+
+.pagination button:disabled {
+  border-color: var(--line);
+  color: #8a96a6;
+  background: #dfe5ec;
+  cursor: not-allowed;
+}
+
+.memory-detail-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(16, 24, 43, 0.64);
+}
+
+.memory-detail {
+  display: grid;
+  width: min(46rem, 100%);
+  max-height: min(46rem, calc(100vh - 2rem));
+  gap: 1.2rem;
+  padding: clamp(1.2rem, 4vw, 2rem);
+  overflow: auto;
+  border-radius: 1rem;
+  background: var(--paper);
+  box-shadow: 0 1.5rem 5rem rgba(3, 8, 20, 0.32);
+}
+
+.memory-detail header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.memory-detail h2 {
+  margin: 0.45rem 0 0;
+  color: var(--night);
+  font-family: "Iowan Old Style", "Songti SC", Georgia, serif;
+}
+
+.memory-detail header button {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+  font-size: 1.4rem;
+}
+
+.memory-detail-content {
+  padding: 1rem 0;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.source-panel {
+  padding: 1rem;
+  border-left: 3px solid #d6a91b;
+  background: #fff9df;
+}
+
+.source-panel.is-original {
+  border-color: #1ba77f;
+  background: #e9faf5;
+}
+
+.source-panel p {
+  margin: 0.4rem 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .empty-state {
   position: relative;
   overflow: hidden;
@@ -567,6 +801,28 @@ a {
 
   .coming-soon {
     justify-self: start;
+  }
+
+  .memory-toolbar {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .search-field {
+    flex-basis: calc(100% - 5rem);
+  }
+
+  .count-label {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .level-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memory-list {
+    grid-template-columns: 1fr;
   }
 }
 

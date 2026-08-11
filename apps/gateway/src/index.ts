@@ -8,6 +8,14 @@ export {
 } from "./upstream-client.js";
 export { ConversationImportManager } from "./import-manager.js";
 export {
+  MemoryBrowser,
+  memoryBrowseQuerySchema,
+  memoryLayerSchema,
+  type BrowsedMemory,
+  type MemoryBrowseResult,
+  type MemoryLayer,
+} from "./memory-browser.js";
+export {
   RecallService,
   recallLevelSchema,
   unifiedRecallRequestSchema,
