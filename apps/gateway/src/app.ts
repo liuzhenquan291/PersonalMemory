@@ -18,6 +18,14 @@ import { ImportIdempotencyConflictError } from "./import-manager.js";
 import type { ImportJobView, ImportRoundPayload } from "@personalmemory/core";
 import { RecallService, unifiedRecallRequestSchema } from "./recall-service.js";
 import { MemoryBrowser, memoryBrowseQuerySchema } from "./memory-browser.js";
+import {
+  MemoryMutationError,
+  MemoryMutationService,
+  editableMemoryLevelSchema,
+  memoryDeleteSchema,
+  memoryInvalidateSchema,
+  memoryUpdateSchema,
+} from "./memory-mutations.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -312,11 +320,20 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
   const recallService = new RecallService(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
+    options.memoryStates,
   );
   const memoryBrowser = new MemoryBrowser(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
+    options.memoryStates,
   );
+  const memoryMutations = options.memoryStates
+    ? new MemoryMutationService(
+        options.memoryStates,
+        options.upstream,
+        options.config.server.upstreamTimeoutMs,
+      )
+    : undefined;
   let businessRateLimit = { windowStart: 0, count: 0 };
   let failedAuthRateLimit = { windowStart: 0, count: 0 };
 
@@ -336,6 +353,9 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
       "GET /api/v1/memories",
+      "POST /api/v1/memories/:level/:id/update",
+      "POST /api/v1/memories/:level/:id/invalidate",
+      "POST /api/v1/memories/:level/:id/delete",
     ]);
     return known.has(key) ? key : "<unmatched>";
   };
@@ -842,6 +862,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           content: item.content,
           ...(item.updatedAt ? { updated_at: item.updatedAt } : {}),
           ...(item.score === undefined ? {} : { score: item.score }),
+          state: item.state,
           source: item.source,
         })),
         page: result.page,
@@ -852,6 +873,165 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       },
       200,
     );
+  });
+
+  const requireMemoryMutations = (): MemoryMutationService => {
+    if (!memoryMutations) {
+      throw new GatewayHttpError(
+        503,
+        "MEMORY_MUTATION_UNAVAILABLE",
+        "Memory mutation state is not available",
+      );
+    }
+    return memoryMutations;
+  };
+
+  const mutationTarget = (context: Context<GatewayEnv>) => {
+    const level = editableMemoryLevelSchema.safeParse(
+      context.req.param("level"),
+    );
+    const id = context.req.param("id");
+    if (!level.success || !id || id.length > 1_024) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Memory target is invalid",
+      );
+    }
+    return { level: level.data, id };
+  };
+
+  const translateMutationError = (error: unknown): never => {
+    if (error instanceof MemoryMutationError) {
+      const definitions = {
+        CONFLICT: [409, "MEMORY_CONFLICT", "Memory changed; reload and retry"],
+        INVALIDATED_MEMORY: [
+          409,
+          "MEMORY_INVALIDATED",
+          "Invalidated memories cannot be edited without an explicit restore",
+        ],
+        DELETED_MEMORY: [
+          409,
+          "MEMORY_DELETED",
+          "Deleted memories cannot be restored in M2",
+        ],
+        CONFIRMATION_MISMATCH: [
+          400,
+          "CONFIRMATION_MISMATCH",
+          "Deletion confirmation does not match the target",
+        ],
+        UPSTREAM_REJECTED: [
+          502,
+          "UPSTREAM_REJECTED",
+          "The local memory kernel rejected the operation",
+        ],
+      } as const;
+      const [status, code, message] = definitions[error.code];
+      throw new GatewayHttpError(status, code, message);
+    }
+    throw error;
+  };
+
+  app.post("/api/v1/memories/:level/:id/update", async (context) => {
+    authenticateMemoryRequest(context);
+    const target = mutationTarget(context);
+    const parsed = memoryUpdateSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(400, "INVALID_REQUEST", "Update is invalid");
+    }
+    try {
+      const state = await requireMemoryMutations().update(
+        target.level,
+        target.id,
+        parsed.data.content,
+        parsed.data.expected_revision,
+        context.get("requestId"),
+      );
+      return jsonResponse({ state }, 200);
+    } catch (error) {
+      return translateMutationError(error);
+    }
+  });
+
+  app.post("/api/v1/memories/:level/:id/invalidate", async (context) => {
+    authenticateMemoryRequest(context);
+    const target = mutationTarget(context);
+    const parsed = memoryInvalidateSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Invalidation is invalid",
+      );
+    }
+    try {
+      const state = await requireMemoryMutations().invalidate(
+        target.level,
+        target.id,
+        parsed.data.reason,
+        parsed.data.expected_revision,
+      );
+      return jsonResponse({ state }, 200);
+    } catch (error) {
+      return translateMutationError(error);
+    }
+  });
+
+  app.post("/api/v1/memories/:level/:id/delete", async (context) => {
+    authenticateMemoryRequest(context);
+    const target = mutationTarget(context);
+    if (target.level !== "L1") {
+      throw new GatewayHttpError(
+        400,
+        "DELETE_SCOPE_UNSUPPORTED",
+        "M2 controlled deletion only supports L1 memories",
+      );
+    }
+    const parsed = memoryDeleteSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(400, "INVALID_REQUEST", "Deletion is invalid");
+    }
+    try {
+      const result = await requireMemoryMutations().deleteL1(
+        target.id,
+        parsed.data.confirmation,
+        parsed.data.reason,
+        parsed.data.expected_revision,
+        context.get("requestId"),
+      );
+      return jsonResponse(
+        {
+          state: result.state,
+          upstream_deleted: result.upstreamDeleted,
+          scope: {
+            hidden_from_personalmemory: true,
+            l1_index_delete_attempted: true,
+            source_conversations_deleted: false,
+            derived_profiles_deleted: false,
+            exports_or_backups_deleted: false,
+            complete_erasure: false,
+          },
+        },
+        result.upstreamDeleted ? 200 : 202,
+      );
+    } catch (error) {
+      return translateMutationError(error);
+    }
   });
 
   for (const route of proxyRoutes) {

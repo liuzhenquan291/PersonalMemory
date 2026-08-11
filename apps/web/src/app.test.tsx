@@ -34,7 +34,10 @@ function renderRoute(path: string) {
   );
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+});
 
 describe("PersonalMemory Web", () => {
   it("renders a personal empty state without team concepts", async () => {
@@ -70,6 +73,7 @@ describe("PersonalMemory Web", () => {
               level: "L1",
               title: "用户偏好简洁回答",
               content: "很长的结构化内容".repeat(80),
+              state: { status: "active", revision: 0 },
               source: {
                 status: "unavailable",
                 label: "来源未记录",
@@ -97,6 +101,115 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByRole("button", { name: "关闭记忆详情" })).toHaveFocus();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("updates a memory with its revision and refreshes the list", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [
+              {
+                id: "memory-1",
+                level: "L1",
+                title: "旧内容",
+                content: "旧内容",
+                state: { status: "active", revision: 3 },
+                source: {
+                  status: "unavailable",
+                  label: "来源未记录",
+                  explanation: "没有来源引用",
+                },
+              },
+            ],
+            page: 1,
+            page_size: 12,
+            total: 1,
+            has_previous: false,
+            has_next: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ state: { status: "active", revision: 4 } }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            items: [],
+            page: 1,
+            page_size: 12,
+            total: 0,
+            has_previous: false,
+            has_next: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    renderRoute("/memories");
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByText("旧内容", { selector: ".memory-card-title" }),
+    );
+    await user.click(screen.getByRole("button", { name: "修改" }));
+    const textarea = screen.getByRole("textbox", { name: "修正后的内容" });
+    await user.clear(textarea);
+    await user.type(textarea, "新内容");
+    await user.click(screen.getByRole("button", { name: "保存修改" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/memories/L1/memory-1/update",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ content: "新内容", expected_revision: 3 }),
+      }),
+    );
+  });
+
+  it("requires exact confirmation and explains controlled deletion scope", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              id: "memory-1",
+              level: "L1",
+              title: "待删除",
+              content: "内容",
+              state: { status: "active", revision: 0 },
+              source: {
+                status: "unavailable",
+                label: "来源未记录",
+                explanation: "无",
+              },
+            },
+          ],
+          page: 1,
+          page_size: 12,
+          total: 1,
+          has_previous: false,
+          has_next: false,
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    renderRoute("/memories");
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("待删除"));
+    await user.click(screen.getByRole("button", { name: "受控删除" }));
+    expect(screen.getByText("这是受控删除，不是彻底删除")).toBeVisible();
+    expect(
+      screen.getByText(/不会删除原始对话、派生画像、导出文件或备份/),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "确认受控删除" })).toBeDisabled();
   });
 
   it("shows memory loading and a retryable error state", async () => {
@@ -161,6 +274,48 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByText("已配置")).toBeVisible();
     expect(screen.getByText("模型连接")).toBeVisible();
     expect(screen.getByText("关闭")).toBeVisible();
+  });
+
+  it("exchanges the local token for a browser session without storing it", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            authenticationConfigured: true,
+            modelConfigured: false,
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ csrfToken: "csrf-local", expiresIn: 3600 }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      );
+    renderRoute("/settings");
+    const user = userEvent.setup();
+    const tokenInput = await screen.findByLabelText("本地访问令牌");
+    await user.type(tokenInput, "local-secret");
+    await user.click(screen.getByRole("button", { name: "建立安全会话" }));
+    expect(await screen.findByText(/访问令牌未保存在浏览器/)).toBeVisible();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/v1/session",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer local-secret",
+        }),
+      }),
+    );
+    expect(tokenInput).toHaveValue("");
+    expect(sessionStorage.getItem("personalmemory.csrf")).toBe("csrf-local");
+    expect(JSON.stringify(sessionStorage)).not.toContain("local-secret");
   });
 
   it("keeps router state and query cache across parent rerenders", async () => {

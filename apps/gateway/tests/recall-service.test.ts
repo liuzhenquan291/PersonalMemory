@@ -5,6 +5,12 @@ import {
 } from "../src/recall-service.js";
 import { UpstreamGatewayError } from "../src/upstream-client.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
+import {
+  MemoryStateLedger,
+  defaultMigrations,
+  migrateDatabase,
+} from "@personalmemory/core";
+import { DatabaseSync } from "node:sqlite";
 
 function envelope(data: unknown) {
   return { status: 200, body: { code: 0, message: "ok", data } };
@@ -233,5 +239,31 @@ describe("RecallService", () => {
       items: [],
       degradedLevels: [{ level: "L1", code: "INVALID_UPSTREAM_RESPONSE" }],
     });
+  });
+
+  it("keeps invalidated memories suppressed after upstream reindexing", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      migrateDatabase(database, defaultMigrations);
+      const states = new MemoryStateLedger(database);
+      states.set("L1", "resurrected", "invalidated", 0, "incorrect");
+      const upstream: UpstreamGatewayClient = {
+        async request() {
+          return envelope({
+            items: [
+              { id: "resurrected", content: "stale", score: 1 },
+              { id: "active", content: "current", score: 0.8 },
+            ],
+          });
+        },
+      };
+      const result = await new RecallService(upstream, 1_000, states).recall(
+        parse({ query: "query", levels: ["L1"] }),
+        "request-1",
+      );
+      expect(result.items.map(({ id }) => id)).toEqual(["active"]);
+    } finally {
+      database.close();
+    }
   });
 });

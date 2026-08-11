@@ -8,6 +8,15 @@ export {
 } from "./upstream-client.js";
 export { ConversationImportManager } from "./import-manager.js";
 export {
+  MemoryMutationError,
+  MemoryMutationService,
+  editableMemoryLevelSchema,
+  memoryDeleteSchema,
+  memoryInvalidateSchema,
+  memoryUpdateSchema,
+  type EditableMemoryLevel,
+} from "./memory-mutations.js";
+export {
   MemoryBrowser,
   memoryBrowseQuerySchema,
   memoryLayerSchema,

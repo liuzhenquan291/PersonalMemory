@@ -1,4 +1,7 @@
-import type { PersonalMemoryConfig } from "@personalmemory/core";
+import type {
+  MemoryStateLedger,
+  PersonalMemoryConfig,
+} from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
 
 export interface GatewayErrorEnvelope {
@@ -38,6 +41,7 @@ export interface GatewayAppOptions {
   config: PersonalMemoryConfig;
   upstream: UpstreamGatewayClient;
   importManager?: ConversationImportManager;
+  memoryStates?: MemoryStateLedger;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

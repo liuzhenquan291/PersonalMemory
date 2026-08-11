@@ -25,6 +25,7 @@ const server = createServer((request, response) => {
             level: "L1",
             title: "用户偏好简洁回答",
             content: "用户希望回答清晰、简洁，并说明信息来源。",
+            state: { status: "active", revision: 2 },
             source: {
               status: "unavailable",
               label: "来源未记录",
@@ -39,6 +40,27 @@ const server = createServer((request, response) => {
         has_next: false,
       }),
     );
+    return;
+  }
+  if (request.url === "/api/v1/memories/L1/memory-1/update") {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+    });
+    request.on("end", () => {
+      const body = JSON.parse(raw);
+      if (
+        body.content !== "用户偏好结构清晰的简洁回答" ||
+        body.expected_revision !== 2
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "INVALID_REQUEST" } }));
+        return;
+      }
+      response.end(
+        JSON.stringify({ state: { status: "active", revision: 3 } }),
+      );
+    });
     return;
   }
   response.statusCode = 404;

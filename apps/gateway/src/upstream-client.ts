@@ -83,6 +83,10 @@ const ALLOWED_UPSTREAM_PATHS = new Set([
   "/v2/scenario/ls",
   "/v2/scenario/read",
   "/v2/core/read",
+  "/v2/atomic/update",
+  "/v2/atomic/delete",
+  "/v2/scenario/write",
+  "/v2/core/write",
 ]);
 
 export class UpstreamGatewayError extends Error {

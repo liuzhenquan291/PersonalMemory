@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { MemoryStateLedger } from "@personalmemory/core";
 import type { UpstreamGatewayClient } from "./types.js";
 
 export const memoryLayerSchema = z.enum(["L0", "L1", "L2", "L3"]);
@@ -18,6 +19,10 @@ export interface BrowsedMemory {
   content: string;
   updatedAt?: string;
   score?: number;
+  state: {
+    status: "active";
+    revision: number;
+  };
   source: {
     status: "original" | "unavailable";
     label: string;
@@ -88,6 +93,7 @@ export class MemoryBrowser {
   constructor(
     private readonly upstream: UpstreamGatewayClient,
     private readonly timeoutMs: number,
+    private readonly states?: MemoryStateLedger,
   ) {}
 
   async browse(
@@ -96,10 +102,16 @@ export class MemoryBrowser {
   ): Promise<MemoryBrowseResult> {
     const offset = (input.page - 1) * input.page_size;
     if (input.level === "L2") {
-      return await this.browseL2(input, requestId, offset);
+      return this.applyStates(
+        input.level,
+        await this.browseL2(input, requestId, offset),
+      );
     }
     if (input.level === "L3") {
-      return await this.browseL3(input, requestId);
+      return this.applyStates(
+        input.level,
+        await this.browseL3(input, requestId),
+      );
     }
 
     const searching = input.query.trim().length > 0;
@@ -130,6 +142,7 @@ export class MemoryBrowser {
         content: item.content,
         updatedAt: item.updated_at,
         ...(item.score === undefined ? {} : { score: item.score }),
+        state: { status: "active" as const, revision: 0 },
         source: {
           status: "unavailable" as const,
           label: "来源未记录",
@@ -147,6 +160,7 @@ export class MemoryBrowser {
         content: item.content,
         updatedAt: item.timestamp,
         ...(item.score === undefined ? {} : { score: item.score }),
+        state: { status: "active" as const, revision: 0 },
         source: {
           status: "original" as const,
           label: "对话原文",
@@ -158,7 +172,7 @@ export class MemoryBrowser {
       ? allItems.slice(offset, offset + input.page_size)
       : allItems;
     const total = searching ? null : (upstreamTotal ?? allItems.length);
-    return {
+    return this.applyStates(input.level, {
       items,
       page: input.page,
       pageSize: input.page_size,
@@ -167,7 +181,7 @@ export class MemoryBrowser {
       hasNext: searching
         ? allItems.length > offset + input.page_size
         : offset + items.length < (total ?? 0),
-    };
+    });
   }
 
   private async browseL2(
@@ -207,6 +221,7 @@ export class MemoryBrowser {
           title: title(content, entry.summary ?? entry.path),
           content,
           ...(updatedAt ? { updatedAt } : {}),
+          state: { status: "active" as const, revision: 0 },
           source: {
             status: "unavailable" as const,
             label: "来源未记录",
@@ -247,6 +262,7 @@ export class MemoryBrowser {
             title: title(content, "核心画像"),
             content,
             ...(file.updated_at ? { updatedAt: file.updated_at } : {}),
+            state: { status: "active", revision: 0 },
             source: {
               status: "unavailable",
               label: "来源未记录",
@@ -280,5 +296,35 @@ export class MemoryBrowser {
       throw new Error("UPSTREAM_REJECTED");
     }
     return result.body;
+  }
+
+  private applyStates(
+    level: MemoryLayer,
+    result: MemoryBrowseResult,
+  ): MemoryBrowseResult {
+    if (!this.states) return result;
+    const states = this.states.getMany(
+      result.items.map((item) => ({
+        level: item.level,
+        memoryId: item.id,
+      })),
+    );
+    const items = result.items
+      .filter((item) => {
+        const status = states.get(`${item.level}:${item.id}`)?.status;
+        return status !== "invalidated" && status !== "deleted";
+      })
+      .map((item) => {
+        const state = states.get(`${item.level}:${item.id}`);
+        return {
+          ...item,
+          state: { status: "active" as const, revision: state?.revision ?? 0 },
+        };
+      });
+    return {
+      ...result,
+      items,
+      total: this.states.countSuppressed(level) > 0 ? null : result.total,
+    };
   }
 }

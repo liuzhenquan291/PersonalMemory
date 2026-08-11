@@ -4,6 +4,12 @@ import {
   memoryBrowseQuerySchema,
 } from "../src/memory-browser.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
+import {
+  MemoryStateLedger,
+  defaultMigrations,
+  migrateDatabase,
+} from "@personalmemory/core";
+import { DatabaseSync } from "node:sqlite";
 
 function envelope(data: unknown) {
   return { status: 200, body: { code: 0, data } };
@@ -107,5 +113,37 @@ describe("MemoryBrowser", () => {
     );
     expect(result.items).toEqual([]);
     expect(result.total).toBe(0);
+  });
+
+  it("hides invalidated memories even when upstream indexing returns them", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      migrateDatabase(database, defaultMigrations);
+      const states = new MemoryStateLedger(database);
+      states.set("L1", "hidden", "invalidated", 0, "incorrect");
+      const upstream: UpstreamGatewayClient = {
+        async request() {
+          return envelope({
+            items: [
+              {
+                id: "hidden",
+                type: "fact",
+                content: "must stay hidden",
+                updated_at: "2026-08-11T00:00:00Z",
+              },
+            ],
+            total: 1,
+          });
+        },
+      };
+      const result = await new MemoryBrowser(upstream, 1_000, states).browse(
+        memoryBrowseQuerySchema.parse({ level: "L1" }),
+        "request-1",
+      );
+      expect(result.items).toEqual([]);
+      expect(result.total).toBeNull();
+    } finally {
+      database.close();
+    }
   });
 });

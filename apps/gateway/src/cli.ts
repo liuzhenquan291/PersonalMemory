@@ -1,6 +1,7 @@
 import {
   defaultMigrations,
   ImportLedger,
+  MemoryStateLedger,
   initializeDataDirectory,
   loadConfig,
   migrateDatabase,
@@ -18,6 +19,7 @@ let server: PersonalMemoryGatewayServer | undefined;
 let stopping = false;
 let database: DatabaseSync | undefined;
 let importManager: ConversationImportManager | undefined;
+let memoryStates: MemoryStateLedger | undefined;
 
 async function stop(signal: string): Promise<void> {
   if (stopping) return;
@@ -26,6 +28,7 @@ async function stop(signal: string): Promise<void> {
     await server?.stop();
     await importManager?.shutdown();
     importManager = undefined;
+    memoryStates = undefined;
     database?.close();
     database = undefined;
     process.stdout.write(`PersonalMemory Gateway stopped (${signal})\n`);
@@ -52,7 +55,13 @@ async function main(): Promise<void> {
       upstream,
       config.server.upstreamTimeoutMs,
     );
-    const app = createGatewayApp({ config, upstream, importManager });
+    memoryStates = new MemoryStateLedger(database);
+    const app = createGatewayApp({
+      config,
+      upstream,
+      importManager,
+      memoryStates,
+    });
     server = new PersonalMemoryGatewayServer(app, config);
 
     process.on("SIGINT", () => void stop("SIGINT"));

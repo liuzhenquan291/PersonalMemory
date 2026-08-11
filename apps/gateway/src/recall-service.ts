@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UpstreamGatewayError } from "./upstream-client.js";
+import type { MemoryStateLedger } from "@personalmemory/core";
 import type { UpstreamGatewayClient } from "./types.js";
 
 export const recallLevelSchema = z.enum(["L0", "L1", "L2", "L3"]);
@@ -141,6 +142,7 @@ export class RecallService {
   constructor(
     private readonly upstream: UpstreamGatewayClient,
     private readonly upstreamTimeoutMs: number,
+    private readonly states?: MemoryStateLedger,
   ) {}
 
   async recall(
@@ -180,7 +182,9 @@ export class RecallService {
         }
       });
     const results = await Promise.all(tasks);
-    const candidates = results.flatMap(({ items }) => items);
+    const candidates = results
+      .flatMap(({ items }) => items)
+      .filter((item) => !this.states?.isSuppressed(item.level, item.id));
     const items: RecallItem[] = [];
     let usedChars = 0;
     let usedTokenUnits = 0;

@@ -3,6 +3,30 @@ export interface GatewayStatus {
   readonly modelConfigured: boolean;
 }
 
+const CSRF_STORAGE_KEY = "personalmemory.csrf";
+
+export async function createBrowserSession(token: string): Promise<void> {
+  const response = await fetch("/api/v1/session", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: "same-origin",
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    csrfToken?: unknown;
+    error?: { code?: string };
+  };
+  if (!response.ok || typeof body.csrfToken !== "string") {
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ?? "SESSION_FAILED",
+    );
+  }
+  sessionStorage.setItem(CSRF_STORAGE_KEY, body.csrfToken);
+}
+
 export type MemoryLevel = "L0" | "L1" | "L2" | "L3";
 
 export interface MemoryListItem {
@@ -12,11 +36,102 @@ export interface MemoryListItem {
   readonly content: string;
   readonly updated_at?: string;
   readonly score?: number;
+  readonly state: {
+    readonly status: "active";
+    readonly revision: number;
+  };
   readonly source: {
     readonly status: "original" | "unavailable";
     readonly label: string;
     readonly explanation: string;
   };
+}
+
+export interface MemoryMutationState {
+  readonly status: "active" | "invalidated" | "deleted";
+  readonly revision: number;
+}
+
+export class GatewayRequestError extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(`Gateway 请求失败（${status}，${code}）`);
+    this.name = "GatewayRequestError";
+  }
+}
+
+interface ErrorBody {
+  error?: { code?: string };
+}
+
+async function postMemoryMutation<T>(
+  item: MemoryListItem,
+  action: "update" | "invalidate" | "delete",
+  body: object,
+): Promise<T> {
+  const response = await fetch(
+    `/api/v1/memories/${item.level}/${encodeURIComponent(item.id)}/${action}`,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(sessionStorage.getItem(CSRF_STORAGE_KEY)
+          ? {
+              "X-CSRF-Token": sessionStorage.getItem(CSRF_STORAGE_KEY)!,
+            }
+          : {}),
+      },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    },
+  );
+  const parsed = (await response.json().catch(() => ({}))) as ErrorBody;
+  if (!response.ok) {
+    throw new GatewayRequestError(
+      response.status,
+      parsed.error?.code ?? "UNKNOWN_ERROR",
+    );
+  }
+  return parsed as T;
+}
+
+export function updateMemory(item: MemoryListItem, content: string) {
+  return postMemoryMutation<{ state: MemoryMutationState }>(item, "update", {
+    content,
+    expected_revision: item.state.revision,
+  });
+}
+
+export function invalidateMemory(item: MemoryListItem, reason: string) {
+  return postMemoryMutation<{ state: MemoryMutationState }>(
+    item,
+    "invalidate",
+    { reason, expected_revision: item.state.revision },
+  );
+}
+
+export interface ControlledDeleteResponse {
+  readonly state: MemoryMutationState;
+  readonly upstream_deleted: boolean;
+  readonly scope: {
+    readonly hidden_from_personalmemory: true;
+    readonly complete_erasure: false;
+  };
+}
+
+export function deleteMemory(
+  item: MemoryListItem,
+  reason: string,
+  confirmation: string,
+) {
+  return postMemoryMutation<ControlledDeleteResponse>(item, "delete", {
+    reason,
+    confirmation,
+    expected_revision: item.state.revision,
+  });
 }
 
 export interface MemoryListResponse {

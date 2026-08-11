@@ -1,8 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
-import { fetchGatewayStatus } from "../api/gateway";
+import { createBrowserSession, fetchGatewayStatus } from "../api/gateway";
 
 export function SettingsPage() {
+  const [token, setToken] = useState("");
+  const [sessionState, setSessionState] = useState<
+    "idle" | "submitting" | "ready" | "error"
+  >("idle");
   const status = useQuery({
     queryKey: ["gateway-status"],
     queryFn: ({ signal }) => fetchGatewayStatus(signal),
@@ -56,6 +61,53 @@ export function SettingsPage() {
           </dl>
         )}
       </section>
+
+      {status.data?.authenticationConfigured ? (
+        <section className="settings-panel" aria-labelledby="unlock-title">
+          <div>
+            <span className="section-kicker">浏览器会话</span>
+            <h2 id="unlock-title">解锁记忆管理</h2>
+          </div>
+          <form
+            className="session-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSessionState("submitting");
+              void createBrowserSession(token)
+                .then(() => {
+                  setToken("");
+                  setSessionState("ready");
+                })
+                .catch(() => setSessionState("error"));
+            }}
+          >
+            <label>
+              <span>本地访问令牌</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!token || sessionState === "submitting"}
+            >
+              {sessionState === "submitting" ? "正在解锁…" : "建立安全会话"}
+            </button>
+            {sessionState === "ready" ? (
+              <p role="status">已解锁。访问令牌未保存在浏览器中。</p>
+            ) : sessionState === "error" ? (
+              <p className="is-error" role="alert">
+                解锁失败，请检查本地访问令牌。
+              </p>
+            ) : (
+              <p>令牌只用于换取本机短期会话，不会写入浏览器存储。</p>
+            )}
+          </form>
+        </section>
+      ) : null}
 
       <section className="settings-panel subdued" aria-labelledby="agent-title">
         <div>

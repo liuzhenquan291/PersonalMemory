@@ -8,7 +8,12 @@ test("starts and navigates with the keyboard", async ({ page }) => {
   await expect(page.getByText("用户偏好简洁回答")).toBeVisible();
   await page.getByText("用户偏好简洁回答").click();
   await expect(page.getByRole("dialog")).toContainText("来源未记录");
-  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "修改" }).click();
+  await page
+    .getByRole("textbox", { name: "修正后的内容" })
+    .fill("用户偏好结构清晰的简洁回答");
+  await page.getByRole("button", { name: "保存修改" }).click();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
 
   const skipLink = page.getByText("跳到主要内容");
   await skipLink.focus();

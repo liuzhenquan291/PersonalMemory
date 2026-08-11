@@ -535,6 +535,84 @@ a {
   line-height: 1.55;
 }
 
+.memory-action-form,
+.memory-action-field {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.memory-action-field input,
+.memory-action-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  line-height: 1.55;
+}
+
+.memory-action-field textarea {
+  resize: vertical;
+}
+
+.deletion-scope {
+  padding: 1rem;
+  border: 1px solid #dc9aa4;
+  border-radius: 0.65rem;
+  color: #702a36;
+  background: #fff1f3;
+}
+
+.deletion-scope p,
+.action-explanation,
+.mutation-message {
+  margin: 0.45rem 0 0;
+  line-height: 1.55;
+}
+
+.action-explanation {
+  color: var(--muted);
+}
+
+.mutation-message {
+  color: var(--danger);
+}
+
+.memory-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.7rem;
+}
+
+.memory-actions button {
+  padding: 0.68rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  background: #fff;
+  cursor: pointer;
+}
+
+.memory-actions button.is-primary {
+  border-color: var(--night);
+  color: #fff;
+  background: var(--night);
+}
+
+.memory-actions button.is-danger {
+  border-color: #b84f60;
+  color: #fff;
+  background: var(--danger);
+}
+
+.memory-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .empty-state {
   position: relative;
   overflow: hidden;
@@ -639,6 +717,45 @@ a {
 
 .settings-panel.subdued {
   background: rgba(248, 250, 252, 0.45);
+}
+
+.session-form,
+.session-form label {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.session-form input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  font: inherit;
+}
+
+.session-form button {
+  justify-self: start;
+  padding: 0.72rem 0.9rem;
+  border: 0;
+  border-radius: 0.55rem;
+  color: #fff;
+  background: var(--night);
+  cursor: pointer;
+}
+
+.session-form button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.session-form p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.session-form p.is-error {
+  color: var(--danger);
 }
 
 .status-row {

@@ -25,6 +25,14 @@ export {
 } from "./config.js";
 export { initializeDataDirectory } from "./data-directory.js";
 export {
+  DeletedMemoryCannotBeRestoredError,
+  MemoryStateConflictError,
+  MemoryStateLedger,
+  type MemoryState,
+  type MemoryStateLevel,
+  type MemoryStateStatus,
+} from "./memory-state-ledger.js";
+export {
   ImportIdempotencyConflictError,
   ImportLedger,
   type ImportItem,

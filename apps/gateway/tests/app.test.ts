@@ -1,5 +1,6 @@
 import {
   ImportLedger,
+  MemoryStateLedger,
   defaultMigrations,
   loadConfig,
   migrateDatabase,
@@ -49,10 +50,12 @@ function createHarness(options: {
     (options.config ?? createConfig()).server.upstreamTimeoutMs,
     () => `import-job-${++importSequence}`,
   );
+  const memoryStates = new MemoryStateLedger(database);
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
     importManager,
+    memoryStates,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -60,7 +63,7 @@ function createHarness(options: {
       error: (event) => logs.push(event),
     },
   });
-  return { app, upstream, logs, importManager };
+  return { app, upstream, logs, importManager, memoryStates };
 }
 
 async function waitForImport(
@@ -106,7 +109,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 2,
+      schemaVersion: 3,
     });
   });
 
@@ -239,6 +242,70 @@ describe("PersonalMemory Gateway app", () => {
       has_previous: true,
       has_next: false,
     });
+  });
+
+  it("updates L1 with optimistic revision tracking", async () => {
+    const upstream: UpstreamGatewayClient = {
+      async request({ path, body }) {
+        expect(path).toBe("/v2/atomic/update");
+        expect(body).toEqual({ id: "memory-1", content: "修正后的内容" });
+        return { status: 200, body: { code: 0, data: { id: "memory-1" } } };
+      },
+    };
+    const { app } = createHarness({ upstream });
+    const response = await app.request("/api/v1/memories/L1/memory-1/update", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        content: "修正后的内容",
+        expected_revision: 0,
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      state: { status: "active", revision: 1 },
+    });
+
+    const stale = await app.request("/api/v1/memories/L1/memory-1/update", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ content: "过期写入", expected_revision: 0 }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: { code: "MEMORY_CONFLICT" },
+    });
+  });
+
+  it("keeps deletion scope explicit and tombstones L1 on upstream failure", async () => {
+    const upstream: UpstreamGatewayClient = {
+      async request() {
+        throw new UpstreamGatewayError("unavailable", "UPSTREAM_UNAVAILABLE");
+      },
+    };
+    const { app, memoryStates } = createHarness({ upstream });
+    const response = await app.request("/api/v1/memories/L1/memory-1/delete", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        confirmation: "DELETE L1:memory-1",
+        reason: "用户确认该记忆错误",
+        expected_revision: 0,
+      }),
+    });
+    expect(response.status).toBe(202);
+    expect(await response.json()).toMatchObject({
+      state: { status: "deleted", revision: 1 },
+      upstream_deleted: false,
+      scope: {
+        hidden_from_personalmemory: true,
+        source_conversations_deleted: false,
+        derived_profiles_deleted: false,
+        exports_or_backups_deleted: false,
+        complete_erasure: false,
+      },
+    });
+    expect(memoryStates.isSuppressed("L1", "memory-1")).toBe(true);
   });
 
   it("captures one session idempotently without sending expected data externally", async () => {

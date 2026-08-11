@@ -1,7 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   fetchMemories,
+  deleteMemory,
+  GatewayRequestError,
+  invalidateMemory,
+  updateMemory,
   type MemoryLevel,
   type MemoryListItem,
 } from "../api/gateway";
@@ -14,11 +18,20 @@ const levelLabels: Record<MemoryLevel, string> = {
 };
 
 export function MemoriesPage() {
+  const queryClient = useQueryClient();
   const [level, setLevel] = useState<MemoryLevel>("L1");
   const [draftQuery, setDraftQuery] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<MemoryListItem | null>(null);
+  const [action, setAction] = useState<
+    "view" | "edit" | "invalidate" | "delete"
+  >("view");
+  const [content, setContent] = useState("");
+  const [reason, setReason] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [mutationMessage, setMutationMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const memories = useQuery({
@@ -27,9 +40,42 @@ export function MemoriesPage() {
   });
 
   useEffect(() => {
-    if (selected) closeButtonRef.current?.focus();
-    else previousFocusRef.current?.focus();
+    if (selected) {
+      setAction("view");
+      setContent(selected.content);
+      setReason("");
+      setConfirmation("");
+      setMutationMessage("");
+      closeButtonRef.current?.focus();
+    } else previousFocusRef.current?.focus();
   }, [selected]);
+
+  const finishMutation = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["memories"] });
+    setSelected(null);
+  };
+
+  const submitMutation = async () => {
+    if (!selected) return;
+    setIsSubmitting(true);
+    setMutationMessage("");
+    try {
+      if (action === "edit") await updateMemory(selected, content.trim());
+      if (action === "invalidate")
+        await invalidateMemory(selected, reason.trim());
+      if (action === "delete")
+        await deleteMemory(selected, reason.trim(), confirmation);
+      await finishMutation();
+    } catch (error) {
+      setMutationMessage(
+        error instanceof GatewayRequestError && error.status === 409
+          ? "这条记忆已发生变化，请关闭后重新打开再试。"
+          : "操作未完成。请确认浏览器会话仍有效，然后重试。",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const changeLevel = (next: MemoryLevel) => {
     setLevel(next);
@@ -167,10 +213,6 @@ export function MemoriesPage() {
             aria-labelledby="memory-detail-title"
             onKeyDown={(event) => {
               if (event.key === "Escape") setSelected(null);
-              if (event.key === "Tab") {
-                event.preventDefault();
-                closeButtonRef.current?.focus();
-              }
             }}
           >
             <header>
@@ -187,11 +229,114 @@ export function MemoriesPage() {
                 ×
               </button>
             </header>
-            <div className="memory-detail-content">{selected.content}</div>
+            {action === "view" ? (
+              <div className="memory-detail-content">{selected.content}</div>
+            ) : action === "edit" ? (
+              <label className="memory-action-field">
+                <strong>修正后的内容</strong>
+                <textarea
+                  rows={10}
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                />
+              </label>
+            ) : (
+              <div className="memory-action-form">
+                <label className="memory-action-field">
+                  <strong>原因</strong>
+                  <input
+                    value={reason}
+                    maxLength={500}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+                {action === "delete" ? (
+                  <>
+                    <div className="deletion-scope" role="note">
+                      <strong>这是受控删除，不是彻底删除</strong>
+                      <p>
+                        此操作会让这条 L1 记忆从 PersonalMemory
+                        浏览和召回中消失，并尝试删除 L1
+                        索引；不会删除原始对话、派生画像、导出文件或备份。完整级联删除将在后续阶段提供。
+                      </p>
+                    </div>
+                    <label className="memory-action-field">
+                      <strong>
+                        输入 <code>{`DELETE L1:${selected.id}`}</code> 确认
+                      </strong>
+                      <input
+                        value={confirmation}
+                        onChange={(event) =>
+                          setConfirmation(event.target.value)
+                        }
+                      />
+                    </label>
+                  </>
+                ) : (
+                  <p className="action-explanation">
+                    失效后，这条记忆会从浏览和召回中隐藏；本阶段不会自动恢复。
+                  </p>
+                )}
+              </div>
+            )}
             <aside className={`source-panel is-${selected.source.status}`}>
               <strong>{selected.source.label}</strong>
               <p>{selected.source.explanation}</p>
             </aside>
+            {mutationMessage ? (
+              <p className="mutation-message" role="alert">
+                {mutationMessage}
+              </p>
+            ) : null}
+            {selected.level === "L0" ? (
+              <p className="action-explanation">
+                对话原文当前只读；结构化记忆和摘要可进行纠错。
+              </p>
+            ) : action === "view" ? (
+              <div className="memory-actions">
+                <button type="button" onClick={() => setAction("edit")}>
+                  修改
+                </button>
+                <button type="button" onClick={() => setAction("invalidate")}>
+                  标记失效
+                </button>
+                {selected.level === "L1" ? (
+                  <button
+                    className="is-danger"
+                    type="button"
+                    onClick={() => setAction("delete")}
+                  >
+                    受控删除
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="memory-actions">
+                <button type="button" onClick={() => setAction("view")}>
+                  取消
+                </button>
+                <button
+                  className={action === "delete" ? "is-danger" : "is-primary"}
+                  type="button"
+                  disabled={
+                    isSubmitting ||
+                    (action === "edit" && !content.trim()) ||
+                    (action !== "edit" && !reason.trim()) ||
+                    (action === "delete" &&
+                      confirmation !== `DELETE L1:${selected.id}`)
+                  }
+                  onClick={() => void submitMutation()}
+                >
+                  {isSubmitting
+                    ? "正在处理…"
+                    : action === "edit"
+                      ? "保存修改"
+                      : action === "invalidate"
+                        ? "确认失效"
+                        : "确认受控删除"}
+                </button>
+              </div>
+            )}
           </section>
         </div>
       ) : null}

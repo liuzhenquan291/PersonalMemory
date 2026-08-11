@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 2;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 3;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -40,6 +40,18 @@ CREATE TABLE personalmemory_import_items (
 ) STRICT
 `;
 
+const MEMORY_STATES_SQL = `
+CREATE TABLE personalmemory_memory_states (
+  level TEXT NOT NULL CHECK (level IN ('L0', 'L1', 'L2', 'L3')),
+  memory_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'invalidated', 'deleted')),
+  reason TEXT,
+  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (level, memory_id)
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -56,5 +68,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_conversation_import_ledger",
     checksum: checksum(`${IMPORT_JOBS_SQL}\n${IMPORT_ITEMS_SQL}`),
     statements: [IMPORT_JOBS_SQL, IMPORT_ITEMS_SQL],
+  },
+  {
+    version: 3,
+    name: "add_memory_state_tombstones",
+    checksum: checksum(MEMORY_STATES_SQL),
+    statements: [MEMORY_STATES_SQL],
   },
 ]);
