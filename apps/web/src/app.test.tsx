@@ -9,6 +9,7 @@ import { AppLayout } from "./components/app-layout";
 import { MemoriesPage } from "./pages/memories-page";
 import { InboxPage } from "./pages/inbox-page";
 import { SettingsPage } from "./pages/settings-page";
+import { AuditPage } from "./pages/audit-page";
 
 function renderRoute(path: string) {
   const router = createMemoryRouter(
@@ -19,6 +20,7 @@ function renderRoute(path: string) {
         children: [
           { path: "memories", element: <MemoriesPage /> },
           { path: "inbox", element: <InboxPage /> },
+          { path: "audit", element: <AuditPage /> },
           { path: "settings", element: <SettingsPage /> },
         ],
       },
@@ -42,6 +44,31 @@ afterEach(() => {
 });
 
 describe("PersonalMemory Web", () => {
+  it("shows redacted audit events without memory bodies", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          events: [
+            {
+              sequence: 2,
+              event_id: "event-2",
+              action: "memory.updated",
+              outcome: "success",
+              subject: { level: "L1", reference: "a1b2c3d4e5f60708" },
+              details: { changed_content: true },
+              occurred_at: "2026-08-11T00:00:00.000Z",
+            },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    renderRoute("/audit");
+    expect(await screen.findByText("修改记忆")).toBeVisible();
+    expect(screen.getByText(/a1b2c3d4e5f60708/)).toBeVisible();
+    expect(screen.getByText(/不保存记忆正文/)).toBeVisible();
+  });
+
   it("reviews a corrected pending memory before it can be recalled", async () => {
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
@@ -304,8 +331,7 @@ describe("PersonalMemory Web", () => {
     await user.clear(textarea);
     await user.type(textarea, "新内容");
     await user.click(screen.getByRole("button", { name: "保存修改" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+    expect(fetchMock).toHaveBeenCalledWith(
       "/api/v1/memories/L1/memory-1/update",
       expect.objectContaining({
         method: "POST",
@@ -378,6 +404,7 @@ describe("PersonalMemory Web", () => {
 
     await user.tab();
     expect(screen.getByText("跳到主要内容")).toHaveFocus();
+    await user.tab();
     await user.tab();
     await user.tab();
     await user.tab();

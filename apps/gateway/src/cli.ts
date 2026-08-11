@@ -1,4 +1,5 @@
 import {
+  AuditLedger,
   defaultMigrations,
   ImportLedger,
   MemoryGovernanceLedger,
@@ -25,6 +26,7 @@ let importManager: ConversationImportManager | undefined;
 let memoryStates: MemoryStateLedger | undefined;
 let memoryReviews: MemoryReviewLedger | undefined;
 let memoryGovernance: MemoryGovernanceLedger | undefined;
+let audit: AuditLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -37,6 +39,7 @@ async function stop(signal: string): Promise<void> {
     memoryStates = undefined;
     memoryReviews = undefined;
     memoryGovernance = undefined;
+    audit = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -69,6 +72,7 @@ async function main(): Promise<void> {
     memoryStates = new MemoryStateLedger(database);
     memoryReviews = new MemoryReviewLedger(database);
     memoryGovernance = new MemoryGovernanceLedger(database);
+    audit = new AuditLedger(database);
     const app = createGatewayApp({
       config,
       upstream,
@@ -76,6 +80,7 @@ async function main(): Promise<void> {
       memoryStates,
       memoryReviews,
       memoryGovernance,
+      audit,
     });
     server = new PersonalMemoryGatewayServer(app, config);
 

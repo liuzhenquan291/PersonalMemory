@@ -1,4 +1,5 @@
 import type {
+  AuditLedger,
   MemoryGovernanceLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
@@ -46,6 +47,7 @@ export interface GatewayAppOptions {
   memoryStates?: MemoryStateLedger;
   memoryReviews?: MemoryReviewLedger;
   memoryGovernance?: MemoryGovernanceLedger;
+  audit?: AuditLedger;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

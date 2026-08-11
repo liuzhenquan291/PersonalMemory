@@ -29,6 +29,72 @@ export async function createBrowserSession(token: string): Promise<void> {
 
 export type MemoryLevel = "L0" | "L1" | "L2" | "L3";
 
+export type AuditAction =
+  | "memory.generated"
+  | "memory.reviewed"
+  | "memory.recalled"
+  | "memory.updated"
+  | "memory.invalidated"
+  | "memory.deleted"
+  | "memory.relation_created"
+  | "memory.relation_revoked"
+  | "memory.validity_updated"
+  | "data.exported";
+
+export interface AuditEvent {
+  readonly sequence: number;
+  readonly event_id: string;
+  readonly action: AuditAction;
+  readonly outcome: "success" | "failure";
+  readonly subject?: {
+    readonly level: MemoryLevel;
+    readonly reference: string;
+  };
+  readonly details: Record<
+    string,
+    string | number | boolean | string[] | number[]
+  >;
+  readonly occurred_at: string;
+}
+
+export interface AuditResponse {
+  readonly events: AuditEvent[];
+  readonly next_before_sequence?: number;
+}
+
+export async function fetchAudit(
+  input: {
+    action?: AuditAction;
+    level?: MemoryLevel;
+    memoryId?: string;
+    beforeSequence?: number;
+    limit?: number;
+  } = {},
+  signal?: AbortSignal,
+): Promise<AuditResponse> {
+  const params = new URLSearchParams({ limit: String(input.limit ?? 50) });
+  if (input.action) params.set("action", input.action);
+  if (input.level) params.set("level", input.level);
+  if (input.memoryId) params.set("memory_id", input.memoryId);
+  if (input.beforeSequence)
+    params.set("before_sequence", String(input.beforeSequence));
+  const response = await fetch(`/api/v1/audit?${params}`, {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
+  if (!response.ok) throw new Error(`审计时间线请求失败（${response.status}）`);
+  const body: unknown = await response.json();
+  if (
+    !body ||
+    typeof body !== "object" ||
+    !Array.isArray(Reflect.get(body, "events"))
+  ) {
+    throw new Error("Gateway 返回了无法识别的审计时间线");
+  }
+  return body as AuditResponse;
+}
+
 export interface MemoryListItem {
   readonly id: string;
   readonly level: MemoryLevel;

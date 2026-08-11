@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   addMemoryRelation,
+  fetchAudit,
   fetchMemories,
   deleteMemory,
   GatewayRequestError,
@@ -12,6 +13,7 @@ import {
   type MemoryLevel,
   type MemoryListItem,
 } from "../api/gateway";
+import { AuditTimeline } from "../components/audit-timeline";
 
 const levelLabels: Record<MemoryLevel, string> = {
   L0: "对话原文",
@@ -67,6 +69,19 @@ export function MemoriesPage() {
       action === "governance" &&
       selected?.level === "L1" &&
       candidateQuery.trim().length > 0,
+  });
+  const timeline = useQuery({
+    queryKey: ["audit", selected?.level, selected?.id],
+    queryFn: ({ signal }) =>
+      fetchAudit(
+        {
+          level: selected!.level,
+          memoryId: selected!.id,
+          limit: 12,
+        },
+        signal,
+      ),
+    enabled: Boolean(selected),
   });
 
   useEffect(() => {
@@ -491,6 +506,23 @@ export function MemoriesPage() {
                     ) : null}
                   </div>
                 ))}
+              </aside>
+            ) : null}
+            {action === "view" ? (
+              <aside className="memory-audit-panel" aria-label="记忆时间线">
+                <strong>这条记忆的时间线</strong>
+                <p>事件只保留脱敏引用，不包含正文、搜索词或操作原因。</p>
+                {timeline.isPending ? (
+                  <span className="action-explanation">正在读取时间线…</span>
+                ) : timeline.isError ? (
+                  <span className="mutation-message">时间线暂时不可用。</span>
+                ) : timeline.data.events.length ? (
+                  <AuditTimeline events={timeline.data.events} />
+                ) : (
+                  <span className="action-explanation">
+                    还没有可显示的事件。
+                  </span>
+                )}
               </aside>
             ) : null}
             {mutationMessage ? (

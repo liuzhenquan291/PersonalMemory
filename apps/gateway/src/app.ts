@@ -1,5 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
+  type AuditAction,
   getModelOutboundDisclosure,
   PERSONAL_MEMORY_SCHEMA_VERSION,
 } from "@personalmemory/core";
@@ -44,6 +45,37 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const MAX_BROWSER_SESSIONS = 32;
 const MAX_FAILED_AUTH_ATTEMPTS_PER_MINUTE = 120;
 const MAX_IMPORT_ROUNDS = 500;
+
+const auditQuerySchema = z
+  .object({
+    action: z
+      .enum([
+        "memory.generated",
+        "memory.reviewed",
+        "memory.recalled",
+        "memory.updated",
+        "memory.invalidated",
+        "memory.deleted",
+        "memory.relation_created",
+        "memory.relation_revoked",
+        "memory.validity_updated",
+        "data.exported",
+      ])
+      .optional(),
+    level: z.enum(["L0", "L1", "L2", "L3"]).optional(),
+    memory_id: z.string().min(1).max(2_048).optional(),
+    before_sequence: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    if (Boolean(input.level) !== Boolean(input.memory_id)) {
+      context.addIssue({
+        code: "custom",
+        message: "level and memory_id must be supplied together",
+      });
+    }
+  });
 
 const importMessageSchema = z
   .object({
@@ -364,6 +396,15 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         randomId,
       )
     : undefined;
+  const recordAudit = (input: {
+    action: AuditAction;
+    outcome?: "success" | "failure";
+    subject?: { level: "L0" | "L1" | "L2" | "L3"; memoryId: string };
+    details?: Record<string, string | number | boolean | string[] | number[]>;
+    dedupe?: boolean;
+  }): void => {
+    options.audit?.record(input);
+  };
   let businessRateLimit = { windowStart: 0, count: 0 };
   let failedAuthRateLimit = { windowStart: 0, count: 0 };
 
@@ -383,6 +424,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
       "GET /api/v1/memories",
+      "GET /api/v1/audit",
       "POST /api/v1/memory-reviews",
       "GET /api/v1/memories/:level/:id/governance",
       "POST /api/v1/memories/:level/:id/validity",
@@ -840,6 +882,13 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       parsed.data,
       context.get("requestId"),
     );
+    for (const item of result.items) {
+      recordAudit({
+        action: "memory.recalled",
+        subject: { level: item.level, memoryId: item.id },
+        details: { result_count: result.items.length },
+      });
+    }
     return jsonResponse(
       {
         items: result.items.map((item) => ({
@@ -888,6 +937,16 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       parsed.data,
       context.get("requestId"),
     );
+    for (const item of result.items) {
+      if (item.level !== "L0") {
+        recordAudit({
+          action: "memory.generated",
+          subject: { level: item.level, memoryId: item.id },
+          details: { scope: "first_observed" },
+          dedupe: true,
+        });
+      }
+    }
     return jsonResponse(
       {
         items: result.items.map((item) => ({
@@ -907,6 +966,51 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         total: result.total,
         has_previous: result.hasPrevious,
         has_next: result.hasNext,
+      },
+      200,
+    );
+  });
+
+  app.get("/api/v1/audit", (context) => {
+    authenticateMemoryRequest(context, false);
+    if (!options.audit) {
+      throw new GatewayHttpError(
+        503,
+        "AUDIT_UNAVAILABLE",
+        "Audit timeline is not available",
+      );
+    }
+    const parsed = auditQuerySchema.safeParse(context.req.query());
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Audit query parameters are invalid",
+      );
+    }
+    const result = options.audit.query({
+      ...(parsed.data.action ? { action: parsed.data.action } : {}),
+      ...(parsed.data.level ? { level: parsed.data.level } : {}),
+      ...(parsed.data.memory_id ? { memoryId: parsed.data.memory_id } : {}),
+      ...(parsed.data.before_sequence
+        ? { beforeSequence: parsed.data.before_sequence }
+        : {}),
+      limit: parsed.data.limit,
+    });
+    return jsonResponse(
+      {
+        events: result.events.map((event) => ({
+          sequence: event.sequence,
+          event_id: event.eventId,
+          action: event.action,
+          outcome: event.outcome,
+          ...(event.subject ? { subject: event.subject } : {}),
+          details: event.details,
+          occurred_at: event.occurredAt,
+        })),
+        ...(result.nextBeforeSequence
+          ? { next_before_sequence: result.nextBeforeSequence }
+          : {}),
       },
       200,
     );
@@ -938,6 +1042,20 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       parsed.data.items,
       context.get("requestId"),
     );
+    for (const result of results) {
+      recordAudit({
+        action: "memory.reviewed",
+        outcome: result.ok ? "success" : "failure",
+        subject: { level: "L1", memoryId: result.id },
+        details: {
+          status: result.ok ? result.review!.status : result.code!,
+          ...(result.ok &&
+          parsed.data.items.find(({ id }) => id === result.id)?.content
+            ? { changed_content: true }
+            : {}),
+        },
+      });
+    }
     return jsonResponse(
       { results },
       results.every((result) => result.ok) ? 200 : 207,
@@ -1001,20 +1119,28 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     if (!parsed.success) {
       throw new GatewayHttpError(400, "INVALID_REQUEST", "Validity is invalid");
     }
+    let validity;
     try {
-      return jsonResponse(
-        {
-          validity: requireMemoryGovernance().setValidity(
-            target.level,
-            target.id,
-            parsed.data,
-          ),
-        },
-        200,
+      validity = requireMemoryGovernance().setValidity(
+        target.level,
+        target.id,
+        parsed.data,
       );
     } catch (error) {
+      recordAudit({
+        action: "memory.validity_updated",
+        outcome: "failure",
+        subject: { level: target.level, memoryId: target.id },
+        details: { status: "failed" },
+      });
       return translateGovernanceError(error);
     }
+    recordAudit({
+      action: "memory.validity_updated",
+      subject: { level: target.level, memoryId: target.id },
+      details: { status: "updated" },
+    });
+    return jsonResponse({ validity }, 200);
   });
 
   app.post("/api/v1/memory-relations", async (context) => {
@@ -1028,19 +1154,31 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     if (!parsed.success) {
       throw new GatewayHttpError(400, "INVALID_REQUEST", "Relation is invalid");
     }
+    let relation;
     try {
-      return jsonResponse(
-        {
-          relation: await requireMemoryGovernance().addRelation(
-            parsed.data,
-            context.get("requestId"),
-          ),
-        },
-        200,
+      relation = await requireMemoryGovernance().addRelation(
+        parsed.data,
+        context.get("requestId"),
       );
     } catch (error) {
+      for (const memoryId of [parsed.data.source_id, parsed.data.target_id]) {
+        recordAudit({
+          action: "memory.relation_created",
+          outcome: "failure",
+          subject: { level: parsed.data.level, memoryId },
+          details: { kind: parsed.data.kind },
+        });
+      }
       return translateGovernanceError(error);
     }
+    for (const memoryId of [relation.sourceMemoryId, relation.targetMemoryId]) {
+      recordAudit({
+        action: "memory.relation_created",
+        subject: { level: relation.level, memoryId },
+        details: { kind: relation.kind },
+      });
+    }
+    return jsonResponse({ relation }, 200);
   });
 
   app.post("/api/v1/memory-relations/:id/revoke", async (context) => {
@@ -1055,19 +1193,28 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     if (!id || id.length > 2_048 || !parsed.success) {
       throw new GatewayHttpError(400, "INVALID_REQUEST", "Revoke is invalid");
     }
+    let relation;
     try {
-      return jsonResponse(
-        {
-          relation: requireMemoryGovernance().revoke(
-            id,
-            parsed.data.expected_revision,
-          ),
-        },
-        200,
+      relation = requireMemoryGovernance().revoke(
+        id,
+        parsed.data.expected_revision,
       );
     } catch (error) {
+      recordAudit({
+        action: "memory.relation_revoked",
+        outcome: "failure",
+        details: { status: "failed" },
+      });
       return translateGovernanceError(error);
     }
+    for (const memoryId of [relation.sourceMemoryId, relation.targetMemoryId]) {
+      recordAudit({
+        action: "memory.relation_revoked",
+        subject: { level: relation.level, memoryId },
+        details: { kind: relation.kind },
+      });
+    }
+    return jsonResponse({ relation }, 200);
   });
 
   const requireMemoryMutations = (): MemoryMutationService => {
@@ -1139,18 +1286,30 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     if (!parsed.success) {
       throw new GatewayHttpError(400, "INVALID_REQUEST", "Update is invalid");
     }
+    let state;
     try {
-      const state = await requireMemoryMutations().update(
+      state = await requireMemoryMutations().update(
         target.level,
         target.id,
         parsed.data.content,
         parsed.data.expected_revision,
         context.get("requestId"),
       );
-      return jsonResponse({ state }, 200);
     } catch (error) {
+      recordAudit({
+        action: "memory.updated",
+        outcome: "failure",
+        subject: { level: target.level, memoryId: target.id },
+        details: { status: "failed" },
+      });
       return translateMutationError(error);
     }
+    recordAudit({
+      action: "memory.updated",
+      subject: { level: target.level, memoryId: target.id },
+      details: { changed_content: true },
+    });
+    return jsonResponse({ state }, 200);
   });
 
   app.post("/api/v1/memories/:level/:id/invalidate", async (context) => {
@@ -1169,17 +1328,29 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         "Invalidation is invalid",
       );
     }
+    let state;
     try {
-      const state = await requireMemoryMutations().invalidate(
+      state = await requireMemoryMutations().invalidate(
         target.level,
         target.id,
         parsed.data.reason,
         parsed.data.expected_revision,
       );
-      return jsonResponse({ state }, 200);
     } catch (error) {
+      recordAudit({
+        action: "memory.invalidated",
+        outcome: "failure",
+        subject: { level: target.level, memoryId: target.id },
+        details: { status: "failed" },
+      });
       return translateMutationError(error);
     }
+    recordAudit({
+      action: "memory.invalidated",
+      subject: { level: target.level, memoryId: target.id },
+      details: { status: "invalidated" },
+    });
+    return jsonResponse({ state }, 200);
   });
 
   app.post("/api/v1/memories/:level/:id/delete", async (context) => {
@@ -1201,32 +1372,44 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     if (!parsed.success) {
       throw new GatewayHttpError(400, "INVALID_REQUEST", "Deletion is invalid");
     }
+    let result;
     try {
-      const result = await requireMemoryMutations().deleteL1(
+      result = await requireMemoryMutations().deleteL1(
         target.id,
         parsed.data.confirmation,
         parsed.data.reason,
         parsed.data.expected_revision,
         context.get("requestId"),
       );
-      return jsonResponse(
-        {
-          state: result.state,
-          upstream_deleted: result.upstreamDeleted,
-          scope: {
-            hidden_from_personalmemory: true,
-            l1_index_delete_attempted: true,
-            source_conversations_deleted: false,
-            derived_profiles_deleted: false,
-            exports_or_backups_deleted: false,
-            complete_erasure: false,
-          },
-        },
-        result.upstreamDeleted ? 200 : 202,
-      );
     } catch (error) {
+      recordAudit({
+        action: "memory.deleted",
+        outcome: "failure",
+        subject: { level: target.level, memoryId: target.id },
+        details: { status: "failed" },
+      });
       return translateMutationError(error);
     }
+    recordAudit({
+      action: "memory.deleted",
+      subject: { level: target.level, memoryId: target.id },
+      details: { upstream_deleted: result.upstreamDeleted },
+    });
+    return jsonResponse(
+      {
+        state: result.state,
+        upstream_deleted: result.upstreamDeleted,
+        scope: {
+          hidden_from_personalmemory: true,
+          l1_index_delete_attempted: true,
+          source_conversations_deleted: false,
+          derived_profiles_deleted: false,
+          exports_or_backups_deleted: false,
+          complete_erasure: false,
+        },
+      },
+      result.upstreamDeleted ? 200 : 202,
+    );
   });
 
   for (const route of proxyRoutes) {

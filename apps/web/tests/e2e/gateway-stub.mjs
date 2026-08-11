@@ -60,6 +60,24 @@ const server = createServer((request, response) => {
     );
     return;
   }
+  if (request.url?.startsWith("/api/v1/audit?")) {
+    response.end(
+      JSON.stringify({
+        events: [
+          {
+            sequence: 3,
+            event_id: "audit-3",
+            action: "memory.updated",
+            outcome: "success",
+            subject: { level: "L1", reference: "56d8b6c529d97f12" },
+            details: { changed_content: true },
+            occurred_at: "2026-08-11T08:00:00.000Z",
+          },
+        ],
+      }),
+    );
+    return;
+  }
   if (request.url === "/api/v1/memory-relations") {
     let raw = "";
     request.on("data", (chunk) => {

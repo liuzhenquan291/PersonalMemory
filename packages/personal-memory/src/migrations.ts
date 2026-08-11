@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 5;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 6;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -100,6 +100,41 @@ ON personalmemory_memory_relations(level, kind, source_memory_id, target_memory_
 WHERE status = 'active'
 `;
 
+const AUDIT_EVENTS_SQL = `
+CREATE TABLE personalmemory_audit_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id TEXT UNIQUE NOT NULL,
+  action TEXT NOT NULL CHECK (action IN (
+    'memory.generated', 'memory.reviewed', 'memory.recalled',
+    'memory.updated', 'memory.invalidated', 'memory.deleted',
+    'memory.relation_created', 'memory.relation_revoked',
+    'memory.validity_updated', 'data.exported'
+  )),
+  outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure')),
+  subject_level TEXT CHECK (subject_level IN ('L0', 'L1', 'L2', 'L3')),
+  subject_hash TEXT,
+  details_json TEXT NOT NULL DEFAULT '{}',
+  dedupe_key TEXT UNIQUE,
+  occurred_at TEXT NOT NULL,
+  CHECK ((subject_level IS NULL) = (subject_hash IS NULL))
+) STRICT
+`;
+
+const AUDIT_EVENTS_TIME_INDEX_SQL = `
+CREATE INDEX personalmemory_audit_events_time
+ON personalmemory_audit_events(occurred_at DESC, sequence DESC)
+`;
+
+const AUDIT_EVENTS_SUBJECT_INDEX_SQL = `
+CREATE INDEX personalmemory_audit_events_subject
+ON personalmemory_audit_events(subject_level, subject_hash, sequence DESC)
+`;
+
+const AUDIT_EVENTS_ACTION_INDEX_SQL = `
+CREATE INDEX personalmemory_audit_events_action
+ON personalmemory_audit_events(action, sequence DESC)
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -139,6 +174,19 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
       MEMORY_VALIDITY_SQL,
       MEMORY_RELATIONS_SQL,
       MEMORY_RELATIONS_INDEX_SQL,
+    ],
+  },
+  {
+    version: 6,
+    name: "add_privacy_preserving_audit_events",
+    checksum: checksum(
+      `${AUDIT_EVENTS_SQL}\n${AUDIT_EVENTS_TIME_INDEX_SQL}\n${AUDIT_EVENTS_SUBJECT_INDEX_SQL}\n${AUDIT_EVENTS_ACTION_INDEX_SQL}`,
+    ),
+    statements: [
+      AUDIT_EVENTS_SQL,
+      AUDIT_EVENTS_TIME_INDEX_SQL,
+      AUDIT_EVENTS_SUBJECT_INDEX_SQL,
+      AUDIT_EVENTS_ACTION_INDEX_SQL,
     ],
   },
 ]);

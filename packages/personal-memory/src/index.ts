@@ -1,4 +1,12 @@
 export {
+  AuditLedger,
+  type AuditAction,
+  type AuditDetailValue,
+  type AuditEvent,
+  type AuditQuery,
+  type AuditSubjectLevel,
+} from "./audit-ledger.js";
+export {
   PERSONAL_MEMORY_SCHEMA_VERSION,
   defaultMigrations,
 } from "./migrations.js";

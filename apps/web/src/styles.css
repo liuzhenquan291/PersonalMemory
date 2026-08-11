@@ -646,6 +646,127 @@ a {
   color: var(--danger);
 }
 
+.page-audit {
+  display: grid;
+  gap: 1.4rem;
+}
+
+.audit-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+  padding-bottom: 0.9rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.audit-filter select {
+  min-width: 10rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+.audit-timeline {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.audit-timeline li {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.25rem minmax(0, 1fr);
+  gap: 0.8rem;
+  padding-bottom: 1rem;
+}
+
+.audit-timeline li:not(:last-child)::before {
+  position: absolute;
+  top: 0.85rem;
+  bottom: -0.1rem;
+  left: 0.35rem;
+  width: 1px;
+  background: #9badbe;
+  content: "";
+}
+
+.audit-node {
+  position: relative;
+  z-index: 1;
+  width: 0.72rem;
+  height: 0.72rem;
+  margin-top: 0.8rem;
+  border: 2px solid var(--night);
+  border-radius: 50%;
+  background: var(--signal);
+}
+
+.audit-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: var(--paper);
+}
+
+.audit-entry-meta {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem;
+  color: var(--muted);
+  font:
+    0.68rem ui-monospace,
+    "SFMono-Regular",
+    Consolas,
+    monospace;
+}
+
+.audit-entry-meta code {
+  color: #32695b;
+}
+
+.audit-outcome {
+  align-self: center;
+  color: #246654;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.audit-outcome.is-failure {
+  color: var(--danger);
+}
+
+.memory-audit-panel {
+  display: grid;
+  gap: 0.7rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--line);
+}
+
+.memory-audit-panel > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.memory-audit-panel .audit-entry {
+  padding: 0.65rem 0.75rem;
+}
+
 .memory-actions {
   display: flex;
   flex-wrap: wrap;

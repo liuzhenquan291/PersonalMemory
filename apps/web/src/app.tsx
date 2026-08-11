@@ -11,6 +11,7 @@ import { AppLayout } from "./components/app-layout";
 import { MemoriesPage } from "./pages/memories-page";
 import { InboxPage } from "./pages/inbox-page";
 import { SettingsPage } from "./pages/settings-page";
+import { AuditPage } from "./pages/audit-page";
 
 export function createAppRouter() {
   return createBrowserRouter([
@@ -22,6 +23,7 @@ export function createAppRouter() {
         { index: true, element: <Navigate replace to="/memories" /> },
         { path: "memories", element: <MemoriesPage /> },
         { path: "inbox", element: <InboxPage /> },
+        { path: "audit", element: <AuditPage /> },
         { path: "settings", element: <SettingsPage /> },
       ],
     },

@@ -46,6 +46,16 @@ test("keeps every primary action visible at 320px", async ({ page }) => {
   expect(widths.content).toBe(widths.viewport);
 });
 
+test("shows a redacted local audit timeline", async ({ page }) => {
+  await page.goto("/audit");
+  await expect(
+    page.getByRole("heading", { name: "每一次改变，都留下不含正文的足迹" }),
+  ).toBeVisible();
+  await expect(page.getByText("修改记忆")).toBeVisible();
+  await expect(page.getByText(/56d8b6c529d97f12/u)).toBeVisible();
+  await expect(page.getByText(/不保存记忆正文/u)).toBeVisible();
+});
+
 test("reviews a pending memory from the inbox on a narrow screen", async ({
   page,
 }) => {

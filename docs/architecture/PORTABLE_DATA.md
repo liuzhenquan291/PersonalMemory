@@ -17,8 +17,10 @@ PersonalMemory Gateway 启动时写入只含 PID 的 `.personalmemory-running`�
 - L2 `scene_blocks/*.md` 与 L3 `persona.md`；
 - `personalmemory_memory_states` 中 active、invalidated、deleted 状态、原因和 revision。
 - 记忆审核状态、有效期以及活动/已撤销的冲突和替代关系。
+- 脱敏审计事件，包括 HMAC 记忆引用和白名单元数据；不包含生成引用所用的密钥。
 
 解析错误不会被跳过。命令返回输出 SHA-256 和各层计数。导出是可读迁移资产，不包含检索索引，不能单独冒充可直接启动的完整备份。
+导出操作会在文件成功写入后追加一条 `data.exported` 事件，因此本次导出包含此前审计记录，下一次导出才会包含本次导出事件。完整备份保留本地 HMAC 密钥；可读导出故意不携带该密钥，迁移后的脱敏引用不能用来反查原始记忆 ID。
 单次导出最多读取 256 MiB 文本和 1,000,000 条 JSONL 记录；超过预算会明确失败，避免异常数据耗尽本地进程内存。
 
 ## 备份格式

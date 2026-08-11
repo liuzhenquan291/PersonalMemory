@@ -164,6 +164,7 @@ describe("portable PersonalMemory data", () => {
       reviews: 1,
       validity: 1,
       relations: 1,
+      audit_events: 0,
     });
   });
 

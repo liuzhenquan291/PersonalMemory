@@ -16,6 +16,7 @@ import { DatabaseSync, backup as backupDatabase } from "node:sqlite";
 import path from "node:path";
 import { z } from "zod";
 import { PERSONAL_MEMORY_SCHEMA_VERSION } from "./migrations.js";
+import { AuditLedger } from "./audit-ledger.js";
 import { assertDataDirectoryOffline } from "./runtime-marker.js";
 
 const BACKUP_FORMAT_VERSION = 1;
@@ -129,6 +130,17 @@ interface ExportRelationRow {
   updated_at: string;
 }
 
+interface ExportAuditRow {
+  sequence: number;
+  event_id: string;
+  action: string;
+  outcome: string;
+  subject_level: string | null;
+  subject_hash: string | null;
+  details_json: string;
+  occurred_at: string;
+}
+
 export interface ReadableExport {
   format: "personalmemory-export";
   format_version: number;
@@ -142,6 +154,7 @@ export interface ReadableExport {
   reviews: ExportReviewRow[];
   validity: ExportValidityRow[];
   relations: ExportRelationRow[];
+  audit_events: ExportAuditRow[];
 }
 
 function resolved(value: string): string {
@@ -693,6 +706,7 @@ async function readableExport(
   let reviews: ExportReviewRow[];
   let validity: ExportValidityRow[];
   let relations: ExportRelationRow[];
+  let auditEvents: ExportAuditRow[];
   try {
     states = database
       .prepare(
@@ -719,6 +733,13 @@ async function readableExport(
          FROM personalmemory_memory_relations ORDER BY created_at, id`,
       )
       .all() as unknown as ExportRelationRow[];
+    auditEvents = database
+      .prepare(
+        `SELECT sequence, event_id, action, outcome, subject_level,
+                subject_hash, details_json, occurred_at
+         FROM personalmemory_audit_events ORDER BY sequence`,
+      )
+      .all() as unknown as ExportAuditRow[];
   } finally {
     database.close();
   }
@@ -738,6 +759,7 @@ async function readableExport(
     reviews,
     validity,
     relations,
+    audit_events: auditEvents,
   };
 }
 
@@ -767,6 +789,7 @@ function markdownExport(snapshot: ReadableExport): string {
   appendJson("PersonalMemory 审核状态", snapshot.reviews);
   appendJson("PersonalMemory 有效期", snapshot.validity);
   appendJson("PersonalMemory 冲突与替代关系", snapshot.relations);
+  appendJson("PersonalMemory 隐私保护审计", snapshot.audit_events);
   return `${sections.join("\n")}\n`;
 }
 
@@ -805,6 +828,17 @@ export async function createReadableExport(
     mode: 0o600,
     flag: "wx",
   });
+  const database = new DatabaseSync(
+    path.join(dataDirectory, "personalmemory.sqlite"),
+  );
+  try {
+    new AuditLedger(database, () => now().toISOString()).record({
+      action: "data.exported",
+      details: { format },
+    });
+  } finally {
+    database.close();
+  }
   return {
     outputFile,
     sha256: await sha256(outputFile),
@@ -817,6 +851,7 @@ export async function createReadableExport(
       reviews: snapshot.reviews.length,
       validity: snapshot.validity.length,
       relations: snapshot.relations.length,
+      audit_events: snapshot.audit_events.length,
     },
   };
 }

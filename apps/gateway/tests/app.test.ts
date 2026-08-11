@@ -1,4 +1,5 @@
 import {
+  AuditLedger,
   ImportLedger,
   MemoryGovernanceLedger,
   MemoryStateLedger,
@@ -61,6 +62,12 @@ function createHarness(options: {
   const memoryGovernance = options.withGovernance
     ? new MemoryGovernanceLedger(database)
     : undefined;
+  let auditSequence = 0;
+  const audit = new AuditLedger(
+    database,
+    () => "2026-08-11T00:00:00.000Z",
+    () => `audit-event-${++auditSequence}`,
+  );
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
@@ -68,6 +75,7 @@ function createHarness(options: {
     memoryStates,
     memoryReviews,
     memoryGovernance,
+    audit,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -83,6 +91,7 @@ function createHarness(options: {
     memoryStates,
     memoryReviews,
     memoryGovernance,
+    audit,
   };
 }
 
@@ -129,7 +138,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 5,
+      schemaVersion: 6,
     });
   });
 
@@ -158,6 +167,42 @@ describe("PersonalMemory Gateway app", () => {
       ],
     });
     expect(memoryReviews?.isApproved("L1", "memory-1")).toBe(true);
+  });
+
+  it("returns a privacy-preserving, cursor-paged audit timeline", async () => {
+    const { app } = createHarness({ withReviews: true });
+    await app.request("/api/v1/memory-reviews", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        items: [
+          {
+            id: "private-memory-id",
+            action: "reject",
+            expected_revision: 0,
+            reason: "sensitive-reason",
+          },
+        ],
+      }),
+    });
+    const response = await app.request(
+      "/api/v1/audit?level=L1&memory_id=private-memory-id&limit=1",
+      { headers: authHeaders },
+    );
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain("private-memory-id");
+    expect(text).not.toContain("sensitive-reason");
+    expect(JSON.parse(text)).toMatchObject({
+      events: [
+        {
+          action: "memory.reviewed",
+          outcome: "success",
+          subject: { level: "L1" },
+          details: { status: "rejected" },
+        },
+      ],
+    });
   });
 
   it("creates and revokes an explicit supersedes relation", async () => {
