@@ -101,6 +101,60 @@ const server = createServer((request, response) => {
     });
     return;
   }
+  if (request.url === "/api/v1/privacy-deletions/preview") {
+    response.end(
+      JSON.stringify({
+        token: "plan-1",
+        level: "L1",
+        memory_id: "memory-1",
+        expires_at: "2026-08-11T08:10:00.000Z",
+        confirmation: "ERASE L1:memory-1",
+        scope: {
+          source_l0: 1,
+          index_l1: 1,
+          derived_l2: 1,
+          derived_l3: 0,
+          readable_l0: 1,
+          readable_l1: 1,
+          managed_copies: 1,
+        },
+        managed_copies: [
+          {
+            id: "artifact-1",
+            kind: "readable_export",
+            path: "/Users/local/PersonalMemory-export.json",
+          },
+        ],
+        limitations: ["无法发现用户自行复制、同步或改名的文件。"],
+      }),
+    );
+    return;
+  }
+  if (request.url === "/api/v1/privacy-deletions/plan-1/execute") {
+    response.statusCode = 207;
+    response.end(
+      JSON.stringify({
+        status: "partial",
+        memory_id: "memory-1",
+        retryable: true,
+        verification: {
+          l1_remaining: 1,
+          l0_remaining: 0,
+          derived_occurrences: 0,
+          readable_rows: 0,
+          managed_copies_remaining: 0,
+          tombstone_present: true,
+        },
+        errors: [{ step: "index_l1", code: "ERASURE_STEP_FAILED" }],
+      }),
+    );
+    return;
+  }
+  if (request.url === "/api/v1/privacy-deletions/plan-1/cancel") {
+    response.statusCode = 204;
+    response.end();
+    return;
+  }
   if (request.url === "/api/v1/memory-reviews") {
     let raw = "";
     request.on("data", (chunk) => {

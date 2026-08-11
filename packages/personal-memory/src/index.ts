@@ -7,6 +7,13 @@ export {
   type AuditSubjectLevel,
 } from "./audit-ledger.js";
 export {
+  ErasureReceiptLedger,
+  ManagedArtifactLedger,
+  type ErasureReceipt,
+  type ManagedArtifact,
+  type ManagedArtifactKind,
+} from "./privacy-ledger.js";
+export {
   PERSONAL_MEMORY_SCHEMA_VERSION,
   defaultMigrations,
 } from "./migrations.js";

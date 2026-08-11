@@ -6,7 +6,7 @@ const actionLabels: Record<AuditEvent["action"], string> = {
   "memory.recalled": "参与召回",
   "memory.updated": "修改记忆",
   "memory.invalidated": "标记失效",
-  "memory.deleted": "执行受控删除",
+  "memory.deleted": "删除记忆",
   "memory.relation_created": "建立治理关系",
   "memory.relation_revoked": "撤销治理关系",
   "memory.validity_updated": "调整有效期",

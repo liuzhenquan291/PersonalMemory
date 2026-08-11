@@ -78,6 +78,7 @@ const ALLOWED_UPSTREAM_PATHS = new Set([
   "/session/end",
   "/v2/conversation/search",
   "/v2/conversation/query",
+  "/v2/conversation/delete",
   "/v2/atomic/search",
   "/v2/atomic/query",
   "/v2/scenario/ls",

@@ -18,6 +18,7 @@ import { createGatewayApp } from "./app.js";
 import { PersonalMemoryGatewayServer } from "./server.js";
 import { FetchUpstreamGatewayClient } from "./upstream-client.js";
 import { ConversationImportManager } from "./import-manager.js";
+import { PrivacyDeletionService } from "./privacy-deletions.js";
 
 let server: PersonalMemoryGatewayServer | undefined;
 let stopping = false;
@@ -27,6 +28,7 @@ let memoryStates: MemoryStateLedger | undefined;
 let memoryReviews: MemoryReviewLedger | undefined;
 let memoryGovernance: MemoryGovernanceLedger | undefined;
 let audit: AuditLedger | undefined;
+let privacyDeletions: PrivacyDeletionService | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -40,6 +42,7 @@ async function stop(signal: string): Promise<void> {
     memoryReviews = undefined;
     memoryGovernance = undefined;
     audit = undefined;
+    privacyDeletions = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -73,6 +76,12 @@ async function main(): Promise<void> {
     memoryReviews = new MemoryReviewLedger(database);
     memoryGovernance = new MemoryGovernanceLedger(database);
     audit = new AuditLedger(database);
+    privacyDeletions = new PrivacyDeletionService(
+      database,
+      dataDirectory,
+      upstream,
+      config.server.upstreamTimeoutMs,
+    );
     const app = createGatewayApp({
       config,
       upstream,
@@ -80,6 +89,7 @@ async function main(): Promise<void> {
       memoryStates,
       memoryReviews,
       memoryGovernance,
+      privacyDeletions,
       audit,
     });
     server = new PersonalMemoryGatewayServer(app, config);

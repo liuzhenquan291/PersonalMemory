@@ -1,6 +1,15 @@
 import { PERSONAL_MEMORY_SCHEMA_VERSION } from "@personalmemory/core";
 
 export { createGatewayApp } from "./app.js";
+export {
+  PrivacyDeletionError,
+  PrivacyDeletionService,
+  privacyDeletionExecuteSchema,
+  privacyDeletionPreviewSchema,
+  type PrivacyDeletionPreview,
+  type PrivacyDeletionResult,
+  type PrivacyDeletionStep,
+} from "./privacy-deletions.js";
 export { PersonalMemoryGatewayServer } from "./server.js";
 export {
   FetchUpstreamGatewayClient,

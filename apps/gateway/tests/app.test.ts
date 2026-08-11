@@ -15,6 +15,7 @@ import { createGatewayApp } from "../src/app.js";
 import type { GatewayLogEvent, UpstreamGatewayClient } from "../src/types.js";
 import { UpstreamGatewayError } from "../src/upstream-client.js";
 import { ConversationImportManager } from "../src/import-manager.js";
+import type { PrivacyDeletionService } from "../src/privacy-deletions.js";
 
 function createConfig(
   overrides: Partial<PersonalMemoryConfig["server"]> = {},
@@ -35,6 +36,7 @@ function createHarness(options: {
   now?: () => number;
   withReviews?: boolean;
   withGovernance?: boolean;
+  privacyDeletions?: PrivacyDeletionService;
 }) {
   const logs: GatewayLogEvent[] = [];
   let sequence = 0;
@@ -75,6 +77,7 @@ function createHarness(options: {
     memoryStates,
     memoryReviews,
     memoryGovernance,
+    privacyDeletions: options.privacyDeletions,
     audit,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
@@ -138,7 +141,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 6,
+      schemaVersion: 7,
     });
   });
 
@@ -436,6 +439,85 @@ describe("PersonalMemory Gateway app", () => {
       },
     });
     expect(memoryStates.isSuppressed("L1", "memory-1")).toBe(true);
+  });
+
+  it("requires preview and strong acknowledgement for a cascade deletion", async () => {
+    const preview = vi.fn(async () => ({
+      token: "plan-1",
+      level: "L1" as const,
+      memory_id: "memory-1",
+      expires_at: "2026-08-11T00:10:00.000Z",
+      confirmation: "ERASE L1:memory-1",
+      scope: {
+        source_l0: 1,
+        index_l1: 1,
+        derived_l2: 0,
+        derived_l3: 0,
+        readable_l0: 1,
+        readable_l1: 1,
+        managed_copies: 0,
+      },
+      managed_copies: [],
+      limitations: ["controlled scope"],
+    }));
+    const execute = vi.fn(async () => ({
+      status: "complete" as const,
+      memory_id: "memory-1",
+      retryable: false,
+      steps: {},
+      verification: {
+        l1_remaining: 0,
+        l0_remaining: 0,
+        derived_occurrences: 0,
+        readable_rows: 0,
+        managed_copies_remaining: 0,
+        tombstone_present: true,
+      },
+      errors: [],
+    }));
+    const privacyDeletions = {
+      preview,
+      execute,
+      cancel: vi.fn(),
+    } as unknown as PrivacyDeletionService;
+    const { app } = createHarness({ privacyDeletions });
+    const planned = await app.request("/api/v1/privacy-deletions/preview", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ level: "L1", memory_id: "memory-1" }),
+    });
+    expect(planned.status).toBe(200);
+    expect(await planned.json()).toMatchObject({
+      token: "plan-1",
+      confirmation: "ERASE L1:memory-1",
+    });
+    expect(preview).toHaveBeenCalledWith("memory-1", expect.any(String));
+
+    const weak = await app.request("/api/v1/privacy-deletions/plan-1/execute", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        confirmation: "ERASE L1:memory-1",
+        delete_managed_copies: true,
+      }),
+    });
+    expect(weak.status).toBe(400);
+    expect(execute).not.toHaveBeenCalled();
+
+    const erased = await app.request(
+      "/api/v1/privacy-deletions/plan-1/execute",
+      {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          confirmation: "ERASE L1:memory-1",
+          delete_managed_copies: true,
+          unmanaged_copies_acknowledged: true,
+        }),
+      },
+    );
+    expect(erased.status).toBe(200);
+    expect(await erased.json()).toMatchObject({ status: "complete" });
   });
 
   it("captures one session idempotently without sending expected data externally", async () => {

@@ -88,6 +88,38 @@ test("keeps conflict judgment under explicit user control", async ({
   await expect(page.getByRole("dialog")).not.toBeVisible();
 });
 
+test("requires a visible cascade matrix before complete erasure", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 760, height: 920 });
+  await page.goto("/memories");
+  await page.getByText("用户偏好简洁回答").click();
+  await page.getByRole("button", { name: "彻底删除" }).click();
+  await expect(
+    page.getByRole("list", { name: "删除范围核对表" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("/Users/local/PersonalMemory-export.json"),
+  ).toBeVisible();
+  const submit = page.getByRole("button", { name: "确认彻底删除" });
+  await expect(submit).toBeDisabled();
+  await page.getByLabel(/确认删除上方所有已登记/u).check();
+  await page.getByLabel(/已自行处理系统无法发现/u).check();
+  await page
+    .getByLabel(/输入 ERASE L1:memory-1 确认/u)
+    .fill("ERASE L1:memory-1");
+  await submit.click();
+  await expect(page.getByText("删除尚未完成")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "重试彻底删除" }),
+  ).toBeEnabled();
+  const widths = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(widths.content).toBe(widths.viewport);
+});
+
 test("honors reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/memories");

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 6;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 7;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -135,6 +135,32 @@ CREATE INDEX personalmemory_audit_events_action
 ON personalmemory_audit_events(action, sequence DESC)
 `;
 
+const MANAGED_ARTIFACTS_SQL = `
+CREATE TABLE personalmemory_managed_artifacts (
+  id TEXT PRIMARY KEY NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('readable_export', 'portable_backup')),
+  path TEXT UNIQUE NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('active', 'deleted')),
+  created_at TEXT NOT NULL,
+  deleted_at TEXT
+) STRICT
+`;
+
+const ERASURE_RECEIPTS_SQL = `
+CREATE TABLE personalmemory_erasure_receipts (
+  id TEXT PRIMARY KEY NOT NULL,
+  level TEXT NOT NULL CHECK (level = 'L1'),
+  memory_id TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  plan_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('complete', 'partial')),
+  verification_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  UNIQUE (level, memory_id)
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -188,5 +214,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
       AUDIT_EVENTS_SUBJECT_INDEX_SQL,
       AUDIT_EVENTS_ACTION_INDEX_SQL,
     ],
+  },
+  {
+    version: 7,
+    name: "add_privacy_erasure_control",
+    checksum: checksum(`${MANAGED_ARTIFACTS_SQL}\n${ERASURE_RECEIPTS_SQL}`),
+    statements: [MANAGED_ARTIFACTS_SQL, ERASURE_RECEIPTS_SQL],
   },
 ]);

@@ -26,5 +26,7 @@
 | M3.1 | completed | [记忆审核收件箱](M3.1.md)                      |
 | M3.2 | completed | [冲突、合并和替代关系](M3.2.md)                |
 | M3.3 | completed | [来源时间线和审计](M3.3.md)                    |
+| M3.4 | completed | [可验证级联删除](M3.4.md)                    |
+| M3   | completed | [可信记忆治理退出验收](M3-EXIT.md)           |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

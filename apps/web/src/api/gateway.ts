@@ -234,6 +234,99 @@ export function deleteMemory(
   });
 }
 
+export interface PrivacyDeletionPreview {
+  readonly token: string;
+  readonly level: "L1";
+  readonly memory_id: string;
+  readonly expires_at: string;
+  readonly confirmation: string;
+  readonly scope: {
+    readonly source_l0: number;
+    readonly index_l1: number;
+    readonly derived_l2: number;
+    readonly derived_l3: number;
+    readonly readable_l0: number;
+    readonly readable_l1: number;
+    readonly managed_copies: number;
+  };
+  readonly managed_copies: ReadonlyArray<{
+    readonly id: string;
+    readonly kind: "readable_export" | "portable_backup";
+    readonly path: string;
+  }>;
+  readonly limitations: readonly string[];
+}
+
+export interface PrivacyDeletionResult {
+  readonly status: "complete" | "partial";
+  readonly memory_id: string;
+  readonly retryable: boolean;
+  readonly verification: {
+    readonly l1_remaining: number;
+    readonly l0_remaining: number;
+    readonly derived_occurrences: number;
+    readonly readable_rows: number;
+    readonly managed_copies_remaining: number;
+    readonly tombstone_present: boolean;
+  };
+  readonly errors: ReadonlyArray<{
+    readonly step: string;
+    readonly code: string;
+  }>;
+}
+
+async function postPrivacyDeletion<T>(path: string, body?: object): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(sessionStorage.getItem(CSRF_STORAGE_KEY)
+        ? { "X-CSRF-Token": sessionStorage.getItem(CSRF_STORAGE_KEY)! }
+        : {}),
+    },
+    credentials: "same-origin",
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  const parsed = (await response.json().catch(() => ({}))) as ErrorBody;
+  if (!response.ok) {
+    throw new GatewayRequestError(
+      response.status,
+      parsed.error?.code ?? "UNKNOWN_ERROR",
+    );
+  }
+  return parsed as T;
+}
+
+export function previewPrivacyDeletion(
+  item: MemoryListItem,
+): Promise<PrivacyDeletionPreview> {
+  return postPrivacyDeletion("/api/v1/privacy-deletions/preview", {
+    level: "L1",
+    memory_id: item.id,
+  });
+}
+
+export async function cancelPrivacyDeletion(token: string): Promise<void> {
+  await postPrivacyDeletion(
+    `/api/v1/privacy-deletions/${encodeURIComponent(token)}/cancel`,
+  );
+}
+
+export function executePrivacyDeletion(
+  preview: PrivacyDeletionPreview,
+  confirmation: string,
+): Promise<PrivacyDeletionResult> {
+  return postPrivacyDeletion(
+    `/api/v1/privacy-deletions/${encodeURIComponent(preview.token)}/execute`,
+    {
+      confirmation,
+      delete_managed_copies: true,
+      unmanaged_copies_acknowledged: true,
+    },
+  );
+}
+
 export interface MemoryListResponse {
   readonly items: MemoryListItem[];
   readonly page: number;

@@ -6,6 +6,7 @@ import type {
   PersonalMemoryConfig,
 } from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
+import type { PrivacyDeletionService } from "./privacy-deletions.js";
 
 export interface GatewayErrorEnvelope {
   error: {
@@ -47,6 +48,7 @@ export interface GatewayAppOptions {
   memoryStates?: MemoryStateLedger;
   memoryReviews?: MemoryReviewLedger;
   memoryGovernance?: MemoryGovernanceLedger;
+  privacyDeletions?: PrivacyDeletionService;
   audit?: AuditLedger;
   logger?: GatewayLogger;
   now?: () => number;

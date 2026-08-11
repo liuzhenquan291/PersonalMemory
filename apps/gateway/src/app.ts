@@ -38,6 +38,11 @@ import {
   memoryValiditySchema,
   relationRevokeSchema,
 } from "./memory-governance.js";
+import {
+  PrivacyDeletionError,
+  privacyDeletionExecuteSchema,
+  privacyDeletionPreviewSchema,
+} from "./privacy-deletions.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -433,6 +438,9 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/memories/:level/:id/update",
       "POST /api/v1/memories/:level/:id/invalidate",
       "POST /api/v1/memories/:level/:id/delete",
+      "POST /api/v1/privacy-deletions/preview",
+      "POST /api/v1/privacy-deletions/:token/cancel",
+      "POST /api/v1/privacy-deletions/:token/execute",
     ]);
     return known.has(key) ? key : "<unmatched>";
   };
@@ -1410,6 +1418,160 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       },
       result.upstreamDeleted ? 200 : 202,
     );
+  });
+
+  const requirePrivacyDeletions = () => {
+    if (!options.privacyDeletions) {
+      throw new GatewayHttpError(
+        503,
+        "PRIVACY_DELETION_UNAVAILABLE",
+        "Privacy deletion control is not available",
+      );
+    }
+    return options.privacyDeletions;
+  };
+
+  const translatePrivacyDeletionError = (error: unknown): never => {
+    if (error instanceof PrivacyDeletionError) {
+      const definitions = {
+        NOT_FOUND: [404, "MEMORY_NOT_FOUND", "Memory was not found"],
+        PLAN_NOT_FOUND: [
+          404,
+          "DELETION_PLAN_NOT_FOUND",
+          "Deletion plan was not found",
+        ],
+        PLAN_EXPIRED: [
+          410,
+          "DELETION_PLAN_EXPIRED",
+          "Deletion plan expired; create a new preview",
+        ],
+        PLAN_LIMIT: [
+          429,
+          "DELETION_PLAN_LIMIT",
+          "Too many deletion previews are active; cancel one and retry",
+        ],
+        PLAN_RUNNING: [
+          409,
+          "DELETION_PLAN_RUNNING",
+          "Deletion is already running",
+        ],
+        CONFIRMATION_MISMATCH: [
+          400,
+          "CONFIRMATION_MISMATCH",
+          "Deletion confirmation does not match the target",
+        ],
+        PLAN_STALE: [
+          409,
+          "DELETION_PLAN_STALE",
+          "Memory changed after preview; create a new preview",
+        ],
+        UPSTREAM_REJECTED: [
+          502,
+          "UPSTREAM_REJECTED",
+          "The local memory kernel rejected the operation",
+        ],
+      } as const;
+      const [status, code, message] = definitions[error.code];
+      throw new GatewayHttpError(status, code, message);
+    }
+    throw error;
+  };
+
+  app.post("/api/v1/privacy-deletions/preview", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = privacyDeletionPreviewSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Privacy deletion preview is invalid",
+      );
+    }
+    try {
+      const preview = await requirePrivacyDeletions().preview(
+        parsed.data.memory_id,
+        context.get("requestId"),
+      );
+      return jsonResponse(preview, 200);
+    } catch (error) {
+      return translatePrivacyDeletionError(error);
+    }
+  });
+
+  app.post("/api/v1/privacy-deletions/:token/cancel", (context) => {
+    authenticateMemoryRequest(context);
+    const token = context.req.param("token");
+    if (!token || token.length > 2_048) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Deletion plan token is invalid",
+      );
+    }
+    try {
+      requirePrivacyDeletions().cancel(token);
+      return new Response(null, { status: 204 });
+    } catch (error) {
+      return translatePrivacyDeletionError(error);
+    }
+  });
+
+  app.post("/api/v1/privacy-deletions/:token/execute", async (context) => {
+    authenticateMemoryRequest(context);
+    const token = context.req.param("token");
+    if (!token || token.length > 2_048) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Deletion plan token is invalid",
+      );
+    }
+    const parsed = privacyDeletionExecuteSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Privacy deletion confirmation is invalid",
+      );
+    }
+    try {
+      const result = await requirePrivacyDeletions().execute(
+        token,
+        parsed.data,
+        context.get("requestId"),
+      );
+      recordAudit({
+        action: "memory.deleted",
+        outcome: result.status === "complete" ? "success" : "failure",
+        subject: { level: "L1", memoryId: result.memory_id },
+        details: {
+          scope: "cascade",
+          status: result.status,
+          upstream_deleted: result.verification.l1_remaining === 0,
+        },
+      });
+      return jsonResponse(result, result.status === "complete" ? 200 : 207);
+    } catch (error) {
+      if (error instanceof PrivacyDeletionError) {
+        return translatePrivacyDeletionError(error);
+      }
+      recordAudit({
+        action: "memory.deleted",
+        outcome: "failure",
+        details: { scope: "cascade", status: "failed" },
+      });
+      throw error;
+    }
   });
 
   for (const route of proxyRoutes) {

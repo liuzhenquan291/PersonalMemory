@@ -44,7 +44,7 @@ export function AuditPage() {
           <option value="memory.reviewed">审核</option>
           <option value="memory.recalled">召回</option>
           <option value="memory.updated">修改</option>
-          <option value="memory.deleted">受控删除</option>
+          <option value="memory.deleted">删除记忆</option>
           <option value="data.exported">数据导出</option>
         </select>
       </label>

@@ -2,16 +2,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   addMemoryRelation,
+  cancelPrivacyDeletion,
   fetchAudit,
   fetchMemories,
   deleteMemory,
+  executePrivacyDeletion,
   GatewayRequestError,
   invalidateMemory,
+  previewPrivacyDeletion,
   revokeMemoryRelation,
   setMemoryValidity,
   updateMemory,
   type MemoryLevel,
   type MemoryListItem,
+  type PrivacyDeletionPreview,
+  type PrivacyDeletionResult,
 } from "../api/gateway";
 import { AuditTimeline } from "../components/audit-timeline";
 
@@ -20,6 +25,19 @@ const levelLabels: Record<MemoryLevel, string> = {
   L1: "结构化记忆",
   L2: "情境摘要",
   L3: "核心画像",
+};
+
+const erasureScopeLabels: Record<
+  keyof PrivacyDeletionPreview["scope"],
+  string
+> = {
+  source_l0: "来源对话",
+  index_l1: "结构化记忆与索引",
+  derived_l2: "情境摘要中的精确内容",
+  derived_l3: "核心画像中的精确内容",
+  readable_l0: "本地对话 JSONL",
+  readable_l1: "本地记忆 JSONL",
+  managed_copies: "已登记导出与备份",
 };
 
 function localDateTimeValue(value: string): string {
@@ -38,13 +56,26 @@ export function MemoriesPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<MemoryListItem | null>(null);
   const [action, setAction] = useState<
-    "view" | "edit" | "invalidate" | "delete" | "governance" | "validity"
+    | "view"
+    | "edit"
+    | "invalidate"
+    | "delete"
+    | "erase"
+    | "governance"
+    | "validity"
   >("view");
   const [content, setContent] = useState("");
   const [reason, setReason] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [mutationMessage, setMutationMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [erasurePreview, setErasurePreview] =
+    useState<PrivacyDeletionPreview | null>(null);
+  const [erasureResult, setErasureResult] =
+    useState<PrivacyDeletionResult | null>(null);
+  const [managedCopiesConfirmed, setManagedCopiesConfirmed] = useState(false);
+  const [unmanagedCopiesConfirmed, setUnmanagedCopiesConfirmed] =
+    useState(false);
   const [candidateQuery, setCandidateQuery] = useState("");
   const [candidateId, setCandidateId] = useState("");
   const [relationKind, setRelationKind] = useState<
@@ -91,6 +122,10 @@ export function MemoriesPage() {
       setReason("");
       setConfirmation("");
       setMutationMessage("");
+      setErasurePreview(null);
+      setErasureResult(null);
+      setManagedCopiesConfirmed(false);
+      setUnmanagedCopiesConfirmed(false);
       setCandidateQuery("");
       setCandidateId("");
       setRelationKind("conflicts_with");
@@ -110,6 +145,21 @@ export function MemoriesPage() {
     setIsSubmitting(true);
     setMutationMessage("");
     try {
+      if (action === "erase" && erasurePreview) {
+        const result = await executePrivacyDeletion(
+          erasurePreview,
+          confirmation,
+        );
+        setErasureResult(result);
+        if (result.status === "complete") {
+          await finishMutation();
+        } else {
+          setMutationMessage(
+            "仍检测到受控范围内的残留。当前删除凭据已保留，请重试完成剩余步骤。",
+          );
+        }
+        return;
+      }
       if (action === "edit") await updateMemory(selected, content.trim());
       if (action === "invalidate")
         await invalidateMemory(selected, reason.trim());
@@ -140,6 +190,38 @@ export function MemoriesPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const beginErasure = async () => {
+    if (!selected || selected.level !== "L1") return;
+    setAction("erase");
+    setIsSubmitting(true);
+    setMutationMessage("");
+    setConfirmation("");
+    setManagedCopiesConfirmed(false);
+    setUnmanagedCopiesConfirmed(false);
+    setErasureResult(null);
+    try {
+      setErasurePreview(await previewPrivacyDeletion(selected));
+    } catch {
+      setMutationMessage("无法生成删除范围，请确认本地服务可用后重试。");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const cancelErasure = async () => {
+    if (erasurePreview && !erasureResult) {
+      try {
+        await cancelPrivacyDeletion(erasurePreview.token);
+      } catch {
+        setMutationMessage("删除预览取消失败，请关闭详情后重新加载。");
+        return;
+      }
+    }
+    setErasurePreview(null);
+    setErasureResult(null);
+    setAction("view");
   };
 
   const changeLevel = (next: MemoryLevel) => {
@@ -416,6 +498,99 @@ export function MemoriesPage() {
                   />
                 </label>
               </div>
+            ) : action === "erase" ? (
+              <div className="memory-action-form erasure-form">
+                <div className="erasure-heading" role="note">
+                  <span>不可撤销操作</span>
+                  <strong>彻底删除受控范围内的这条记忆</strong>
+                  <p>
+                    系统会删除可验证的来源、索引、精确派生内容、可读副本，以及下列已登记导出和备份。
+                  </p>
+                </div>
+                {!erasurePreview ? (
+                  <p className="action-explanation" role="status">
+                    {isSubmitting
+                      ? "正在核对删除范围…"
+                      : "删除范围暂时不可用。"}
+                  </p>
+                ) : (
+                  <>
+                    <ol className="erasure-matrix" aria-label="删除范围核对表">
+                      {(
+                        Object.keys(erasureScopeLabels) as Array<
+                          keyof PrivacyDeletionPreview["scope"]
+                        >
+                      ).map((key) => (
+                        <li key={key}>
+                          <span>{erasureScopeLabels[key]}</span>
+                          <strong>{erasurePreview.scope[key]} 项</strong>
+                        </li>
+                      ))}
+                    </ol>
+                    {erasurePreview.managed_copies.length ? (
+                      <div className="managed-copy-list">
+                        <strong>将整件删除的已登记副本</strong>
+                        {erasurePreview.managed_copies.map((copy) => (
+                          <code key={copy.id}>{copy.path}</code>
+                        ))}
+                      </div>
+                    ) : null}
+                    <ul className="erasure-limitations">
+                      {erasurePreview.limitations.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    <label className="erasure-check">
+                      <input
+                        type="checkbox"
+                        checked={managedCopiesConfirmed}
+                        onChange={(event) =>
+                          setManagedCopiesConfirmed(event.target.checked)
+                        }
+                      />
+                      <span>我确认删除上方所有已登记导出和备份。</span>
+                    </label>
+                    <label className="erasure-check">
+                      <input
+                        type="checkbox"
+                        checked={unmanagedCopiesConfirmed}
+                        onChange={(event) =>
+                          setUnmanagedCopiesConfirmed(event.target.checked)
+                        }
+                      />
+                      <span>
+                        我已自行处理系统无法发现的复制、同步或改名文件。
+                      </span>
+                    </label>
+                    <label className="memory-action-field">
+                      <strong>
+                        输入 <code>{erasurePreview.confirmation}</code> 确认
+                      </strong>
+                      <input
+                        value={confirmation}
+                        autoComplete="off"
+                        onChange={(event) =>
+                          setConfirmation(event.target.value)
+                        }
+                      />
+                    </label>
+                    {erasureResult?.status === "partial" ? (
+                      <div className="erasure-receipt" role="status">
+                        <strong>删除尚未完成</strong>
+                        <span>
+                          剩余：L1 {erasureResult.verification.l1_remaining} ·
+                          L0 {erasureResult.verification.l0_remaining} ·
+                          派生内容{" "}
+                          {erasureResult.verification.derived_occurrences} ·
+                          本地可读行 {erasureResult.verification.readable_rows}{" "}
+                          · 受管副本{" "}
+                          {erasureResult.verification.managed_copies_remaining}
+                        </span>
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
             ) : (
               <div className="memory-action-form">
                 <label className="memory-action-field">
@@ -433,7 +608,7 @@ export function MemoriesPage() {
                       <p>
                         此操作会让这条 L1 记忆从 PersonalMemory
                         浏览和召回中消失，并尝试删除 L1
-                        索引；不会删除原始对话、派生画像、导出文件或备份。完整级联删除将在后续阶段提供。
+                        索引；不会删除原始对话、派生画像、导出文件或备份。如需清理受控范围，请返回并选择“彻底删除”。
                       </p>
                     </div>
                     <label className="memory-action-field">
@@ -455,11 +630,13 @@ export function MemoriesPage() {
                 )}
               </div>
             )}
-            <aside className={`source-panel is-${selected.source.status}`}>
-              <strong>{selected.source.label}</strong>
-              <p>{selected.source.explanation}</p>
-            </aside>
-            {selected.governance ? (
+            {action !== "erase" ? (
+              <aside className={`source-panel is-${selected.source.status}`}>
+                <strong>{selected.source.label}</strong>
+                <p>{selected.source.explanation}</p>
+              </aside>
+            ) : null}
+            {action !== "erase" && selected.governance ? (
               <aside className="governance-panel" aria-label="冲突与有效期">
                 <strong>
                   {selected.governance.recallable
@@ -560,16 +737,36 @@ export function MemoriesPage() {
                     >
                       受控删除
                     </button>
+                    <button
+                      className="is-danger-solid"
+                      type="button"
+                      onClick={() => void beginErasure()}
+                    >
+                      彻底删除
+                    </button>
                   </>
                 ) : null}
               </div>
             ) : (
               <div className="memory-actions">
-                <button type="button" onClick={() => setAction("view")}>
-                  取消
+                <button
+                  type="button"
+                  onClick={() =>
+                    action === "erase"
+                      ? void cancelErasure()
+                      : setAction("view")
+                  }
+                >
+                  {action === "erase" ? "取消彻底删除" : "取消"}
                 </button>
                 <button
-                  className={action === "delete" ? "is-danger" : "is-primary"}
+                  className={
+                    action === "erase"
+                      ? "is-danger-solid"
+                      : action === "delete"
+                        ? "is-danger"
+                        : "is-primary"
+                  }
                   type="button"
                   disabled={
                     isSubmitting ||
@@ -581,7 +778,12 @@ export function MemoriesPage() {
                       relationKind === "supersedes" &&
                       !content.trim()) ||
                     (action === "delete" &&
-                      confirmation !== `DELETE L1:${selected.id}`)
+                      confirmation !== `DELETE L1:${selected.id}`) ||
+                    (action === "erase" &&
+                      (!erasurePreview ||
+                        !managedCopiesConfirmed ||
+                        !unmanagedCopiesConfirmed ||
+                        confirmation !== erasurePreview.confirmation))
                   }
                   onClick={() => void submitMutation()}
                 >
@@ -595,7 +797,11 @@ export function MemoriesPage() {
                           ? "确认治理关系"
                           : action === "invalidate"
                             ? "确认失效"
-                            : "确认受控删除"}
+                            : action === "erase"
+                              ? erasureResult?.status === "partial"
+                                ? "重试彻底删除"
+                                : "确认彻底删除"
+                              : "确认受控删除"}
                 </button>
               </div>
             )}

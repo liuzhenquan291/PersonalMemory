@@ -378,6 +378,127 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByRole("button", { name: "确认受控删除" })).toBeDisabled();
   });
 
+  it("shows the cascade matrix and requires both acknowledgements", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input) => {
+        const url = String(input);
+        if (url.startsWith("/api/v1/memories?")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: "memory-1",
+                    level: "L1",
+                    title: "需要彻底删除",
+                    content: "敏感内容",
+                    state: { status: "active", revision: 0 },
+                    source: {
+                      status: "original",
+                      label: "1 条对话原文",
+                      explanation: "source-1",
+                    },
+                  },
+                ],
+                page: 1,
+                page_size: 12,
+                total: 1,
+                has_previous: false,
+                has_next: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (url.startsWith("/api/v1/audit?")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ events: [] }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        if (url === "/api/v1/privacy-deletions/preview") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                token: "plan-1",
+                level: "L1",
+                memory_id: "memory-1",
+                expires_at: "2026-08-11T00:10:00.000Z",
+                confirmation: "ERASE L1:memory-1",
+                scope: {
+                  source_l0: 1,
+                  index_l1: 1,
+                  derived_l2: 1,
+                  derived_l3: 0,
+                  readable_l0: 1,
+                  readable_l1: 1,
+                  managed_copies: 1,
+                },
+                managed_copies: [
+                  {
+                    id: "artifact-1",
+                    kind: "readable_export",
+                    path: "/safe/export.json",
+                  },
+                ],
+                limitations: ["无法发现用户自行复制的文件。"],
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              status: "partial",
+              memory_id: "memory-1",
+              retryable: true,
+              verification: {
+                l1_remaining: 1,
+                l0_remaining: 0,
+                derived_occurrences: 0,
+                readable_rows: 0,
+                managed_copies_remaining: 0,
+                tombstone_present: true,
+              },
+              errors: [{ step: "index_l1", code: "ERASURE_STEP_FAILED" }],
+            }),
+            { status: 207, headers: { "content-type": "application/json" } },
+          ),
+        );
+      });
+    renderRoute("/memories");
+    const user = userEvent.setup();
+    await user.click(await screen.findByText("需要彻底删除"));
+    await user.click(screen.getByRole("button", { name: "彻底删除" }));
+    expect(
+      await screen.findByRole("list", { name: "删除范围核对表" }),
+    ).toBeVisible();
+    expect(screen.getByText("/safe/export.json")).toBeVisible();
+    const confirmButton = screen.getByRole("button", { name: "确认彻底删除" });
+    expect(confirmButton).toBeDisabled();
+    await user.click(screen.getByLabelText(/确认删除上方所有已登记/));
+    await user.click(screen.getByLabelText(/已自行处理系统无法发现/));
+    await user.type(
+      screen.getByLabelText(/输入 ERASE L1:memory-1 确认/),
+      "ERASE L1:memory-1",
+    );
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+    expect(await screen.findByText("删除尚未完成")).toBeVisible();
+    expect(screen.getByRole("button", { name: "重试彻底删除" })).toBeEnabled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/privacy-deletions/plan-1/execute",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"unmanaged_copies_acknowledged":true'),
+      }),
+    );
+  });
+
   it("shows memory loading and a retryable error state", async () => {
     let rejectRequest!: (reason: Error) => void;
     vi.spyOn(globalThis, "fetch").mockImplementation(

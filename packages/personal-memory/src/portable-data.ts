@@ -17,6 +17,7 @@ import path from "node:path";
 import { z } from "zod";
 import { PERSONAL_MEMORY_SCHEMA_VERSION } from "./migrations.js";
 import { AuditLedger } from "./audit-ledger.js";
+import { ManagedArtifactLedger } from "./privacy-ledger.js";
 import { assertDataDirectoryOffline } from "./runtime-marker.js";
 
 const BACKUP_FORMAT_VERSION = 1;
@@ -409,6 +410,18 @@ export async function createPortableBackup(
     );
     await chmod(stagingDirectory, 0o700);
     await rename(stagingDirectory, backupDirectory);
+    const database = new DatabaseSync(productDatabase);
+    try {
+      new ManagedArtifactLedger(database, () => now().toISOString()).register(
+        "portable_backup",
+        backupDirectory,
+      );
+    } catch (error) {
+      await rm(backupDirectory, { recursive: true, force: true });
+      throw error;
+    } finally {
+      database.close();
+    }
     return manifest;
   } catch (error) {
     await rm(stagingDirectory, { recursive: true, force: true }).catch(
@@ -832,10 +845,22 @@ export async function createReadableExport(
     path.join(dataDirectory, "personalmemory.sqlite"),
   );
   try {
-    new AuditLedger(database, () => now().toISOString()).record({
-      action: "data.exported",
-      details: { format },
-    });
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      new ManagedArtifactLedger(database, () => now().toISOString()).register(
+        "readable_export",
+        outputFile,
+      );
+      new AuditLedger(database, () => now().toISOString()).record({
+        action: "data.exported",
+        details: { format },
+      });
+      database.exec("COMMIT");
+    } catch (error) {
+      database.exec("ROLLBACK");
+      await rm(outputFile, { force: true });
+      throw error;
+    }
   } finally {
     database.close();
   }
