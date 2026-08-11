@@ -2,6 +2,7 @@ import {
   defaultMigrations,
   ImportLedger,
   MemoryStateLedger,
+  acquireRuntimeMarker,
   initializeDataDirectory,
   loadConfig,
   migrateDatabase,
@@ -20,6 +21,7 @@ let stopping = false;
 let database: DatabaseSync | undefined;
 let importManager: ConversationImportManager | undefined;
 let memoryStates: MemoryStateLedger | undefined;
+let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
   if (stopping) return;
@@ -31,6 +33,8 @@ async function stop(signal: string): Promise<void> {
     memoryStates = undefined;
     database?.close();
     database = undefined;
+    releaseRuntimeMarker?.();
+    releaseRuntimeMarker = undefined;
     process.stdout.write(`PersonalMemory Gateway stopped (${signal})\n`);
     process.exitCode = 0;
   } catch (error) {
@@ -45,6 +49,7 @@ async function main(): Promise<void> {
   try {
     const { config } = loadConfig();
     const dataDirectory = initializeDataDirectory(config.dataDirectory);
+    releaseRuntimeMarker = acquireRuntimeMarker(dataDirectory);
     database = new DatabaseSync(join(dataDirectory, "personalmemory.sqlite"));
     migrateDatabase(database, defaultMigrations);
     const upstream = new FetchUpstreamGatewayClient(

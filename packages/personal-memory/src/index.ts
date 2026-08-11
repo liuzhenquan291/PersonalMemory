@@ -33,6 +33,20 @@ export {
   type MemoryStateStatus,
 } from "./memory-state-ledger.js";
 export {
+  PortableDataError,
+  createPortableBackup,
+  createReadableExport,
+  restorePortableBackup,
+  verifyPortableBackup,
+  type BackupManifest,
+  type ReadableExport,
+} from "./portable-data.js";
+export {
+  DataDirectoryActiveError,
+  acquireRuntimeMarker,
+  assertDataDirectoryOffline,
+} from "./runtime-marker.js";
+export {
   ImportIdempotencyConflictError,
   ImportLedger,
   type ImportItem,

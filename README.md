@@ -17,7 +17,18 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 ## 当前状态
 
-项目已完成安全运行基线、会话导入、预算召回和四层记忆浏览，当前实现记忆修改、失效与 L1 受控删除。受控删除不等于彻底删除；来源、派生资产、导出物和备份的可验证级联删除在后续阶段完成。
+项目已完成安全运行基线、会话导入、预算召回、四层记忆浏览、记忆纠错与受控删除，并提供离线可读导出、带校验和备份和原子恢复。受控删除不等于彻底删除；来源、派生资产、导出物和备份的可验证级联删除在后续阶段完成。
+
+本地 Gateway 停止后，可使用以下命令管理统一 SQLite 数据根：
+
+```bash
+npm run data:export -- --format json --output /安全路径/memory-export.json
+npm run data:backup -- --output /安全路径/memory-backup
+npm run data:verify -- --input /安全路径/memory-backup
+npm run data:restore -- --input /安全路径/memory-backup --confirm "RESTORE /绝对路径/PersonalMemory"
+```
+
+导出和备份包含个人记忆正文，移动或共享前请确认目标路径权限。完整格式、排除项和恢复边界见[可移植数据说明](docs/architecture/PORTABLE_DATA.md)。
 
 - [项目执行规则](docs/PROJECT_RULES.md)
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
