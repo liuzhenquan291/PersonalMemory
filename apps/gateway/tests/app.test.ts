@@ -1,6 +1,7 @@
 import {
   ImportLedger,
   MemoryStateLedger,
+  MemoryReviewLedger,
   defaultMigrations,
   loadConfig,
   migrateDatabase,
@@ -30,6 +31,7 @@ function createHarness(options: {
   config?: PersonalMemoryConfig;
   upstream?: UpstreamGatewayClient;
   now?: () => number;
+  withReviews?: boolean;
 }) {
   const logs: GatewayLogEvent[] = [];
   let sequence = 0;
@@ -51,11 +53,15 @@ function createHarness(options: {
     () => `import-job-${++importSequence}`,
   );
   const memoryStates = new MemoryStateLedger(database);
+  const memoryReviews = options.withReviews
+    ? new MemoryReviewLedger(database)
+    : undefined;
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
     importManager,
     memoryStates,
+    memoryReviews,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -63,7 +69,7 @@ function createHarness(options: {
       error: (event) => logs.push(event),
     },
   });
-  return { app, upstream, logs, importManager, memoryStates };
+  return { app, upstream, logs, importManager, memoryStates, memoryReviews };
 }
 
 async function waitForImport(
@@ -109,8 +115,35 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 3,
+      schemaVersion: 4,
     });
+  });
+
+  it("reviews memories in a bounded batch and reports per-item results", async () => {
+    const { app, memoryReviews } = createHarness({ withReviews: true });
+    const response = await app.request("/api/v1/memory-reviews", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        items: [
+          { id: "memory-1", action: "approve", expected_revision: 0 },
+          {
+            id: "memory-2",
+            action: "reject",
+            expected_revision: 0,
+            reason: "不准确",
+          },
+        ],
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      results: [
+        { id: "memory-1", ok: true, review: { status: "approved" } },
+        { id: "memory-2", ok: true, review: { status: "rejected" } },
+      ],
+    });
+    expect(memoryReviews?.isApproved("L1", "memory-1")).toBe(true);
   });
 
   it("keeps memory access closed until authentication is configured", async () => {

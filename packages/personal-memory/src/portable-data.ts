@@ -97,6 +97,15 @@ interface ExportStateRow {
   updated_at: string;
 }
 
+interface ExportReviewRow {
+  level: string;
+  memory_id: string;
+  status: string;
+  reason: string | null;
+  revision: number;
+  updated_at: string;
+}
+
 export interface ReadableExport {
   format: "personalmemory-export";
   format_version: number;
@@ -107,6 +116,7 @@ export interface ReadableExport {
   scenarios: { path: string; content: string }[];
   core: { path: "persona.md"; content: string } | null;
   states: ExportStateRow[];
+  reviews: ExportReviewRow[];
 }
 
 function resolved(value: string): string {
@@ -655,6 +665,7 @@ async function readableExport(
   const schemaVersion = readProductSchema(databasePath);
   const database = new DatabaseSync(databasePath, { readOnly: true });
   let states: ExportStateRow[];
+  let reviews: ExportReviewRow[];
   try {
     states = database
       .prepare(
@@ -662,6 +673,12 @@ async function readableExport(
          FROM personalmemory_memory_states ORDER BY level, memory_id`,
       )
       .all() as unknown as ExportStateRow[];
+    reviews = database
+      .prepare(
+        `SELECT level, memory_id, status, reason, revision, updated_at
+         FROM personalmemory_memory_reviews ORDER BY level, memory_id`,
+      )
+      .all() as unknown as ExportReviewRow[];
   } finally {
     database.close();
   }
@@ -678,6 +695,7 @@ async function readableExport(
     scenarios,
     core,
     states,
+    reviews,
   };
 }
 
@@ -704,6 +722,7 @@ function markdownExport(snapshot: ReadableExport): string {
   if (snapshot.scenarios.length === 0) sections.push("_无记录_", "");
   sections.push("## L3 核心画像", "", snapshot.core?.content ?? "_无记录_", "");
   appendJson("PersonalMemory 状态与 tombstone", snapshot.states);
+  appendJson("PersonalMemory 审核状态", snapshot.reviews);
   return `${sections.join("\n")}\n`;
 }
 
@@ -751,6 +770,7 @@ export async function createReadableExport(
       scenarios: snapshot.scenarios.length,
       core: snapshot.core ? 1 : 0,
       states: snapshot.states.length,
+      reviews: snapshot.reviews.length,
     },
   };
 }

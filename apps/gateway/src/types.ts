@@ -1,4 +1,5 @@
 import type {
+  MemoryReviewLedger,
   MemoryStateLedger,
   PersonalMemoryConfig,
 } from "@personalmemory/core";
@@ -42,6 +43,7 @@ export interface GatewayAppOptions {
   upstream: UpstreamGatewayClient;
   importManager?: ConversationImportManager;
   memoryStates?: MemoryStateLedger;
+  memoryReviews?: MemoryReviewLedger;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

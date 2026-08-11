@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 const navigation = [
+  { to: "/inbox", label: "收件箱", glyph: "审" },
   { to: "/memories", label: "记忆", glyph: "记" },
   { to: "/settings", label: "设置", glyph: "设" },
 ] as const;
@@ -52,7 +53,11 @@ export function AppLayout() {
             <span className="trace-node is-current" />
           </div>
           <span className="route-label">
-            {location.pathname === "/settings" ? "偏好与连接" : "记忆索引"}
+            {location.pathname === "/settings"
+              ? "偏好与连接"
+              : location.pathname === "/inbox"
+                ? "待审核记忆"
+                : "记忆索引"}
           </span>
           <span className="privacy-label">仅自己可见</span>
         </header>

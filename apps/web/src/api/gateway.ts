@@ -45,6 +45,11 @@ export interface MemoryListItem {
     readonly label: string;
     readonly explanation: string;
   };
+  readonly review?: {
+    readonly status: "pending" | "approved" | "rejected";
+    readonly revision: number;
+    readonly reason?: string;
+  };
 }
 
 export interface MemoryMutationState {
@@ -144,7 +149,12 @@ export interface MemoryListResponse {
 }
 
 export async function fetchMemories(
-  input: { level: MemoryLevel; query: string; page: number },
+  input: {
+    level: MemoryLevel;
+    query: string;
+    page: number;
+    reviewStatus?: "pending" | "approved" | "rejected";
+  },
   signal?: AbortSignal,
 ): Promise<MemoryListResponse> {
   const params = new URLSearchParams({
@@ -153,6 +163,7 @@ export async function fetchMemories(
     page: String(input.page),
     page_size: "12",
   });
+  if (input.reviewStatus) params.set("review_status", input.reviewStatus);
   const response = await fetch(`/api/v1/memories?${params}`, {
     headers: { Accept: "application/json" },
     credentials: "same-origin",
@@ -173,6 +184,41 @@ export async function fetchMemories(
     throw new Error("Gateway 返回了无法识别的记忆列表");
   }
   return body as MemoryListResponse;
+}
+
+export interface ReviewBatchItem {
+  readonly id: string;
+  readonly action: "approve" | "reject";
+  readonly expected_revision: number;
+  readonly content?: string;
+  readonly reason?: string;
+}
+
+export async function reviewMemories(items: ReviewBatchItem[]): Promise<void> {
+  const response = await fetch("/api/v1/memory-reviews", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(sessionStorage.getItem(CSRF_STORAGE_KEY)
+        ? { "X-CSRF-Token": sessionStorage.getItem(CSRF_STORAGE_KEY)! }
+        : {}),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({ items }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    results?: Array<{ ok: boolean; code?: string }>;
+    error?: { code?: string };
+  };
+  if (!response.ok || body.results?.some((result) => !result.ok)) {
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ??
+        body.results?.find((result) => !result.ok)?.code ??
+        "REVIEW_FAILED",
+    );
+  }
 }
 
 export async function fetchGatewayStatus(

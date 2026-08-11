@@ -26,6 +26,10 @@ import {
   memoryInvalidateSchema,
   memoryUpdateSchema,
 } from "./memory-mutations.js";
+import {
+  MemoryReviewService,
+  memoryReviewBatchSchema,
+} from "./memory-reviews.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -321,15 +325,24 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     options.upstream,
     options.config.server.upstreamTimeoutMs,
     options.memoryStates,
+    options.memoryReviews,
   );
   const memoryBrowser = new MemoryBrowser(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
     options.memoryStates,
+    options.memoryReviews,
   );
   const memoryMutations = options.memoryStates
     ? new MemoryMutationService(
         options.memoryStates,
+        options.upstream,
+        options.config.server.upstreamTimeoutMs,
+      )
+    : undefined;
+  const memoryReviews = options.memoryReviews
+    ? new MemoryReviewService(
+        options.memoryReviews,
         options.upstream,
         options.config.server.upstreamTimeoutMs,
       )
@@ -353,6 +366,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
       "GET /api/v1/memories",
+      "POST /api/v1/memory-reviews",
       "POST /api/v1/memories/:level/:id/update",
       "POST /api/v1/memories/:level/:id/invalidate",
       "POST /api/v1/memories/:level/:id/delete",
@@ -864,6 +878,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           ...(item.score === undefined ? {} : { score: item.score }),
           state: item.state,
           source: item.source,
+          ...(item.review ? { review: item.review } : {}),
         })),
         page: result.page,
         page_size: result.pageSize,
@@ -872,6 +887,38 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         has_next: result.hasNext,
       },
       200,
+    );
+  });
+
+  app.post("/api/v1/memory-reviews", async (context) => {
+    authenticateMemoryRequest(context);
+    if (!memoryReviews) {
+      throw new GatewayHttpError(
+        503,
+        "MEMORY_REVIEW_UNAVAILABLE",
+        "Memory review state is not available",
+      );
+    }
+    const parsed = memoryReviewBatchSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Memory review request is invalid",
+      );
+    }
+    const results = await memoryReviews.applyBatch(
+      parsed.data.items,
+      context.get("requestId"),
+    );
+    return jsonResponse(
+      { results },
+      results.every((result) => result.ok) ? 200 : 207,
     );
   });
 

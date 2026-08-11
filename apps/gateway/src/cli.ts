@@ -1,6 +1,7 @@
 import {
   defaultMigrations,
   ImportLedger,
+  MemoryReviewLedger,
   MemoryStateLedger,
   acquireRuntimeMarker,
   initializeDataDirectory,
@@ -21,6 +22,7 @@ let stopping = false;
 let database: DatabaseSync | undefined;
 let importManager: ConversationImportManager | undefined;
 let memoryStates: MemoryStateLedger | undefined;
+let memoryReviews: MemoryReviewLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -31,6 +33,7 @@ async function stop(signal: string): Promise<void> {
     await importManager?.shutdown();
     importManager = undefined;
     memoryStates = undefined;
+    memoryReviews = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -61,11 +64,13 @@ async function main(): Promise<void> {
       config.server.upstreamTimeoutMs,
     );
     memoryStates = new MemoryStateLedger(database);
+    memoryReviews = new MemoryReviewLedger(database);
     const app = createGatewayApp({
       config,
       upstream,
       importManager,
       memoryStates,
+      memoryReviews,
     });
     server = new PersonalMemoryGatewayServer(app, config);
 

@@ -46,6 +46,25 @@ test("keeps every primary action visible at 320px", async ({ page }) => {
   expect(widths.content).toBe(widths.viewport);
 });
 
+test("reviews a pending memory from the inbox on a narrow screen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto("/inbox");
+
+  await expect(
+    page.getByRole("heading", { name: "先确认，再让记忆参与回答" }),
+  ).toBeVisible();
+  await page.getByRole("checkbox", { name: /用户偏好简洁回答/u }).check();
+  await page.getByRole("button", { name: "接受", exact: true }).click();
+  await expect(page.getByText("已接受所选记忆。")).toBeVisible();
+  const widths = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(widths.content).toBe(widths.viewport);
+});
+
 test("honors reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/memories");

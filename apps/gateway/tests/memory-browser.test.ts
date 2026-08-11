@@ -5,6 +5,7 @@ import {
 } from "../src/memory-browser.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
 import {
+  MemoryReviewLedger,
   MemoryStateLedger,
   defaultMigrations,
   migrateDatabase,
@@ -148,5 +149,71 @@ describe("MemoryBrowser", () => {
     } finally {
       database.close();
     }
+  });
+
+  it("filters review status before paginating the inbox", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      migrateDatabase(database, defaultMigrations);
+      const reviews = new MemoryReviewLedger(database);
+      reviews.set("L1", "approved", "approved", 0);
+      const request = vi.fn(async () =>
+        envelope({
+          items: [
+            {
+              id: "approved",
+              type: "fact",
+              content: "already approved",
+              updated_at: "2026-08-11T00:00:00Z",
+            },
+            {
+              id: "pending-1",
+              type: "fact",
+              content: "first pending",
+              updated_at: "2026-08-11T00:00:00Z",
+            },
+            {
+              id: "pending-2",
+              type: "fact",
+              content: "second pending",
+              updated_at: "2026-08-11T00:00:00Z",
+            },
+          ],
+          total: 3,
+        }),
+      );
+      const result = await new MemoryBrowser(
+        { request },
+        1_000,
+        undefined,
+        reviews,
+      ).browse(
+        memoryBrowseQuerySchema.parse({
+          level: "L1",
+          review_status: "pending",
+          page: 2,
+          page_size: 1,
+        }),
+        "request-1",
+      );
+      expect(request).toHaveBeenCalledWith(
+        expect.objectContaining({ body: { limit: 3, offset: 0 } }),
+      );
+      expect(result.items).toMatchObject([
+        { id: "pending-2", review: { status: "pending" } },
+      ]);
+      expect(result.hasNext).toBe(false);
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects review filters outside the L1 inbox", () => {
+    expect(() =>
+      memoryBrowseQuerySchema.parse({
+        level: "L2",
+        review_status: "pending",
+      }),
+    ).toThrow();
   });
 });

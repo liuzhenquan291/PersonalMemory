@@ -9,6 +9,7 @@ import {
 import { AppErrorBoundary } from "./components/app-error-boundary";
 import { AppLayout } from "./components/app-layout";
 import { MemoriesPage } from "./pages/memories-page";
+import { InboxPage } from "./pages/inbox-page";
 import { SettingsPage } from "./pages/settings-page";
 
 export function createAppRouter() {
@@ -20,6 +21,7 @@ export function createAppRouter() {
       children: [
         { index: true, element: <Navigate replace to="/memories" /> },
         { path: "memories", element: <MemoriesPage /> },
+        { path: "inbox", element: <InboxPage /> },
         { path: "settings", element: <SettingsPage /> },
       ],
     },

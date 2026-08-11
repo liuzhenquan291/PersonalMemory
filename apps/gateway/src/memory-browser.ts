@@ -1,16 +1,31 @@
 import { z } from "zod";
-import type { MemoryStateLedger } from "@personalmemory/core";
+import type {
+  MemoryReviewLedger,
+  MemoryReviewStatus,
+  MemoryStateLedger,
+} from "@personalmemory/core";
 import type { UpstreamGatewayClient } from "./types.js";
 
 export const memoryLayerSchema = z.enum(["L0", "L1", "L2", "L3"]);
 export type MemoryLayer = z.infer<typeof memoryLayerSchema>;
 
-export const memoryBrowseQuerySchema = z.object({
-  level: memoryLayerSchema.default("L1"),
-  query: z.string().max(2_048).default(""),
-  page: z.coerce.number().int().min(1).max(10_000).default(1),
-  page_size: z.coerce.number().int().min(1).max(50).default(12),
-});
+export const memoryBrowseQuerySchema = z
+  .object({
+    level: memoryLayerSchema.default("L1"),
+    query: z.string().max(2_048).default(""),
+    page: z.coerce.number().int().min(1).max(10_000).default(1),
+    page_size: z.coerce.number().int().min(1).max(50).default(12),
+    review_status: z.enum(["pending", "approved", "rejected"]).optional(),
+  })
+  .superRefine((input, context) => {
+    if (input.review_status && input.level !== "L1") {
+      context.addIssue({
+        code: "custom",
+        path: ["review_status"],
+        message: "review_status is only supported for L1 memories",
+      });
+    }
+  });
 
 export interface BrowsedMemory {
   id: string;
@@ -28,6 +43,7 @@ export interface BrowsedMemory {
     label: string;
     explanation: string;
   };
+  review?: { status: MemoryReviewStatus; revision: number; reason?: string };
 }
 
 export interface MemoryBrowseResult {
@@ -95,6 +111,7 @@ export class MemoryBrowser {
     private readonly upstream: UpstreamGatewayClient,
     private readonly timeoutMs: number,
     private readonly states?: MemoryStateLedger,
+    private readonly reviews?: MemoryReviewLedger,
   ) {}
 
   async browse(
@@ -103,22 +120,27 @@ export class MemoryBrowser {
   ): Promise<MemoryBrowseResult> {
     const offset = (input.page - 1) * input.page_size;
     if (input.level === "L2") {
-      return this.applyStates(
-        input.level,
-        await this.browseL2(input, requestId, offset),
+      return this.applyReviews(
+        input,
+        this.applyStates(
+          input.level,
+          await this.browseL2(input, requestId, offset),
+        ),
       );
     }
     if (input.level === "L3") {
-      return this.applyStates(
-        input.level,
-        await this.browseL3(input, requestId),
+      return this.applyReviews(
+        input,
+        this.applyStates(input.level, await this.browseL3(input, requestId)),
       );
     }
 
     const searching = input.query.trim().length > 0;
-    const requested = searching
-      ? Math.min(offset + input.page_size + 1, 50)
-      : input.page_size;
+    const reviewFiltering = Boolean(input.review_status);
+    const requested =
+      searching || reviewFiltering
+        ? Math.min(offset + input.page_size + 1, 50)
+        : input.page_size;
     const path =
       input.level === "L1"
         ? searching
@@ -129,7 +151,9 @@ export class MemoryBrowser {
           : "/v2/conversation/query";
     const body = searching
       ? { query: input.query.trim(), limit: requested }
-      : { limit: input.page_size, offset };
+      : reviewFiltering
+        ? { limit: requested, offset: 0 }
+        : { limit: input.page_size, offset };
     const response = await this.call(path, body, requestId);
     let upstreamTotal: number | undefined;
     let allItems: BrowsedMemory[];
@@ -174,20 +198,24 @@ export class MemoryBrowser {
         },
       }));
     }
-    const items = searching
-      ? allItems.slice(offset, offset + input.page_size)
-      : allItems;
+    const items =
+      searching && !reviewFiltering
+        ? allItems.slice(offset, offset + input.page_size)
+        : allItems;
     const total = searching ? null : (upstreamTotal ?? allItems.length);
-    return this.applyStates(input.level, {
-      items,
-      page: input.page,
-      pageSize: input.page_size,
-      total,
-      hasPrevious: input.page > 1,
-      hasNext: searching
-        ? allItems.length > offset + input.page_size
-        : offset + items.length < (total ?? 0),
-    });
+    return this.applyReviews(
+      input,
+      this.applyStates(input.level, {
+        items,
+        page: input.page,
+        pageSize: input.page_size,
+        total,
+        hasPrevious: input.page > 1,
+        hasNext: searching
+          ? allItems.length > offset + input.page_size
+          : offset + items.length < (total ?? 0),
+      }),
+    );
   }
 
   private async browseL2(
@@ -331,6 +359,47 @@ export class MemoryBrowser {
       ...result,
       items,
       total: this.states.countSuppressed(level) > 0 ? null : result.total,
+    };
+  }
+
+  private applyReviews(
+    input: z.output<typeof memoryBrowseQuerySchema>,
+    result: MemoryBrowseResult,
+  ): MemoryBrowseResult {
+    if (!this.reviews || input.level === "L0") return result;
+    const reviews = this.reviews.getMany(
+      result.items.map((item) => ({
+        level: item.level as "L1" | "L2" | "L3",
+        memoryId: item.id,
+      })),
+    );
+    const matched = result.items
+      .map((item) => {
+        const review = reviews.get(`${item.level}:${item.id}`)!;
+        return {
+          ...item,
+          review: {
+            status: review.status,
+            revision: review.revision,
+            ...(review.reason ? { reason: review.reason } : {}),
+          },
+        };
+      })
+      .filter(
+        (item) =>
+          !input.review_status || item.review.status === input.review_status,
+      );
+    const offset = (input.page - 1) * input.page_size;
+    const items = input.review_status
+      ? matched.slice(offset, offset + input.page_size)
+      : matched;
+    return {
+      ...result,
+      items,
+      total: input.review_status ? null : result.total,
+      hasNext: input.review_status
+        ? matched.length > offset + input.page_size
+        : result.hasNext,
     };
   }
 }

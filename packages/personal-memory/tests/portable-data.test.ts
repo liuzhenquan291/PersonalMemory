@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  MemoryReviewLedger,
   MemoryStateLedger,
   acquireRuntimeMarker,
   assertDataDirectoryOffline,
@@ -45,6 +46,12 @@ function fixture(root: string, recordCount = 1): string {
     "invalidated",
     0,
     "错误记忆",
+  );
+  new MemoryReviewLedger(product, () => "2026-08-12T00:00:00.000Z").set(
+    "L1",
+    "memory-1",
+    "approved",
+    0,
   );
   product.close();
   const vectors = new DatabaseSync(join(data, "vectors.db"));
@@ -113,8 +120,15 @@ describe("portable PersonalMemory data", () => {
       memory_id: "memory-1",
       status: "invalidated",
     });
+    expect(exported.reviews[0]).toMatchObject({
+      memory_id: "memory-1",
+      status: "approved",
+    });
     expect(readFileSync(markdownPath, "utf8")).toContain(
       "PersonalMemory 状态与 tombstone",
+    );
+    expect(readFileSync(markdownPath, "utf8")).toContain(
+      "PersonalMemory 审核状态",
     );
     expect(jsonResult.counts).toEqual({
       conversations: 1,
@@ -122,6 +136,7 @@ describe("portable PersonalMemory data", () => {
       scenarios: 1,
       core: 1,
       states: 1,
+      reviews: 1,
     });
   });
 

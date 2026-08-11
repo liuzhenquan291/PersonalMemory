@@ -7,6 +7,7 @@ import { UpstreamGatewayError } from "../src/upstream-client.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
 import {
   MemoryStateLedger,
+  MemoryReviewLedger,
   defaultMigrations,
   migrateDatabase,
 } from "@personalmemory/core";
@@ -21,6 +22,35 @@ function parse(input: unknown) {
 }
 
 describe("RecallService", () => {
+  it("does not inject pending or rejected L1 memories", async () => {
+    const database = new DatabaseSync(":memory:");
+    try {
+      migrateDatabase(database, defaultMigrations);
+      const reviews = new MemoryReviewLedger(database);
+      reviews.set("L1", "approved", "approved", 0);
+      reviews.set("L1", "rejected", "rejected", 0, "wrong");
+      const upstream: UpstreamGatewayClient = {
+        async request() {
+          return envelope({
+            items: [
+              { id: "pending", content: "pending", score: 1 },
+              { id: "approved", content: "approved", score: 0.9 },
+              { id: "rejected", content: "rejected", score: 0.8 },
+            ],
+          });
+        },
+      };
+      const result = await new RecallService(
+        upstream,
+        1_000,
+        undefined,
+        reviews,
+      ).recall(parse({ query: "query", levels: ["L1"] }), "request-1");
+      expect(result.items.map(({ id }) => id)).toEqual(["approved"]);
+    } finally {
+      database.close();
+    }
+  });
   it("filters levels before upstream calls and sorts equal-score IDs deterministically", async () => {
     const upstream: UpstreamGatewayClient = {
       request: vi.fn(async ({ path }) => {

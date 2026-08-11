@@ -13,6 +13,7 @@ import { ConversationImportManager } from "../apps/gateway/src/import-manager.js
 import { FetchUpstreamGatewayClient } from "../apps/gateway/src/upstream-client.js";
 import {
   ImportLedger,
+  MemoryReviewLedger,
   MemoryStateLedger,
   createReadableExport,
   defaultMigrations,
@@ -291,6 +292,7 @@ observability:
         upstream,
         importManager: imports,
         memoryStates: new MemoryStateLedger(database),
+        memoryReviews: new MemoryReviewLedger(database),
         logger: { info() {}, error() {} },
       });
       return { app, database, imports };
@@ -343,6 +345,39 @@ observability:
     expect(memory.source.status).toBe("original");
     expect(memory.source.explanation).toContain("l0_m2-golden-session_");
 
+    const pendingRecall = await product.app.request("/api/v1/recall/query", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ query: "M2_CHAIN_MARKER", levels: ["L1"] }),
+    });
+    expect(pendingRecall.status).toBe(200);
+    expect(await pendingRecall.json()).toMatchObject({ items: [] });
+
+    const approved = await product.app.request("/api/v1/memory-reviews", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        items: [
+          { id: memory.id, action: "approve", expected_revision: 0 },
+        ],
+      }),
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({
+      results: [
+        { id: memory.id, ok: true, review: { status: "approved", revision: 1 } },
+      ],
+    });
+    const approvedRecall = await product.app.request("/api/v1/recall/query", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ query: "M2_CHAIN_MARKER", levels: ["L1"] }),
+    });
+    expect(approvedRecall.status).toBe(200);
+    expect(await approvedRecall.json()).toMatchObject({
+      items: [{ id: memory.id, level: "L1" }],
+    });
+
     const corrected = await product.app.request(
       `/api/v1/memories/L1/${encodeURIComponent(memory.id)}/update`,
       {
@@ -369,6 +404,7 @@ observability:
       const exported = await createReadableExport(dataDir, exportFile, "json");
       expect(exported.counts.memories).toBeGreaterThan(0);
       expect(exported.counts.states).toBeGreaterThan(0);
+      expect(exported.counts.reviews).toBeGreaterThan(0);
     } finally {
       await rm(exportFile, { force: true });
     }

@@ -33,6 +33,13 @@ export {
   type MemoryStateStatus,
 } from "./memory-state-ledger.js";
 export {
+  MemoryReviewConflictError,
+  MemoryReviewLedger,
+  type MemoryReview,
+  type MemoryReviewLevel,
+  type MemoryReviewStatus,
+} from "./memory-review-ledger.js";
+export {
   PortableDataError,
   createPortableBackup,
   createReadableExport,

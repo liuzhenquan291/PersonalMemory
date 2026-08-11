@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./app";
 import { AppLayout } from "./components/app-layout";
 import { MemoriesPage } from "./pages/memories-page";
+import { InboxPage } from "./pages/inbox-page";
 import { SettingsPage } from "./pages/settings-page";
 
 function renderRoute(path: string) {
@@ -17,6 +18,7 @@ function renderRoute(path: string) {
         element: <AppLayout />,
         children: [
           { path: "memories", element: <MemoriesPage /> },
+          { path: "inbox", element: <InboxPage /> },
           { path: "settings", element: <SettingsPage /> },
         ],
       },
@@ -40,6 +42,66 @@ afterEach(() => {
 });
 
 describe("PersonalMemory Web", () => {
+  it("reviews a corrected pending memory before it can be recalled", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        if (String(input).startsWith("/api/v1/memories?")) {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                items: [
+                  {
+                    id: "pending-1",
+                    level: "L1",
+                    title: "界面偏好",
+                    content: "用户喜欢蓝色",
+                    state: { status: "active", revision: 0 },
+                    review: { status: "pending", revision: 0 },
+                    source: {
+                      status: "original",
+                      label: "1 条对话原文",
+                      explanation: "source",
+                    },
+                  },
+                ],
+                page: 1,
+                page_size: 12,
+                total: null,
+                has_previous: false,
+                has_next: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        expect(init?.method).toBe("POST");
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({ results: [{ id: "pending-1", ok: true }] }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          ),
+        );
+      });
+    renderRoute("/inbox");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox"));
+    const editor = screen.getByLabelText("修改 界面偏好");
+    await user.clear(editor);
+    await user.type(editor, "用户喜欢墨绿色");
+    await user.click(screen.getByRole("button", { name: "接受" }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/memory-reviews",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("用户喜欢墨绿色"),
+      }),
+    );
+    expect(await screen.findByText("已接受所选记忆。")).toBeVisible();
+  });
   it("renders a personal empty state without team concepts", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       new Response(
@@ -238,6 +300,7 @@ describe("PersonalMemory Web", () => {
 
     await user.tab();
     expect(screen.getByText("跳到主要内容")).toHaveFocus();
+    await user.tab();
     await user.tab();
     await user.tab();
     await user.keyboard("{Enter}");

@@ -613,6 +613,92 @@ a {
   cursor: not-allowed;
 }
 
+.inbox-stack {
+  display: grid;
+  gap: 0.85rem;
+}
+.inbox-item {
+  display: grid;
+  grid-template-columns: 0.32rem minmax(14rem, 0.8fr) minmax(18rem, 1.2fr);
+  gap: 0.75rem 1rem;
+  padding: 1rem 1.1rem 1rem 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  background: var(--paper);
+}
+.inbox-item::before {
+  grid-row: 1 / 3;
+  background: #d8a91c;
+  content: "";
+}
+.inbox-select {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 0.65rem;
+}
+.review-tab {
+  padding: 0.24rem 0.42rem;
+  border-radius: 0.25rem;
+  color: #684f08;
+  background: #fff0ad;
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+.inbox-item textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  color: var(--ink);
+  background: #fff;
+  font: inherit;
+  resize: vertical;
+}
+.inbox-item small {
+  grid-column: 2 / 4;
+  color: var(--muted);
+}
+.inbox-actions {
+  position: sticky;
+  bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid #94a2b4;
+  border-radius: 0.8rem;
+  background: rgba(247, 249, 252, 0.96);
+  box-shadow: 0 0.8rem 2rem rgba(16, 24, 43, 0.12);
+}
+.inbox-actions label {
+  flex: 1;
+}
+.inbox-actions input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+}
+.inbox-actions button {
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--night);
+  border-radius: 0.5rem;
+  color: #fff;
+  background: var(--night);
+}
+.inbox-actions button.is-reject {
+  border-color: #9e4050;
+  background: #9e4050;
+}
+.inbox-actions button:disabled {
+  opacity: 0.5;
+}
+
 .empty-state {
   position: relative;
   overflow: hidden;
@@ -886,6 +972,8 @@ a {
 
   .sidebar nav {
     display: flex;
+    min-width: 0;
+    overflow-x: auto;
   }
 
   .nav-link {
@@ -940,6 +1028,21 @@ a {
 
   .memory-list {
     grid-template-columns: 1fr;
+  }
+
+  .inbox-item {
+    grid-template-columns: 0.28rem 1fr;
+  }
+
+  .inbox-item textarea,
+  .inbox-item small {
+    grid-column: 2;
+  }
+
+  .inbox-actions {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 

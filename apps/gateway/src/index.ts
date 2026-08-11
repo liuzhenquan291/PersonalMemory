@@ -17,6 +17,11 @@ export {
   type EditableMemoryLevel,
 } from "./memory-mutations.js";
 export {
+  MemoryReviewService,
+  memoryReviewBatchSchema,
+  type MemoryReviewResult,
+} from "./memory-reviews.js";
+export {
   MemoryBrowser,
   memoryBrowseQuerySchema,
   memoryLayerSchema,

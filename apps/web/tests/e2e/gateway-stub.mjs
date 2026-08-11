@@ -17,6 +17,7 @@ const server = createServer((request, response) => {
     return;
   }
   if (request.url?.startsWith("/api/v1/memories?")) {
+    const inbox = request.url.includes("review_status=pending");
     response.end(
       JSON.stringify({
         items: [
@@ -26,6 +27,9 @@ const server = createServer((request, response) => {
             title: "用户偏好简洁回答",
             content: "用户希望回答清晰、简洁，并说明信息来源。",
             state: { status: "active", revision: 2 },
+            ...(inbox
+              ? { review: { status: "pending", revision: 0 } }
+              : {}),
             source: {
               status: "unavailable",
               label: "来源未记录",
@@ -40,6 +44,36 @@ const server = createServer((request, response) => {
         has_next: false,
       }),
     );
+    return;
+  }
+  if (request.url === "/api/v1/memory-reviews") {
+    let raw = "";
+    request.on("data", (chunk) => {
+      raw += chunk;
+    });
+    request.on("end", () => {
+      const body = JSON.parse(raw);
+      if (
+        body.items?.[0]?.id !== "memory-1" ||
+        body.items?.[0]?.action !== "approve" ||
+        body.items?.[0]?.expected_revision !== 0
+      ) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ error: { code: "INVALID_REQUEST" } }));
+        return;
+      }
+      response.end(
+        JSON.stringify({
+          results: [
+            {
+              memory_id: "memory-1",
+              ok: true,
+              review: { status: "approved", revision: 1 },
+            },
+          ],
+        }),
+      );
+    });
     return;
   }
   if (request.url === "/api/v1/memories/L1/memory-1/update") {
