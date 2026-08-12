@@ -20,6 +20,7 @@
     "packages/*"
   ],
   "scripts": {
+    "install:product": "node scripts/personalmemory-install.mjs",
     "dev": "node scripts/dev.mjs",
     "data:export": "tsx scripts/personalmemory-data.ts export",
     "data:backup": "tsx scripts/personalmemory-data.ts backup",
@@ -46,11 +47,12 @@
     "seed-v2": "node ./bin/seed-v2.mjs",
     "typecheck": "npm run typecheck:products && npm --prefix sdk/typescript run build",
     "typecheck:products": "npm run typecheck -w @personalmemory/core && npm run typecheck -w @personalmemory/gateway && npm run typecheck -w @personalmemory/mcp-server && npm run typecheck -w @personalmemory/web",
-    "format:check": "prettier --check 'apps/**/*.{ts,tsx,css,json,html}' 'packages/**/*.{ts,json}' 'scripts/{clean-product-builds,dev*,personalmemory-claude*,personalmemory-client*,personalmemory-codex*,personalmemory-data*,verify-workspace-boundaries*}.{mjs,ts}' tsconfig.base.json eslint.config.mjs",
-    "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/dev*.mjs scripts/personalmemory-claude*.mjs scripts/personalmemory-client*.mjs scripts/personalmemory-codex*.mjs scripts/personalmemory-data.ts scripts/personalmemory-data.test.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
+    "format:check": "prettier --check 'apps/**/*.{ts,tsx,css,json,html}' 'packages/**/*.{ts,json}' 'scripts/{clean-product-builds,dev*,personalmemory-claude*,personalmemory-client*,personalmemory-codex*,personalmemory-data*,personalmemory-install*,verify-workspace-boundaries*}.{mjs,ts}' tsconfig.base.json eslint.config.mjs",
+    "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/dev*.mjs scripts/personalmemory-claude*.mjs scripts/personalmemory-client*.mjs scripts/personalmemory-codex*.mjs scripts/personalmemory-data.ts scripts/personalmemory-data.test.mjs scripts/personalmemory-install*.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
     "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
     "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
-    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/mcp-server && npm run test -w @personalmemory/web && npm run test:dev && npm run test:data && npm run test:mcp-client-config",
+    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/mcp-server && npm run test -w @personalmemory/web && npm run test:dev && npm run test:install && npm run test:data && npm run test:mcp-client-config",
+    "test:install": "node --test scripts/personalmemory-install.test.mjs",
     "test:data": "node --test scripts/personalmemory-data.test.mjs",
     "test:codex-config": "node --test scripts/personalmemory-codex.test.mjs",
     "test:mcp-client-config": "npm run test:codex-config && node --test scripts/personalmemory-client-e2e.test.mjs",
