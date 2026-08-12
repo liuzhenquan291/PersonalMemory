@@ -42,6 +42,7 @@ import {
   PrivacyDeletionError,
   privacyDeletionExecuteSchema,
   privacyDeletionPreviewSchema,
+  type PrivacyDeletionPreview,
 } from "./privacy-deletions.js";
 
 const API_VERSION = "v1";
@@ -50,6 +51,7 @@ const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const MAX_BROWSER_SESSIONS = 32;
 const MAX_FAILED_AUTH_ATTEMPTS_PER_MINUTE = 120;
 const MAX_IMPORT_ROUNDS = 500;
+const MAX_MCP_DELETION_HANDOFFS = 32;
 
 const auditQuerySchema = z
   .object({
@@ -365,6 +367,13 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
   const now = options.now ?? Date.now;
   const randomId = options.randomId ?? randomUUID;
   const sessions = new Map<string, BrowserSession>();
+  const mcpDeletionHandoffs = new Map<
+    string,
+    {
+      preview: PrivacyDeletionPreview;
+      expiresAt: number;
+    }
+  >();
   const recallService = new RecallService(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
@@ -419,6 +428,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "GET /health",
       "GET /version",
       "GET /api/v1/config/status",
+      "GET /api/v1/mcp/status",
       "POST /api/v1/session",
       "DELETE /api/v1/session",
       ...proxyRoutes.map((route) => `POST ${route.route}`),
@@ -429,6 +439,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
       "GET /api/v1/memories",
+      "GET /api/v1/memory",
       "GET /api/v1/audit",
       "POST /api/v1/memory-reviews",
       "GET /api/v1/memories/:level/:id/governance",
@@ -439,6 +450,8 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/memories/:level/:id/invalidate",
       "POST /api/v1/memories/:level/:id/delete",
       "POST /api/v1/privacy-deletions/preview",
+      "POST /api/v1/privacy-deletions/handoffs",
+      "GET /api/v1/privacy-deletions/handoffs/:handoff",
       "POST /api/v1/privacy-deletions/:token/cancel",
       "POST /api/v1/privacy-deletions/:token/execute",
     ]);
@@ -653,6 +666,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           }
         : undefined,
     });
+  });
+  app.get("/api/v1/mcp/status", (context) => {
+    authenticateMemoryRequest(context, false);
+    return context.json({ status: "ready", api_version: API_VERSION });
   });
 
   const requireBearer = (authorization: string | undefined): void => {
@@ -905,6 +922,17 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           content: item.content,
           ...(item.score === undefined ? {} : { score: item.score }),
           ...(item.source === undefined ? {} : { source: item.source }),
+          ...(item.sourceMessageIds === undefined
+            ? {}
+            : { source_reference_count: item.sourceMessageIds.length }),
+          ...(item.level === "L1" && options.memoryReviews
+            ? {
+                review: {
+                  status: options.memoryReviews.get("L1", item.id).status,
+                  revision: options.memoryReviews.get("L1", item.id).revision,
+                },
+              }
+            : {}),
           ...(item.createdAt === undefined
             ? {}
             : { created_at: item.createdAt }),
@@ -917,6 +945,11 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           level: entry.level,
           code: entry.code,
         })),
+        page: {
+          offset: result.page.offset,
+          count: result.page.count,
+          has_more: result.page.hasMore,
+        },
         budget: {
           max_items: result.budget.maxItems,
           max_chars: result.budget.maxChars,
@@ -974,6 +1007,51 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         total: result.total,
         has_previous: result.hasPrevious,
         has_next: result.hasNext,
+      },
+      200,
+    );
+  });
+
+  app.get("/api/v1/memory", async (context) => {
+    authenticateMemoryRequest(context, false);
+    const level = editableMemoryLevelSchema
+      .or(z.enum(["L0"]))
+      .safeParse(context.req.query("level"));
+    const id = context.req.query("id");
+    if (!level.success || !id || id.length > 2_048) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Memory identifier is invalid",
+      );
+    }
+    const memory = await memoryBrowser.readExact(
+      level.data,
+      id,
+      context.get("requestId"),
+    );
+    if (!memory) {
+      throw new GatewayHttpError(
+        404,
+        "MEMORY_NOT_FOUND",
+        "Memory was not found",
+      );
+    }
+    return jsonResponse(
+      {
+        id: memory.id,
+        level: memory.level,
+        content: memory.content,
+        ...(memory.score === undefined ? {} : { score: memory.score }),
+        source: {
+          status: memory.source.status,
+          reference_count: memory.source.referenceCount ?? 0,
+          ...(memory.source.messageIds
+            ? { message_ids: memory.source.messageIds.slice(0, 20) }
+            : {}),
+          references_truncated: (memory.source.messageIds?.length ?? 0) > 20,
+        },
+        ...(memory.review ? { review: memory.review } : {}),
       },
       200,
     );
@@ -1501,6 +1579,82 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     } catch (error) {
       return translatePrivacyDeletionError(error);
     }
+  });
+
+  app.post("/api/v1/privacy-deletions/handoffs", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = privacyDeletionPreviewSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Privacy deletion handoff is invalid",
+      );
+    }
+    for (const [handoff, value] of mcpDeletionHandoffs) {
+      if (value.expiresAt <= now()) mcpDeletionHandoffs.delete(handoff);
+    }
+    if (mcpDeletionHandoffs.size >= MAX_MCP_DELETION_HANDOFFS) {
+      throw new GatewayHttpError(
+        429,
+        "DELETION_HANDOFF_LIMIT",
+        "Too many deletion handoffs are active",
+      );
+    }
+    try {
+      const preview = await requirePrivacyDeletions().preview(
+        parsed.data.memory_id,
+        context.get("requestId"),
+      );
+      const handoff = randomId();
+      const expiresAt = Date.parse(preview.expires_at);
+      mcpDeletionHandoffs.set(handoff, { preview, expiresAt });
+      return jsonResponse(
+        {
+          handoff_id: handoff,
+          expires_at: preview.expires_at,
+          scope: preview.scope,
+          limitations: preview.limitations,
+        },
+        200,
+      );
+    } catch (error) {
+      return translatePrivacyDeletionError(error);
+    }
+  });
+
+  app.get("/api/v1/privacy-deletions/handoffs/:handoff", (context) => {
+    if (context.req.header("authorization")) {
+      throw new GatewayHttpError(
+        403,
+        "BROWSER_SESSION_REQUIRED",
+        "Deletion handoff details are only available in PersonalMemory Web",
+      );
+    }
+    authenticateMemoryRequest(context, false);
+    const handoff = context.req.param("handoff");
+    if (!handoff || handoff.length > 2_048) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Deletion handoff is invalid",
+      );
+    }
+    const value = mcpDeletionHandoffs.get(handoff);
+    if (!value || value.expiresAt <= now()) {
+      mcpDeletionHandoffs.delete(handoff);
+      throw new GatewayHttpError(
+        410,
+        "DELETION_HANDOFF_EXPIRED",
+        "Deletion handoff expired; prepare a new preview",
+      );
+    }
+    return jsonResponse(value.preview, 200);
   });
 
   app.post("/api/v1/privacy-deletions/:token/cancel", (context) => {

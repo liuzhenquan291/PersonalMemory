@@ -72,6 +72,36 @@ describe("RecallService", () => {
     expect(upstream.request).toHaveBeenCalledTimes(1);
   });
 
+  it("paginates a bounded recall without refetching the whole database", async () => {
+    const request = vi.fn(async ({ body }) => {
+      expect(body).toMatchObject({ limit: 50 });
+      return envelope({
+        items: [
+          { id: "a", content: "a", score: 1 },
+          { id: "b", content: "b", score: 0.9 },
+          { id: "c", content: "c", score: 0.8 },
+          { id: "d", content: "d", score: 0.7 },
+        ],
+      });
+    });
+    const result = await new RecallService({ request }, 1_000).recall(
+      parse({
+        query: "query",
+        levels: ["L1"],
+        offset: 1,
+        budget: {
+          max_items: 2,
+          max_chars: 1_000,
+          max_tokens: 250,
+          timeout_ms: 1_000,
+        },
+      }),
+      "request-1",
+    );
+    expect(result.items.map(({ id }) => id)).toEqual(["b", "c"]);
+    expect(result.page).toEqual({ offset: 1, count: 2, hasMore: true });
+  });
+
   it("enforces item, character, and estimated token budgets after retrieval", async () => {
     const upstream: UpstreamGatewayClient = {
       async request() {

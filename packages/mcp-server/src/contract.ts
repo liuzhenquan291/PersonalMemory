@@ -6,6 +6,8 @@ export const UNTRUSTED_MEMORY_WARNING =
 
 export const mcpMemoryLevelSchema = z.enum(["L0", "L1", "L2", "L3"]);
 
+export type McpMemoryLevel = z.infer<typeof mcpMemoryLevelSchema>;
+
 const contractVersionSchema = z.literal(PERSONAL_MEMORY_MCP_CONTRACT_VERSION);
 const dataClassificationSchema = z.literal("untrusted_memory_data");
 const usageWarningSchema = z.literal(UNTRUSTED_MEMORY_WARNING);
@@ -401,6 +403,20 @@ export const mcpToolErrorSchema = z
       .strict(),
   })
   .strict();
+
+export type SearchMemoriesInput = z.output<typeof searchMemoriesInputSchema>;
+export type SearchMemoriesOutput = z.output<typeof searchMemoriesOutputSchema>;
+export type ReadMemoryInput = z.output<typeof readMemoryInputSchema>;
+export type ReadMemoryOutput = z.output<typeof readMemoryOutputSchema>;
+export type CaptureExchangeInput = z.output<typeof captureExchangeInputSchema>;
+export type CaptureExchangeOutput = z.output<
+  typeof captureExchangeOutputSchema
+>;
+export type SubmitFeedbackInput = z.output<typeof submitFeedbackInputSchema>;
+export type SubmitFeedbackOutput = z.output<typeof submitFeedbackOutputSchema>;
+export type PrepareForgetInput = z.output<typeof prepareForgetInputSchema>;
+export type PrepareForgetOutput = z.output<typeof prepareForgetOutputSchema>;
+export type McpToolError = z.output<typeof mcpToolErrorSchema>;
 
 export type McpToolAnnotations = Readonly<{
   readOnlyHint: boolean;

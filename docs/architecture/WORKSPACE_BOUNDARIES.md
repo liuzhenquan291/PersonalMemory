@@ -2,18 +2,18 @@
 
 M1.1 在不移动腾讯上游源码的前提下增加产品层。根目录现有 `src/`、`index.ts`、上游脚本和 SDK 继续保持原位置，便于后续对照 `upstream/feat/server`；PersonalMemory 新功能只进入以下 workspace。
 
-| 目录                       | 包                           | 职责                                   | 允许依赖                        |
-| -------------------------- | ---------------------------- | -------------------------------------- | ------------------------------- |
-| `packages/personal-memory` | `@personalmemory/core`       | 产品领域模型、schema 和 migration      | Node 标准库；后续经审查的通用库 |
-| `apps/gateway`             | `@personalmemory/gateway`    | PersonalMemory HTTP 外观与进程入口     | `@personalmemory/core`          |
-| `packages/mcp-server`      | `@personalmemory/mcp-server` | MCP 协议适配                           | `@personalmemory/core`          |
-| `apps/web`                 | `@personalmemory/web`        | 浏览器产品界面，通过 HTTP 访问 Gateway | 不直接依赖服务端包              |
+| 目录                       | 包                           | 职责                                   | 允许依赖                             |
+| -------------------------- | ---------------------------- | -------------------------------------- | ------------------------------------ |
+| `packages/personal-memory` | `@personalmemory/core`       | 产品领域模型、schema 和 migration      | Node 标准库；后续经审查的通用库      |
+| `apps/gateway`             | `@personalmemory/gateway`    | PersonalMemory HTTP 外观与进程入口     | `@personalmemory/core`               |
+| `packages/mcp-server`      | `@personalmemory/mcp-server` | MCP 协议适配                           | `@personalmemory/core`、官方 MCP SDK |
+| `apps/web`                 | `@personalmemory/web`        | 浏览器产品界面，通过 HTTP 访问 Gateway | 不直接依赖服务端包                   |
 
 ## 强制规则
 
 1. 上游 `src/` 不得反向导入 `@personalmemory/*` 或 `apps/`、`packages/`。
 2. 产品代码不得通过多级相对路径直接进入根 `src/`；M1.3 的上游适配必须位于 Gateway 外观层并有显式接口。
-3. Web 不直接读取 SQLite、数据文件或服务端核心包；MCP 不依赖 Gateway 实现细节。
+3. Web 不直接读取 SQLite、数据文件或服务端核心包；MCP 不依赖 Gateway 实现细节或 workspace 包，只通过版本化 loopback HTTP API 复用 Gateway 业务能力。
 4. 构建顺序固定为 core → gateway/MCP，Web 独立；不能依赖残留 `dist`。
 5. 根 `package-lock.json` 管理产品 workspace；上游 TypeScript SDK 继续保留独立 lockfile，不在本步改写其发布边界。
 6. `npm run verify:boundaries` 是提交门禁；新增 workspace 或依赖方向必须同步更新检查器和本文。

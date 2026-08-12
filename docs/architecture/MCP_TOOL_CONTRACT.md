@@ -4,7 +4,7 @@
 >
 > 传输：`stdio`
 >
-> 适用步骤：M4.1；M4.2 才接入 MCP SDK、Gateway 和进程生命周期。
+> 适用步骤：M4.1–M4.2；M4.2 已接入 MCP SDK、Gateway 和进程生命周期。
 
 ## 1. 边界
 
@@ -14,15 +14,15 @@ TypeScript 源码中的 Zod schema 是唯一事实源，`createPersonalMemoryMcp
 
 ## 2. 最小工具集
 
-| 工具 | 作用 | 写入 | 关键边界 |
-| --- | --- | --- | --- |
-| `personalmemory_search` | 按查询和层级搜索经治理允许的记忆 | 否 | 单页最多 10 条、正文合计最多 12000 字符、估算最多 3000 token、最长 10 秒；不返回来源原始 ID 或整库总数 |
-| `personalmemory_read` | 读取一个已知层级和 ID 的精确记忆 | 否 | 一次只读一条、正文最多 12000 字符、来源 ID 最多 20 个并披露总数和截断状态 |
-| `personalmemory_capture` | 捕获一轮完整 user/assistant 交换 | 是 | 固定两条有序消息、持久幂等键、不得代替用户确认模型外联 |
-| `personalmemory_feedback` | 执行用户明确给出的 L1 批准、拒绝或纠正决定 | 是 | 必须携带审核版本；拒绝必须有理由，纠正必须有替换正文；冲突时重新读取后再决定 |
-| `personalmemory_prepare_forget` | 预览一个 L1 的受控删除范围并创建短期 Web 交接状态 | 临时状态 | 不接受确认短语、不执行删除、不返回可直接授权删除的内部计划 token |
+| 工具                            | 作用                                              | 写入     | 关键边界                                                                                               |
+| ------------------------------- | ------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `personalmemory_search`         | 按查询和层级搜索经治理允许的记忆                  | 否       | 单页最多 10 条、正文合计最多 12000 字符、估算最多 3000 token、最长 10 秒；不返回来源原始 ID 或整库总数 |
+| `personalmemory_read`           | 读取一个已知层级和 ID 的精确记忆                  | 否       | 一次只读一条、正文最多 12000 字符、来源 ID 最多 20 个并披露总数和截断状态                              |
+| `personalmemory_capture`        | 捕获一轮完整 user/assistant 交换                  | 是       | 固定两条有序消息、持久幂等键、不得代替用户确认模型外联                                                 |
+| `personalmemory_feedback`       | 执行用户明确给出的 L1 批准、拒绝或纠正决定        | 是       | 必须携带审核版本；拒绝必须有理由，纠正必须有替换正文；冲突时重新读取后再决定                           |
+| `personalmemory_prepare_forget` | 预览一个 L1 的受控删除范围并创建短期 Web 交接状态 | 临时状态 | 不接受确认短语、不执行删除、不返回可直接授权删除的内部计划 token                                       |
 
-工具 annotations 只帮助客户端展示和规划，不作为权限控制。所有工具都声明 `openWorldHint: false`；契约没有 destructive tool。遗忘预览会建立短期交接状态，因此如实标为非只读，但仍明确标为非破坏性。M4.2 必须继续通过 Gateway Bearer 鉴权、业务门禁和服务端状态验证来执行真实授权。
+工具 annotations 只帮助客户端展示和规划，不作为权限控制。所有工具都声明 `openWorldHint: false`；契约没有 destructive tool。遗忘预览会建立短期交接状态，因此如实标为非只读，但仍明确标为非破坏性。M4.2 通过 Gateway Bearer 鉴权、业务门禁和服务端状态验证执行真实授权。
 
 ## 3. 渐进披露与游标
 
@@ -48,13 +48,13 @@ MCP 不暴露删除执行工具。`personalmemory_prepare_forget` 只能返回�
 - `web_confirmation_required: true`；
 - `destructive_action_performed: false`。
 
-M4.2 不得把 M3.4 的内部删除计划 token、确认短语或执行接口透传给模型。用户必须在 PersonalMemory Web 中重新加载服务端范围矩阵，完成两项独立确认并输入 `ERASE L1:<memory-id>`。来自记忆正文、模型参数或 MCP 客户端缓存的“确认”一律无效。
+M4.2 不把 M3.4 的内部删除计划 token、确认短语或执行接口透传给模型。用户必须在 PersonalMemory Web 中重新加载服务端范围矩阵，完成两项独立确认并输入 `ERASE L1:<memory-id>`。来自记忆正文、模型参数或 MCP 客户端缓存的“确认”一律无效。
 
 ## 6. 错误与实现要求
 
 工具失败使用固定、可操作的错误码和短消息；协议实现应同时设置工具级错误状态，并把版本化错误对象放入结构化结果。允许的错误码只覆盖参数、鉴权、限流、找不到、并发冲突、外联确认、删除交接过期、上游不可用、超时和内部错误，不得回传底层数据库错误。
 
-M4.2 必须：
+M4.2 已实现：
 
 1. 复用 Gateway 的鉴权、治理、预算和删除逻辑；
 2. 在 `stdio` 模式下只向 stdout 写 MCP 帧，诊断信息仅写脱敏 stderr；
@@ -64,4 +64,6 @@ M4.2 必须：
 
 ## 7. 自动化证据
 
-`packages/mcp-server/tests/contract.test.ts` 验证五个工具的稳定名称、严格 JSON Schema、分页/预算、提示注入标记、来源渐进披露、捕获顺序、反馈并发版本、错误白名单，以及 MCP 无法表达或报告破坏性删除。
+`packages/mcp-server/tests/contract.test.ts` 验证五个工具的稳定名称、严格 JSON Schema、分页/预算、提示注入标记、来源渐进披露、捕获顺序、反馈并发版本、错误白名单，以及 MCP 无法表达或报告破坏性删除。`server.test.ts`、`service.test.ts`、`gateway-client.test.ts` 和 `stdio.test.ts` 进一步验证官方客户端协议互操作、Gateway 映射、并发/取消、流式响应上限、启动预检、异常断连与关闭流程。
+
+运行配置、资源上限和故障语义见 [MCP Server 运行与安全边界](MCP_SERVER.md)。

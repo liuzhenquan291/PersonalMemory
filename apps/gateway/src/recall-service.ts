@@ -14,6 +14,7 @@ export const unifiedRecallRequestSchema = z
   .object({
     query: z.string().min(1).max(2_048),
     levels: z.array(recallLevelSchema).min(1).max(4).default(["L1", "L0"]),
+    offset: z.number().int().min(0).max(40).default(0),
     budget: z
       .object({
         max_items: z.number().int().min(1).max(50).default(10),
@@ -38,6 +39,7 @@ export interface RecallItem {
   content: string;
   score?: number;
   source?: string;
+  sourceMessageIds?: string[];
   createdAt?: string;
   updatedAt?: string;
   truncated: boolean;
@@ -45,6 +47,7 @@ export interface RecallItem {
 
 export interface UnifiedRecallResult {
   items: RecallItem[];
+  page: { offset: number; count: number; hasMore: boolean };
   degradedLevels: Array<{ level: RecallLevel; code: string }>;
   budget: {
     maxItems: number;
@@ -77,6 +80,7 @@ const l1DataSchema = z.object({
       id: z.string(),
       content: z.string(),
       score: z.number(),
+      source_message_ids: z.array(z.string()).optional(),
       created_at: z.string().optional(),
       updated_at: z.string().optional(),
     }),
@@ -156,7 +160,7 @@ export class RecallService {
     requestId: string,
   ): Promise<UnifiedRecallResult> {
     const deadline = AbortSignal.timeout(input.budget.timeout_ms);
-    const limit = input.budget.max_items;
+    const limit = 50;
     const requested = new Set(input.levels);
     const tasks = (["L1", "L0", "L2", "L3"] as const)
       .filter((level) => requested.has(level))
@@ -205,7 +209,8 @@ export class RecallService {
     let usedChars = 0;
     let usedTokenUnits = 0;
     const maxTokenUnits = input.budget.max_tokens * 4;
-    for (const candidate of candidates) {
+    const pageCandidates = candidates.slice(input.offset);
+    for (const candidate of pageCandidates) {
       if (
         items.length >= input.budget.max_items ||
         usedChars >= input.budget.max_chars ||
@@ -229,6 +234,11 @@ export class RecallService {
     }
     return {
       items,
+      page: {
+        offset: input.offset,
+        count: items.length,
+        hasMore: pageCandidates.length > items.length,
+      },
       degradedLevels: results.flatMap((result) =>
         result.error ? [{ level: result.level, code: result.error }] : [],
       ),
@@ -240,7 +250,7 @@ export class RecallService {
         usedChars,
         estimatedTokens: Math.ceil(usedTokenUnits / 4),
         exhausted:
-          items.length < candidates.length ||
+          items.length < pageCandidates.length ||
           usedChars >= input.budget.max_chars ||
           usedTokenUnits >= maxTokenUnits ||
           items.some(({ truncated }) => truncated),
@@ -286,6 +296,9 @@ export class RecallService {
           level,
           content: item.content,
           score: item.score,
+          ...(item.source_message_ids
+            ? { sourceMessageIds: item.source_message_ids }
+            : {}),
           ...(item.created_at ? { createdAt: item.created_at } : {}),
           ...(item.updated_at ? { updatedAt: item.updated_at } : {}),
           truncated: false,

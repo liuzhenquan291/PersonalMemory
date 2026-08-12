@@ -1,5 +1,9 @@
 import { PERSONAL_MEMORY_SCHEMA_VERSION } from "@personalmemory/core";
 export * from "./contract.js";
+export * from "./gateway-client.js";
+export * from "./server.js";
+export * from "./service.js";
+export * from "./runtime.js";
 import { PERSONAL_MEMORY_MCP_CONTRACT_VERSION } from "./contract.js";
 
 export const mcpServerIdentity = Object.freeze({

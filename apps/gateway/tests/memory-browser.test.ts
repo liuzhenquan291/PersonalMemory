@@ -79,6 +79,38 @@ describe("MemoryBrowser", () => {
     });
   });
 
+  it("reads one exact memory through bounded upstream pages", async () => {
+    const request = vi.fn(async ({ body }) => {
+      const offset = (body as { offset: number }).offset;
+      return envelope({
+        messages: [
+          {
+            id: offset === 0 ? "other" : "target",
+            role: "user",
+            content: "原始消息",
+            timestamp: "2026-01-01T00:00:00Z",
+          },
+        ],
+        total: 51,
+      });
+    });
+    const memory = await new MemoryBrowser({ request }, 1_000).readExact(
+      "L0",
+      "target",
+      "request-1",
+    );
+    expect(memory).toMatchObject({
+      id: "target",
+      source: { messageIds: ["target"], referenceCount: 1 },
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    const signals = request.mock.calls.map(
+      ([input]) => (input as { signal?: AbortSignal }).signal,
+    );
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[1]).toBe(signals[0]);
+  });
+
   it("filters and paginates L2 before reading selected details", async () => {
     const request = vi.fn(async ({ path, body }) => {
       if (path === "/v2/scenario/ls") {

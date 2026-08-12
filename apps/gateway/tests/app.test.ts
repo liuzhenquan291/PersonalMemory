@@ -145,6 +145,21 @@ describe("PersonalMemory Gateway app", () => {
     });
   });
 
+  it("provides an authenticated MCP preflight without exposing configuration", async () => {
+    const { app } = createHarness({});
+    const response = await app.request("/api/v1/mcp/status", {
+      headers: authHeaders,
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      status: "ready",
+      api_version: "v1",
+    });
+    expect(await app.request("/api/v1/mcp/status")).toMatchObject({
+      status: 401,
+    });
+  });
+
   it("reviews memories in a bounded batch and reports per-item results", async () => {
     const { app, memoryReviews } = createHarness({ withReviews: true });
     const response = await app.request("/api/v1/memory-reviews", {
@@ -446,7 +461,7 @@ describe("PersonalMemory Gateway app", () => {
       token: "plan-1",
       level: "L1" as const,
       memory_id: "memory-1",
-      expires_at: "2026-08-11T00:10:00.000Z",
+      expires_at: "2030-08-11T00:10:00.000Z",
       confirmation: "ERASE L1:memory-1",
       scope: {
         source_l0: 1,
@@ -492,6 +507,34 @@ describe("PersonalMemory Gateway app", () => {
       confirmation: "ERASE L1:memory-1",
     });
     expect(preview).toHaveBeenCalledWith("memory-1", expect.any(String));
+
+    const handedOff = await app.request("/api/v1/privacy-deletions/handoffs", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ level: "L1", memory_id: "memory-1" }),
+    });
+    expect(handedOff.status).toBe(200);
+    const handoffBody = (await handedOff.json()) as { handoff_id: string };
+    expect(JSON.stringify(handoffBody)).not.toContain("plan-1");
+    expect(JSON.stringify(handoffBody)).not.toContain("ERASE L1");
+    const bearerPreview = await app.request(
+      `/api/v1/privacy-deletions/handoffs/${handoffBody.handoff_id}`,
+      { headers: authHeaders },
+    );
+    expect(bearerPreview.status).toBe(403);
+    const session = await app.request("/api/v1/session", {
+      method: "POST",
+      headers: authHeaders,
+    });
+    const cookie = session.headers.get("set-cookie")!;
+    const webPreview = await app.request(
+      `/api/v1/privacy-deletions/handoffs/${handoffBody.handoff_id}`,
+      { headers: { cookie } },
+    );
+    expect(await webPreview.json()).toMatchObject({
+      token: "plan-1",
+      confirmation: "ERASE L1:memory-1",
+    });
 
     const weak = await app.request("/api/v1/privacy-deletions/plan-1/execute", {
       method: "POST",

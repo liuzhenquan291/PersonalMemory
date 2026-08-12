@@ -45,6 +45,8 @@ export interface BrowsedMemory {
     status: "original" | "unavailable";
     label: string;
     explanation: string;
+    referenceCount?: number;
+    messageIds?: string[];
   };
   review?: { status: MemoryReviewStatus; revision: number; reason?: string };
   governance?: {
@@ -126,6 +128,7 @@ export class MemoryBrowser {
   async browse(
     input: z.output<typeof memoryBrowseQuerySchema>,
     requestId: string,
+    signal?: AbortSignal,
   ): Promise<MemoryBrowseResult> {
     const offset = (input.page - 1) * input.page_size;
     if (input.level === "L2") {
@@ -135,7 +138,7 @@ export class MemoryBrowser {
           input,
           this.applyStates(
             input.level,
-            await this.browseL2(input, requestId, offset),
+            await this.browseL2(input, requestId, offset, signal),
           ),
         ),
       );
@@ -145,7 +148,10 @@ export class MemoryBrowser {
         input.level,
         this.applyReviews(
           input,
-          this.applyStates(input.level, await this.browseL3(input, requestId)),
+          this.applyStates(
+            input.level,
+            await this.browseL3(input, requestId, signal),
+          ),
         ),
       );
     }
@@ -169,7 +175,7 @@ export class MemoryBrowser {
       : reviewFiltering
         ? { limit: requested, offset: 0 }
         : { limit: input.page_size, offset };
-    const response = await this.call(path, body, requestId);
+    const response = await this.call(path, body, requestId, signal);
     let upstreamTotal: number | undefined;
     let allItems: BrowsedMemory[];
     if (input.level === "L1") {
@@ -188,6 +194,8 @@ export class MemoryBrowser {
               status: "original" as const,
               label: `${item.source_message_ids.length} 条对话原文`,
               explanation: `来源消息 ID：${item.source_message_ids.join(", ")}`,
+              referenceCount: item.source_message_ids.length,
+              messageIds: item.source_message_ids,
             }
           : {
               status: "unavailable" as const,
@@ -210,6 +218,8 @@ export class MemoryBrowser {
           status: "original" as const,
           label: "对话原文",
           explanation: "这是本地保存的原始对话消息，不是模型推断。",
+          referenceCount: 1,
+          messageIds: [item.id],
         },
       }));
     }
@@ -236,13 +246,51 @@ export class MemoryBrowser {
     );
   }
 
+  async readExact(
+    level: MemoryLayer,
+    memoryId: string,
+    requestId: string,
+  ): Promise<BrowsedMemory | undefined> {
+    const signal = AbortSignal.timeout(this.timeoutMs);
+    if (level === "L3") {
+      const result = await this.browse(
+        memoryBrowseQuerySchema.parse({
+          level,
+          query: "",
+          page: 1,
+          page_size: 50,
+        }),
+        requestId,
+        signal,
+      );
+      return result.items.find(({ id }) => id === memoryId);
+    }
+    for (let page = 1; page <= 200; page += 1) {
+      const result = await this.browse(
+        memoryBrowseQuerySchema.parse({
+          level,
+          query: "",
+          page,
+          page_size: 50,
+        }),
+        requestId,
+        signal,
+      );
+      const found = result.items.find(({ id }) => id === memoryId);
+      if (found) return found;
+      if (!result.hasNext) return undefined;
+    }
+    return undefined;
+  }
+
   private async browseL2(
     input: z.output<typeof memoryBrowseQuerySchema>,
     requestId: string,
     offset: number,
+    signal?: AbortSignal,
   ): Promise<MemoryBrowseResult> {
     const listed = data(
-      await this.call("/v2/scenario/ls", {}, requestId),
+      await this.call("/v2/scenario/ls", {}, requestId, signal),
       l2Schema,
     );
     const query = input.query.trim().toLocaleLowerCase();
@@ -262,7 +310,12 @@ export class MemoryBrowser {
     const items = await Promise.all(
       selected.map(async (entry) => {
         const file = data(
-          await this.call("/v2/scenario/read", { path: entry.path }, requestId),
+          await this.call(
+            "/v2/scenario/read",
+            { path: entry.path },
+            requestId,
+            signal,
+          ),
           fileSchema,
         );
         const content = file.content ?? "";
@@ -295,9 +348,10 @@ export class MemoryBrowser {
   private async browseL3(
     input: z.output<typeof memoryBrowseQuerySchema>,
     requestId: string,
+    signal?: AbortSignal,
   ): Promise<MemoryBrowseResult> {
     const file = data(
-      await this.call("/v2/core/read", {}, requestId),
+      await this.call("/v2/core/read", {}, requestId, signal),
       fileSchema,
     );
     const content = file.content ?? "";
@@ -337,12 +391,14 @@ export class MemoryBrowser {
     path: string,
     body: unknown,
     requestId: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const result = await this.upstream.request({
       path,
       body,
       requestId,
       timeoutMs: this.timeoutMs,
+      ...(signal ? { signal } : {}),
     });
     if (result.status < 200 || result.status >= 300) {
       throw new Error("UPSTREAM_REJECTED");
