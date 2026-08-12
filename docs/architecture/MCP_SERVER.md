@@ -44,3 +44,5 @@ Gateway host、port 和数据目录继续使用 PersonalMemory 的统一配置�
 工具错误只使用契约白名单和通用操作建议。Gateway 的请求 ID、底层错误消息、SQL、内部路径、正文、搜索词、token 和栈不会进入 MCP 结果。协议成功同时返回结构化结果和等价 JSON 文本，兼容支持结构化输出的客户端与基础客户端。
 
 M4.2 的自动化使用官方 MCP SDK 客户端连接服务器，覆盖工具发现、成功/失败结构、并发上限、取消、预检失败、异常断连、stdout 隔离、Gateway 鉴权与响应上限。M4.3 增加配置保护测试及 `npm run test:codex-e2e`：真实 Codex CLI 严格解析隔离配置并调用五个工具，fixture 逐项断言捕获、召回、读取、反馈和 Web 遗忘交接请求，同时验证正文提示注入未执行且没有误报删除完成。
+
+M4.4 将上述 Gateway fixture 抽为客户端无关模块，并以真实 Claude Code `2.1.228` 连接相同五工具。Claude Code E2E 使用独立 HOME、settings 和 MCP JSON，禁用内置工具和会话持久化；loopback 确定性 Messages API 只驱动标准 `tool_use` 顺序，客户端仍实际完成 MCP 工具发现、传参、执行和结果回送。两端测试可自动批准五工具，但捕获、反馈和遗忘交接的用户默认策略仍是提示确认。
