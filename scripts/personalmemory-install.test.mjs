@@ -9,6 +9,7 @@ import test from "node:test";
 import {
   assertSupportedEnvironment,
   defaultInstallRoot,
+  defaultStateRoot,
   installPersonalMemory,
 } from "./personalmemory-install-runtime.mjs";
 
@@ -51,6 +52,10 @@ test("selects native private data roots", () => {
     defaultInstallRoot({ XDG_DATA_HOME: "/data" }, "linux", "/home/test"),
     "/data/personalmemory",
   );
+  assert.equal(
+    defaultStateRoot({ XDG_STATE_HOME: "/state" }, "linux", "/home/test"),
+    "/state/personalmemory",
+  );
 });
 
 test("builds, starts, writes private state, and reports a healthy installation", async () => {
@@ -66,6 +71,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   const result = await installPersonalMemory({
     root,
     dataDirectory,
+    stateDirectory: path.join(root, "state"),
     gatewayPort: 0,
     webPort: 0,
     run: async (...args) => calls.push(args),
@@ -102,6 +108,7 @@ test("does not install dependencies when they are already present", async () => 
   await installPersonalMemory({
     root,
     dataDirectory: path.join(root, "data"),
+    stateDirectory: path.join(root, "state"),
     gatewayPort: 0,
     webPort: 0,
     run: async (command, args) => commands.push([command, args]),
@@ -121,6 +128,7 @@ test("fails before changing data when a port is occupied", async () => {
     installPersonalMemory({
       root,
       dataDirectory: path.join(root, "data"),
+      stateDirectory: path.join(root, "state"),
       assertPortAvailableImpl: async () => {
         throw new Error("EADDRINUSE");
       },
@@ -144,6 +152,7 @@ test("cleans started services and leaves no receipt after failed health checks",
     installPersonalMemory({
       root,
       dataDirectory: path.join(root, "data"),
+      stateDirectory: path.join(root, "state"),
       gatewayPort: 0,
       webPort: 0,
       run: async () => undefined,
@@ -158,9 +167,8 @@ test("cleans started services and leaves no receipt after failed health checks",
     /Timed out waiting/,
   );
   assert.equal(children.length, 2);
-  await assert.rejects(
-    stat(path.join(root, "data", "runtime", "install.json")),
-    { code: "ENOENT" },
-  );
+  await assert.rejects(stat(path.join(root, "state", "install.json")), {
+    code: "ENOENT",
+  });
   await rm(root, { recursive: true });
 });

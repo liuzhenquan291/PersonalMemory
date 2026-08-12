@@ -34,5 +34,6 @@
 | M4.4 | completed | [第二客户端可移植性验证](M4.4.md)              |
 | M4   | completed | [双客户端 MCP 互操作退出验收](M4-EXIT.md)      |
 | M5.1 | completed | [一条命令安装器](M5.1.md)                      |
+| M5.2 | completed | [升级和数据库迁移](M5.2.md)                    |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

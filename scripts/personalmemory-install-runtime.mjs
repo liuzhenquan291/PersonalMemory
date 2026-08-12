@@ -17,6 +17,8 @@ import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
 const RECEIPT_VERSION = 1;
+const PRODUCT_VERSION = "0.1.0";
+const SCHEMA_VERSION = 7;
 
 export function assertSupportedEnvironment(options = {}) {
   const platform = options.platform ?? process.platform;
@@ -43,6 +45,24 @@ export function defaultInstallRoot(
     return path.join(home, "Library", "Application Support", "PersonalMemory");
   return path.join(
     environment.XDG_DATA_HOME || path.join(home, ".local", "share"),
+    "personalmemory",
+  );
+}
+
+export function defaultStateRoot(
+  environment = process.env,
+  platform = process.platform,
+  home = os.homedir(),
+) {
+  if (platform === "darwin")
+    return path.join(
+      home,
+      "Library",
+      "Application Support",
+      "PersonalMemory Runtime",
+    );
+  return path.join(
+    environment.XDG_STATE_HOME || path.join(home, ".local", "state"),
     "personalmemory",
   );
 }
@@ -133,7 +153,19 @@ export async function installPersonalMemory(options = {}) {
       process.env.PERSONALMEMORY_DATA_DIR ??
       defaultInstallRoot(),
   );
-  const runtimeDirectory = path.join(dataDirectory, "runtime");
+  const runtimeDirectory = path.resolve(
+    options.stateDirectory ??
+      process.env.PERSONALMEMORY_STATE_DIR ??
+      defaultStateRoot(),
+  );
+  if (
+    runtimeDirectory === dataDirectory ||
+    runtimeDirectory.startsWith(`${dataDirectory}${path.sep}`)
+  ) {
+    throw new Error(
+      "PERSONALMEMORY_STATE_DIR must be outside the memory data directory",
+    );
+  }
   const receiptPath = path.join(runtimeDirectory, "install.json");
   const secretPath = path.join(runtimeDirectory, "gateway.env");
   const logPath = path.join(runtimeDirectory, "personalmemory.log");
@@ -240,6 +272,8 @@ export async function installPersonalMemory(options = {}) {
     ]);
     const receipt = {
       version: RECEIPT_VERSION,
+      productVersion: PRODUCT_VERSION,
+      schemaVersion: SCHEMA_VERSION,
       installedAt: new Date().toISOString(),
       dataDirectory,
       gatewayPid: gateway.pid,
