@@ -48,7 +48,7 @@
     "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/dev*.mjs scripts/personalmemory-data.ts scripts/personalmemory-data.test.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
     "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
     "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
-    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/web && npm run test:dev && npm run test:data",
+    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/mcp-server && npm run test -w @personalmemory/web && npm run test:dev && npm run test:data",
     "test:data": "node --test scripts/personalmemory-data.test.mjs",
     "test:upstream": "vitest run",
     "test:golden": "vitest run -c vitest.e2e.config.ts tests/standalone-golden.e2e.test.ts",

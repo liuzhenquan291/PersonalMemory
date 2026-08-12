@@ -28,5 +28,6 @@
 | M3.3 | completed | [来源时间线和审计](M3.3.md)                    |
 | M3.4 | completed | [可验证级联删除](M3.4.md)                    |
 | M3   | completed | [可信记忆治理退出验收](M3-EXIT.md)           |
+| M4.1 | completed | [冻结 MCP 工具契约](M4.1.md)                 |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

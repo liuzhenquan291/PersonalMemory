@@ -20,7 +20,7 @@ M1.1 在不移动腾讯上游源码的前提下增加产品层。根目录现有
 
 ## Schema 与迁移规范
 
-- 当前 PersonalMemory schema version 为 1，与上游 `vectors.db` schema 分离；本步不修改上游数据库。
+- 当前 PersonalMemory schema version 为 7，与上游 `vectors.db` schema 分离；产品迁移不修改上游数据库。
 - migration 从 1 连续递增，名称和 checksum 一经应用不可修改；禁止删除、重排或复用版本号。
 - 每项迁移在 `BEGIN IMMEDIATE` 事务中执行，成功后才写 migration ledger；失败必须回滚。
 - migration 只声明 SQL，不取得数据库句柄；每个数组元素必须是一条不含分号、且不以前导 SQL 注释开头的 SQL。runner 在开启事务前拒绝事务控制语句，再以 prepared statement 顺序执行并写入 ledger。
