@@ -37,6 +37,18 @@ npm run upgrade:product
 
 升级会在停止服务前检查版本与磁盘空间，随后构建新版本、停止受管进程、创建并校验完整备份、显式执行数据库迁移、重启并检查健康状态。升级失败时从已校验备份恢复数据；升级备份保留在独立状态目录中，不自动删除。M5.2 不联网下载代码或执行远程脚本。
 
+安装后的日常生命周期使用统一命令：
+
+```bash
+npm run lifecycle:product -- status
+npm run lifecycle:product -- backup --output /absolute/backup
+npm run lifecycle:product -- restore --input /absolute/backup
+npm run lifecycle:product -- stop
+npm run lifecycle:product -- uninstall
+```
+
+备份和恢复会安全停止服务、验证备份并重新启动。默认卸载只移除受管运行状态，完整保留记忆数据，可再次运行安装命令继续使用。只有增加 `--purge-data --confirm "DELETE <绝对数据目录>"` 且确认文本精确匹配时才清除数据；执行前命令会列出并严格校验实际目标。
+
 Gateway 已启动且认证环境变量可用时，可为 Codex 安装或卸载 MCP 配置：
 
 ```bash

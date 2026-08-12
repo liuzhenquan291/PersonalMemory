@@ -85,6 +85,40 @@ async function writePrivateAtomic(target, contents) {
   await chmod(target, 0o600);
 }
 
+async function loadOrCreateToken(secretPath) {
+  try {
+    const info = await lstat(secretPath);
+    if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) {
+      throw new Error(
+        "Existing Gateway credential must be a private regular file",
+      );
+    }
+    const contents = await readFile(secretPath, "utf8");
+    const lines = contents.trimEnd().split("\n");
+    if (
+      lines.length !== 3 ||
+      lines[0] !== "PERSONALMEMORY_AUTH_ENABLED=true" ||
+      !lines[1].startsWith("PERSONALMEMORY_AUTH_TOKEN=") ||
+      lines[2] !== "PERSONALMEMORY_MODEL_ENABLED=false"
+    ) {
+      throw new Error("Existing Gateway credential has an invalid format");
+    }
+    const token = lines[1].slice("PERSONALMEMORY_AUTH_TOKEN=".length);
+    if (!/^[A-Za-z0-9_-]{43}$/u.test(token)) {
+      throw new Error("Existing Gateway credential token is invalid");
+    }
+    return token;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const token = randomBytes(32).toString("base64url");
+  await writePrivateAtomic(
+    secretPath,
+    `PERSONALMEMORY_AUTH_ENABLED=true\nPERSONALMEMORY_AUTH_TOKEN=${token}\nPERSONALMEMORY_MODEL_ENABLED=false\n`,
+  );
+  return token;
+}
+
 async function assertPortAvailable(host, port) {
   await new Promise((resolve, reject) => {
     const server = createServer();
@@ -207,11 +241,7 @@ export async function installPersonalMemory(options = {}) {
     await run("npm", ["ci"], { cwd: root, stdio: "inherit" });
   await run("npm", ["run", "build:products"], { cwd: root, stdio: "inherit" });
   await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
-  const token = randomBytes(32).toString("base64url");
-  await writePrivateAtomic(
-    secretPath,
-    `PERSONALMEMORY_AUTH_ENABLED=true\nPERSONALMEMORY_AUTH_TOKEN=${token}\nPERSONALMEMORY_MODEL_ENABLED=false\n`,
-  );
+  const token = await loadOrCreateToken(secretPath);
   const log = await open(logPath, "a", 0o600);
   const children = [];
   try {

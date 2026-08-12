@@ -120,6 +120,43 @@ test("does not install dependencies when they are already present", async () => 
   await rm(root, { recursive: true });
 });
 
+test("reuses a valid private credential when restarting without a receipt", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "personalmemory-install-restart-"),
+  );
+  const stateDirectory = path.join(root, "state");
+  await mkdir(path.join(root, "node_modules", "vite", "bin"), {
+    recursive: true,
+  });
+  await mkdir(stateDirectory, { mode: 0o700 });
+  const token = "a".repeat(43);
+  await import("node:fs/promises").then(({ writeFile }) =>
+    writeFile(
+      path.join(stateDirectory, "gateway.env"),
+      `PERSONALMEMORY_AUTH_ENABLED=true\nPERSONALMEMORY_AUTH_TOKEN=${token}\nPERSONALMEMORY_MODEL_ENABLED=false\n`,
+      { mode: 0o600 },
+    ),
+  );
+  const environments = [];
+  let nextPid = 2_150_000;
+  await installPersonalMemory({
+    root,
+    dataDirectory: path.join(root, "data"),
+    stateDirectory,
+    gatewayPort: 0,
+    webPort: 0,
+    run: async () => undefined,
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: (_command, _args, options) => {
+      environments.push(options.env);
+      return fakeChild(nextPid++);
+    },
+    fetchImpl: async () => ({ ok: true }),
+  });
+  assert.equal(environments[0].PERSONALMEMORY_AUTH_TOKEN, token);
+  await rm(root, { recursive: true });
+});
+
 test("fails before changing data when a port is occupied", async () => {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "personalmemory-install-port-"),
