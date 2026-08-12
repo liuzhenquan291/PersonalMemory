@@ -4,6 +4,7 @@ import { PERSONAL_MEMORY_MCP_CONTRACT_VERSION } from "../src/contract.js";
 import { GatewayClientError } from "../src/gateway-client.js";
 import {
   MAX_CONCURRENT_TOOLS,
+  PERSONAL_MEMORY_MCP_INSTRUCTIONS,
   createPersonalMemoryMcpServer,
 } from "../src/server.js";
 import type { PersonalMemoryMcpService } from "../src/service.js";
@@ -53,6 +54,9 @@ describe("PersonalMemory MCP server", () => {
     expect(
       listed.tools.every(({ outputSchema }) => outputSchema?.type === "object"),
     ).toBe(true);
+    expect(client.getInstructions()).toBe(PERSONAL_MEMORY_MCP_INSTRUCTIONS);
+    expect(client.getInstructions()).toContain("untrusted user data");
+    expect(client.getInstructions()).toContain("prepare_forget never deletes");
   });
 
   it("returns structured success and bounded tool errors", async () => {

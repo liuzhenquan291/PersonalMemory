@@ -12,20 +12,17 @@ MCP Server 是协议适配进程，不是第二套记忆服务。它只读取 Pe
 
 启动前必须完成带鉴权的 `/api/v1/mcp/status` 预检。Gateway 未启动、未配置认证、监听地址不是 loopback 或响应不符合契约时，MCP 在接入 stdio 前失败关闭，stdout 保持为空。
 
-构建后可由 MCP 客户端以以下等价配置启动；M4.3 才把它写入一个真实客户端并验证安装保护：
+M4.3 已用真实 Codex CLI 验证以下等价配置。普通安装使用 `npm run codex:mcp:install`：它先构建 core/MCP Server，只追加可验证的受管区块，并通过 `env_vars` 转发运行环境中的 token；不会把 token 值写进 `config.toml`。
 
 ```json
 {
   "command": "node",
   "args": ["/absolute/path/to/PersonalMemory/packages/mcp-server/dist/cli.js"],
-  "env": {
-    "PERSONALMEMORY_AUTH_ENABLED": "true",
-    "PERSONALMEMORY_AUTH_TOKEN": "<same local Gateway token>"
-  }
+  "env_vars": ["PERSONALMEMORY_AUTH_ENABLED", "PERSONALMEMORY_AUTH_TOKEN"]
 }
 ```
 
-Gateway host、port 和数据目录继续使用 PersonalMemory 的统一配置优先级；不得把 token 放入命令参数、URL、日志或工具结果。
+Gateway host、port 和数据目录继续使用 PersonalMemory 的统一配置优先级；不得把 token 放入命令参数、URL、配置值、日志或工具结果。重复安装幂等；已有同名手工配置或受管区块变化时 fail closed。`npm run codex:mcp:uninstall` 只在回执与受管区块完全匹配时移除本次追加内容，新建的空配置可删除，已有配置会逐字节恢复。
 
 ## 2. 协议与资源上限
 
@@ -46,4 +43,4 @@ Gateway host、port 和数据目录继续使用 PersonalMemory 的统一配置�
 
 工具错误只使用契约白名单和通用操作建议。Gateway 的请求 ID、底层错误消息、SQL、内部路径、正文、搜索词、token 和栈不会进入 MCP 结果。协议成功同时返回结构化结果和等价 JSON 文本，兼容支持结构化输出的客户端与基础客户端。
 
-M4.2 的自动化使用官方 MCP 客户端连接服务器，覆盖工具发现、成功/失败结构、并发上限、取消、预检失败、异常断连、stdout 隔离、Gateway 鉴权与响应上限。真实客户端配置、卸载恢复和会话闭环留在 M4.3。
+M4.2 的自动化使用官方 MCP SDK 客户端连接服务器，覆盖工具发现、成功/失败结构、并发上限、取消、预检失败、异常断连、stdout 隔离、Gateway 鉴权与响应上限。M4.3 增加配置保护测试及 `npm run test:codex-e2e`：真实 Codex CLI 严格解析隔离配置并调用五个工具，fixture 逐项断言捕获、召回、读取、反馈和 Web 遗忘交接请求，同时验证正文提示注入未执行且没有误报删除完成。

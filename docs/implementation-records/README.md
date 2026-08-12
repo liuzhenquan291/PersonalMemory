@@ -30,5 +30,6 @@
 | M3   | completed | [可信记忆治理退出验收](M3-EXIT.md)             |
 | M4.1 | completed | [冻结 MCP 工具契约](M4.1.md)                   |
 | M4.2 | completed | [实现 PersonalMemory MCP Server](M4.2.md)      |
+| M4.3 | completed | [首个真实 Codex 客户端验收](M4.3.md)           |
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。
