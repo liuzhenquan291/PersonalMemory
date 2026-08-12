@@ -71,6 +71,9 @@ scripts/eval-report.json
 # Generated binaries
 vectors.db
 
+# Local release artifacts
+release/
+
 # Office temp files
 ~$*
 

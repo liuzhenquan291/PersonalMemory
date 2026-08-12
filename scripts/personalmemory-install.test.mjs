@@ -80,13 +80,16 @@ test("builds, starts, writes private state, and reports a healthy installation",
       calls.push(args);
       return fakeChild(nextPid++);
     },
-    fetchImpl: async () => ({ ok: true }),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
   });
   assert.equal(result.changed, true);
   assert.equal(calls[0][0], "npm");
   assert.deepEqual(calls[0][1], ["run", "build:products"]);
-  assert.equal(calls.filter((call) => call[0] === process.execPath).length, 2);
-  assert.equal(calls[2][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
+  assert.equal(calls.filter((call) => call[0] === process.execPath).length, 3);
+  assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
   assert.equal((await stat(result.receiptPath)).mode & 0o777, 0o600);
   assert.equal((await stat(result.secretPath)).mode & 0o777, 0o600);
   const secret = await readFile(result.secretPath, "utf8");
@@ -114,7 +117,10 @@ test("does not install dependencies when they are already present", async () => 
     run: async (command, args) => commands.push([command, args]),
     assertPortAvailableImpl: async () => undefined,
     spawnImpl: () => fakeChild(nextPid++),
-    fetchImpl: async () => ({ ok: true }),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
   });
   assert.deepEqual(commands, [["npm", ["run", "build:products"]]]);
   await rm(root, { recursive: true });
@@ -151,9 +157,12 @@ test("reuses a valid private credential when restarting without a receipt", asyn
       environments.push(options.env);
       return fakeChild(nextPid++);
     },
-    fetchImpl: async () => ({ ok: true }),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
   });
-  assert.equal(environments[0].PERSONALMEMORY_AUTH_TOKEN, token);
+  assert.equal(environments[1].PERSONALMEMORY_AUTH_TOKEN, token);
   await rm(root, { recursive: true });
 });
 
@@ -203,7 +212,7 @@ test("cleans started services and leaves no receipt after failed health checks",
     }),
     /Timed out waiting/,
   );
-  assert.equal(children.length, 2);
+  assert.equal(children.length, 3);
   await assert.rejects(stat(path.join(root, "state", "install.json")), {
     code: "ENOENT",
   });

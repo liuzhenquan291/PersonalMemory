@@ -37,7 +37,12 @@ function fixture(overrides = {}) {
       statfsImpl: async () => ({ bavail: 1_000_000, bsize: 4_096 }),
       stopImpl: async (pid) => calls.push(["stop", pid]),
       runImpl: async (command, args) => calls.push([command, args]),
-      installImpl: async () => ({ ...receipt, gatewayPid: 3001, webPid: 3002 }),
+      installImpl: async () => ({
+        ...receipt,
+        upstreamPid: 3000,
+        gatewayPid: 3001,
+        webPid: 3002,
+      }),
       ...overrides,
     },
   };
@@ -72,10 +77,13 @@ test("upgrades a previous version through backup migration and restart", async (
   const written = item.calls.find((call) => call[0] === "write")[1];
   assert.equal(written.productVersion, upgradeTarget.productVersion);
   assert.equal(written.gatewayPid, 3001);
+  assert.equal(written.upstreamPid, 3000);
 });
 
 test("is idempotent when product and schema versions are current", async () => {
   const item = fixture();
+  item.receipt.version = 2;
+  item.receipt.upstreamPid = 2000;
   item.receipt.productVersion = upgradeTarget.productVersion;
   item.receipt.schemaVersion = upgradeTarget.schemaVersion;
   assert.equal((await upgradePersonalMemory(item.options)).changed, false);

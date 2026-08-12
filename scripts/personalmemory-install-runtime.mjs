@@ -16,8 +16,8 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
-const RECEIPT_VERSION = 1;
-const PRODUCT_VERSION = "0.1.0";
+const RECEIPT_VERSION = 2;
+const PRODUCT_VERSION = "0.1.1";
 const SCHEMA_VERSION = 7;
 
 export function assertSupportedEnvironment(options = {}) {
@@ -145,6 +145,41 @@ async function waitForHttp(url, fetchImpl, timeoutMs = 30_000) {
   throw new Error(`Timed out waiting for ${url}`, { cause: lastError });
 }
 
+async function waitForRecall(url, token, fetchImpl, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError;
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ query: "PersonalMemory readiness" }),
+        signal: globalThis.AbortSignal.timeout(2_000),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        if (
+          Array.isArray(body?.degraded_levels) &&
+          body.degraded_levels.length === 0
+        )
+          return;
+        lastError = new Error("recall reported degraded memory levels");
+      } else {
+        lastError = new Error(`HTTP ${response.status}`);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    await setTimeout(100);
+  }
+  throw new Error(`Timed out waiting for non-degraded recall at ${url}`, {
+    cause: lastError,
+  });
+}
+
 function isAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -204,6 +239,7 @@ export async function installPersonalMemory(options = {}) {
   const secretPath = path.join(runtimeDirectory, "gateway.env");
   const logPath = path.join(runtimeDirectory, "personalmemory.log");
   const host = "127.0.0.1";
+  const upstreamPort = options.upstreamPort ?? 8420;
   const gatewayPort = options.gatewayPort ?? 8787;
   const webPort = options.webPort ?? 4173;
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
@@ -218,23 +254,32 @@ export async function installPersonalMemory(options = {}) {
     const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
     if (
       receipt.version !== RECEIPT_VERSION ||
+      !Number.isSafeInteger(receipt.upstreamPid) ||
       !Number.isSafeInteger(receipt.gatewayPid) ||
       !Number.isSafeInteger(receipt.webPid)
     ) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
-    if (!isAlive(receipt.gatewayPid) || !isAlive(receipt.webPid)) {
+    if (
+      !isAlive(receipt.upstreamPid) ||
+      !isAlive(receipt.gatewayPid) ||
+      !isAlive(receipt.webPid)
+    ) {
       throw new Error(
         `A stopped or partial installation exists at ${receiptPath}; remove only this stale receipt before retrying`,
       );
     }
     await Promise.all([
+      waitForHttp(receipt.upstreamHealthUrl, fetchImpl, 3_000),
       waitForHttp(receipt.gatewayHealthUrl, fetchImpl, 3_000),
       waitForHttp(receipt.webUrl, fetchImpl, 3_000),
     ]);
+    const token = await loadOrCreateToken(receipt.secretPath);
+    await waitForRecall(receipt.recallUrl, token, fetchImpl, 3_000);
     return { ...receipt, changed: false, receiptPath };
   }
 
+  await assertPortAvailableImpl(host, upstreamPort);
   await assertPortAvailableImpl(host, gatewayPort);
   await assertPortAvailableImpl(host, webPort);
   if (!(await pathExists(path.join(root, "node_modules"))))
@@ -250,6 +295,20 @@ export async function installPersonalMemory(options = {}) {
       detached: true,
       stdio: ["ignore", log.fd, log.fd],
     };
+    const upstream = spawnImpl(
+      process.execPath,
+      ["--import", "tsx", path.join(root, "src", "gateway", "server.ts")],
+      {
+        ...common,
+        env: {
+          ...process.env,
+          TDAI_GATEWAY_HOST: host,
+          TDAI_GATEWAY_PORT: String(upstreamPort),
+          TDAI_DATA_DIR: dataDirectory,
+        },
+      },
+    );
+    children.push(upstream);
     const gateway = spawnImpl(
       process.execPath,
       [path.join(root, "apps", "gateway", "dist", "cli.js")],
@@ -290,6 +349,11 @@ export async function installPersonalMemory(options = {}) {
     children.push(web);
     await Promise.all([
       waitForHttp(
+        `http://${host}:${upstreamPort}/health`,
+        fetchImpl,
+        startupTimeoutMs,
+      ),
+      waitForHttp(
         `http://${host}:${gatewayPort}/health`,
         fetchImpl,
         startupTimeoutMs,
@@ -300,15 +364,24 @@ export async function installPersonalMemory(options = {}) {
         startupTimeoutMs,
       ),
     ]);
+    await waitForRecall(
+      `http://${host}:${gatewayPort}/api/v1/recall/query`,
+      token,
+      fetchImpl,
+      startupTimeoutMs,
+    );
     const receipt = {
       version: RECEIPT_VERSION,
       productVersion: PRODUCT_VERSION,
       schemaVersion: SCHEMA_VERSION,
       installedAt: new Date().toISOString(),
       dataDirectory,
+      upstreamPid: upstream.pid,
       gatewayPid: gateway.pid,
       webPid: web.pid,
+      upstreamHealthUrl: `http://${host}:${upstreamPort}/health`,
       gatewayHealthUrl: `http://${host}:${gatewayPort}/health`,
+      recallUrl: `http://${host}:${gatewayPort}/api/v1/recall/query`,
       webUrl: `http://${host}:${webPort}/memories`,
       secretPath,
       logPath,
@@ -317,6 +390,7 @@ export async function installPersonalMemory(options = {}) {
       receiptPath,
       `${JSON.stringify(receipt, null, 2)}\n`,
     );
+    upstream.unref();
     gateway.unref();
     web.unref();
     return { ...receipt, changed: true, receiptPath };

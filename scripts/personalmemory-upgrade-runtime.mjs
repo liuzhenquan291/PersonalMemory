@@ -18,7 +18,7 @@ import {
   installPersonalMemory,
 } from "./personalmemory-install-runtime.mjs";
 
-const TARGET_PRODUCT_VERSION = "0.1.0";
+const TARGET_PRODUCT_VERSION = "0.1.1";
 const TARGET_SCHEMA_VERSION = 7;
 const SPACE_MARGIN_BYTES = 128 * 1024 * 1024;
 
@@ -105,12 +105,13 @@ async function defaultStop(pid) {
 
 function validateReceipt(receipt, dataDirectory, stateDirectory) {
   if (
-    receipt.version !== 1 ||
+    !new Set([1, 2]).has(receipt.version) ||
     path.resolve(receipt.dataDirectory) !== dataDirectory ||
     path.resolve(receipt.secretPath ?? "") !==
       path.join(stateDirectory, "gateway.env") ||
     path.resolve(receipt.logPath ?? "") !==
       path.join(stateDirectory, "personalmemory.log") ||
+    (receipt.version === 2 && !Number.isSafeInteger(receipt.upstreamPid)) ||
     !Number.isSafeInteger(receipt.gatewayPid) ||
     !Number.isSafeInteger(receipt.webPid)
   ) {
@@ -150,6 +151,7 @@ export async function upgradePersonalMemory(options = {}) {
   const receipt = await readReceipt(stateDirectory);
   validateReceipt(receipt, dataDirectory, stateDirectory);
   if (
+    receipt.version === 2 &&
     receipt.productVersion === TARGET_PRODUCT_VERSION &&
     receipt.schemaVersion === TARGET_SCHEMA_VERSION
   ) {
@@ -181,7 +183,11 @@ export async function upgradePersonalMemory(options = {}) {
     cwd: root,
     stdio: "inherit",
   });
-  await Promise.all([stopImpl(receipt.webPid), stopImpl(receipt.gatewayPid)]);
+  await Promise.all([
+    stopImpl(receipt.webPid),
+    stopImpl(receipt.gatewayPid),
+    ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
+  ]);
   let backupCreated = false;
   try {
     await runImpl(

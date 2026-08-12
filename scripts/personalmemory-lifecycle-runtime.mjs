@@ -69,12 +69,13 @@ async function readManagedReceipt(stateDirectoryInput) {
   const receipt = JSON.parse(await readFile(target, "utf8"));
   const dataDirectory = path.resolve(receipt.dataDirectory ?? "");
   if (
-    receipt.version !== 1 ||
+    !new Set([1, 2]).has(receipt.version) ||
     dataDirectory === path.parse(dataDirectory).root ||
     path.resolve(receipt.secretPath ?? "") !==
       path.join(stateDirectory, "gateway.env") ||
     path.resolve(receipt.logPath ?? "") !==
       path.join(stateDirectory, "personalmemory.log") ||
+    (receipt.version === 2 && !Number.isSafeInteger(receipt.upstreamPid)) ||
     !Number.isSafeInteger(receipt.gatewayPid) ||
     !Number.isSafeInteger(receipt.webPid)
   ) {
@@ -121,7 +122,11 @@ export async function managePersonalMemory(command, options = {}) {
     };
   }
 
-  await Promise.all([stopImpl(receipt.webPid), stopImpl(receipt.gatewayPid)]);
+  await Promise.all([
+    stopImpl(receipt.webPid),
+    stopImpl(receipt.gatewayPid),
+    ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
+  ]);
   if (command === "stop") {
     await removeImpl(path.join(stateDirectory, "install.json"));
     return { stopped: true, dataDirectory, stateDirectory };

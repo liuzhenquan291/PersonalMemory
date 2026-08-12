@@ -8,8 +8,10 @@ function fixture() {
   const dataDirectory = "/safe/data";
   const stateDirectory = "/safe/state";
   const receipt = {
-    productVersion: "0.1.0",
+    version: 2,
+    productVersion: "0.1.1",
     schemaVersion: 7,
+    upstreamPid: 40,
     gatewayPid: 41,
     webPid: 42,
   };
@@ -47,6 +49,7 @@ test("stops services and removes only the receipt", async () => {
   assert.deepEqual(item.calls, [
     ["stop", 42],
     ["stop", 41],
+    ["stop", 40],
     ["remove", "/safe/state/install.json"],
   ]);
 });
