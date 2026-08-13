@@ -38,4 +38,6 @@
 | M5.3 | completed | [备份、恢复和卸载](M5.3.md)                    |
 | M5.4 | completed | [发布候选验证](M5.4.md)                        |
 
+M0–M5 完成后的合并前状态和授权边界见 [MVP 合并前审计](MVP_MERGE_READINESS.md)。
+
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。
