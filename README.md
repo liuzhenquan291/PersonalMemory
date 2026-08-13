@@ -17,7 +17,7 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 ## 当前状态
 
-M0–M5 已完成，产品化 MVP 已达到本地发布候选状态：个人记忆核心闭环、可信治理、Codex/Claude Code 双客户端 MCP 互操作、一条命令安装、安全升级、备份恢复、卸载和发布候选门禁均已通过。“彻底删除”只承诺可验证的受控范围，不代表全磁盘取证。当前候选尚未合并到 `main`、推送或对外发布。
+M0–M5 已完成个人记忆核心闭环、可信治理、Codex/Claude Code MCP 互操作、一条命令服务安装、安全升级、备份恢复和卸载基线。复盘后确认当前 Agent 接入仍是“可调用 MCP 工具”，尚未安装自动召回/自动捕获 Hook；隐私采集策略、模型授权和部分来源追溯承诺也仍需收口。因此项目当前不是完整 MVP 或发布候选，正在补做 M4.5–M5.5，且尚未合并到 `main`、推送或对外发布。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
 
 ## 产品安装
 
@@ -56,7 +56,7 @@ npm run codex:mcp:install
 npm run codex:mcp:uninstall
 ```
 
-安装只转发 `PERSONALMEMORY_AUTH_TOKEN` 等变量名，不把密钥值写入 Codex 配置。捕获、反馈和遗忘交接默认由客户端提示确认。
+安装只转发 `PERSONALMEMORY_AUTH_TOKEN` 等变量名，不把密钥值写入 Codex 配置。当前命令只安装 MCP 工具，不安装 PersonalMemory Hook；捕获、反馈和遗忘交接默认由客户端提示确认。自动召回/自动捕获和 Claude Code 正式安装器属于重新开放后的 M4.5，完成前请勿把当前接入描述为自动记忆维护。
 
 本地 Gateway 停止后，可使用以下命令管理统一 SQLite 数据根：
 
@@ -72,6 +72,7 @@ npm run data:restore -- --input /安全路径/memory-backup --confirm "RESTORE /
 - [项目执行规则](docs/PROJECT_RULES.md)
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
 - [实施计划](docs/IMPLEMENTATION_PLAN.md)
+- [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)
 - [实施记录](docs/implementation-records/README.md)
 - [MCP Server 运行与安全边界](docs/architecture/MCP_SERVER.md)
 - [上游中文文档](README_CN.md)
