@@ -53,6 +53,13 @@ export {
   type RecallLevel,
   type UnifiedRecallResult,
 } from "./recall-service.js";
+export {
+  HookLifecycleCaptureError,
+  HookLifecycleService,
+  type HookAuthorizationState,
+  type HookCaptureSink,
+  type HookLifecyclePolicy,
+} from "./hook-lifecycle.js";
 export type {
   UpstreamTransport,
   UpstreamTransportResponse,

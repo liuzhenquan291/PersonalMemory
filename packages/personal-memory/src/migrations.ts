@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 7;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 8;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -161,6 +161,16 @@ CREATE TABLE personalmemory_erasure_receipts (
 ) STRICT
 `;
 
+const HOOK_CAPTURES_SQL = `
+CREATE TABLE personalmemory_hook_captures (
+  idempotency_key TEXT PRIMARY KEY NOT NULL,
+  payload_hash TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status = 'captured'),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -220,5 +230,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_privacy_erasure_control",
     checksum: checksum(`${MANAGED_ARTIFACTS_SQL}\n${ERASURE_RECEIPTS_SQL}`),
     statements: [MANAGED_ARTIFACTS_SQL, ERASURE_RECEIPTS_SQL],
+  },
+  {
+    version: 8,
+    name: "add_hook_capture_idempotency",
+    checksum: checksum(HOOK_CAPTURES_SQL),
+    statements: [HOOK_CAPTURES_SQL],
   },
 ]);

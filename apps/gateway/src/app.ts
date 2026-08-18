@@ -2,6 +2,10 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   type AuditAction,
   getModelOutboundDisclosure,
+  hookCaptureRequestSchema,
+  hookCaptureResponseSchema,
+  hookRecallRequestSchema,
+  hookRecallResponseSchema,
   PERSONAL_MEMORY_SCHEMA_VERSION,
 } from "@personalmemory/core";
 import { Hono } from "hono";
@@ -44,6 +48,10 @@ import {
   privacyDeletionPreviewSchema,
   type PrivacyDeletionPreview,
 } from "./privacy-deletions.js";
+import {
+  HookLifecycleCaptureError,
+  HookLifecycleService,
+} from "./hook-lifecycle.js";
 
 const API_VERSION = "v1";
 const SESSION_COOKIE = "personalmemory_session";
@@ -381,6 +389,20 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     options.memoryReviews,
     options.memoryGovernance,
   );
+  const hookLifecycle =
+    options.hookCaptures &&
+    options.hookPolicy &&
+    options.memoryStates &&
+    options.memoryReviews &&
+    options.memoryGovernance
+      ? new HookLifecycleService(
+          recallService,
+          options.memoryReviews,
+          options.hookCaptures,
+          options.hookPolicy,
+          options.hookCaptureSink,
+        )
+      : undefined;
   const memoryBrowser = new MemoryBrowser(
     options.upstream,
     options.config.server.upstreamTimeoutMs,
@@ -438,6 +460,8 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/conversations/imports/:id/retry",
       "POST /api/v1/conversations/imports/:id/cancel",
       "POST /api/v1/recall/query",
+      "POST /api/v1/hooks/recall",
+      "POST /api/v1/hooks/capture",
       "GET /api/v1/memories",
       "GET /api/v1/memory",
       "GET /api/v1/audit",
@@ -962,6 +986,120 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       },
       200,
     );
+  });
+
+  const requireHookLifecycle = (): HookLifecycleService => {
+    if (!hookLifecycle) {
+      throw new GatewayHttpError(
+        503,
+        "HOOK_LIFECYCLE_UNAVAILABLE",
+        "Automatic memory hooks are not configured",
+      );
+    }
+    return hookLifecycle;
+  };
+
+  app.post("/api/v1/hooks/recall", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = hookRecallRequestSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_HOOK_REQUEST",
+        "Hook recall request is invalid",
+      );
+    }
+    const hookStartedAt = now();
+    const response = await requireHookLifecycle().recall(
+      parsed.data,
+      context.get("requestId"),
+    );
+    logger.info({
+      event: "hook.lifecycle",
+      requestId: context.get("requestId"),
+      method: "POST",
+      path: "POST /api/v1/hooks/recall",
+      status: 200,
+      durationMs: Math.max(0, now() - hookStartedAt),
+      operation: "recall",
+      client: parsed.data.event.client,
+      outcome: response.outcome,
+      itemCount: response.item_count,
+      usedChars: response.used_chars,
+      estimatedTokens: response.estimated_tokens,
+    });
+    return jsonResponse(hookRecallResponseSchema.parse(response), 200);
+  });
+
+  app.post("/api/v1/hooks/capture", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = hookCaptureRequestSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_HOOK_REQUEST",
+        "Hook capture request is invalid",
+      );
+    }
+    const hookStartedAt = now();
+    try {
+      const response = await requireHookLifecycle().capture(
+        parsed.data,
+        context.get("requestId"),
+      );
+      const event: GatewayLogEvent = {
+        event: "hook.lifecycle",
+        requestId: context.get("requestId"),
+        method: "POST",
+        path: "POST /api/v1/hooks/capture",
+        status: 200,
+        durationMs: Math.max(0, now() - hookStartedAt),
+        operation: "capture",
+        client: parsed.data.event.client,
+        outcome: response.outcome,
+        idempotencyRef: createHash("sha256")
+          .update(parsed.data.idempotency_key)
+          .digest("hex")
+          .slice(0, 16),
+      };
+      if (response.outcome === "conflict") logger.error(event);
+      else logger.info(event);
+      return jsonResponse(hookCaptureResponseSchema.parse(response), 200);
+    } catch (error) {
+      if (error instanceof HookLifecycleCaptureError) {
+        logger.error({
+          event: "hook.lifecycle",
+          requestId: context.get("requestId"),
+          method: "POST",
+          path: "POST /api/v1/hooks/capture",
+          status: 503,
+          durationMs: Math.max(0, now() - hookStartedAt),
+          operation: "capture",
+          client: parsed.data.event.client,
+          outcome: "unavailable",
+          idempotencyRef: createHash("sha256")
+            .update(parsed.data.idempotency_key)
+            .digest("hex")
+            .slice(0, 16),
+        });
+        throw new GatewayHttpError(
+          503,
+          "HOOK_CAPTURE_UNAVAILABLE",
+          "Hook capture could not be persisted locally",
+        );
+      }
+      throw error;
+    }
   });
 
   app.get("/api/v1/memories", async (context) => {

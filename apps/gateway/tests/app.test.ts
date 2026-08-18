@@ -1,9 +1,12 @@
 import {
   AuditLedger,
+  HookCaptureLedger,
+  HOOK_CAPTURE_COMMITTED,
   ImportLedger,
   MemoryGovernanceLedger,
   MemoryStateLedger,
   MemoryReviewLedger,
+  PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
   defaultMigrations,
   loadConfig,
   migrateDatabase,
@@ -16,6 +19,10 @@ import type { GatewayLogEvent, UpstreamGatewayClient } from "../src/types.js";
 import { UpstreamGatewayError } from "../src/upstream-client.js";
 import { ConversationImportManager } from "../src/import-manager.js";
 import type { PrivacyDeletionService } from "../src/privacy-deletions.js";
+import type {
+  HookCaptureSink,
+  HookLifecyclePolicy,
+} from "../src/hook-lifecycle.js";
 
 function createConfig(
   overrides: Partial<PersonalMemoryConfig["server"]> = {},
@@ -37,6 +44,8 @@ function createHarness(options: {
   withReviews?: boolean;
   withGovernance?: boolean;
   privacyDeletions?: PrivacyDeletionService;
+  hookPolicy?: HookLifecyclePolicy;
+  hookCaptureSink?: HookCaptureSink;
 }) {
   const logs: GatewayLogEvent[] = [];
   let sequence = 0;
@@ -70,6 +79,7 @@ function createHarness(options: {
     () => "2026-08-11T00:00:00.000Z",
     () => `audit-event-${++auditSequence}`,
   );
+  const hookCaptures = new HookCaptureLedger(database);
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
@@ -79,6 +89,9 @@ function createHarness(options: {
     memoryGovernance,
     privacyDeletions: options.privacyDeletions,
     audit,
+    hookCaptures,
+    hookPolicy: options.hookPolicy,
+    hookCaptureSink: options.hookCaptureSink,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
@@ -95,6 +108,7 @@ function createHarness(options: {
     memoryReviews,
     memoryGovernance,
     audit,
+    hookCaptures,
   };
 }
 
@@ -126,6 +140,155 @@ interface ImportJobResponse {
 }
 
 describe("PersonalMemory Gateway app", () => {
+  it("keeps hook routes authenticated and validates the frozen request", async () => {
+    const policy: HookLifecyclePolicy = {
+      authorization: () => ({
+        installationId: "installation-1",
+        authorizationRevision: 1,
+        policyRevision: 1,
+        recallEnabled: false,
+        captureEnabled: false,
+      }),
+      allowsSource: () => false,
+    };
+    const { app } = createHarness({
+      hookPolicy: policy,
+      withReviews: true,
+      withGovernance: true,
+    });
+    const request = {
+      contract_version: PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
+      event: {
+        client: "codex",
+        session_id: "session-1",
+        turn_id: "turn-1",
+        subagent: false,
+      },
+      authorization: {
+        installation_id: "installation-1",
+        authorization_revision: 1,
+        policy_revision: 1,
+      },
+      source: { kind: "agent_lifecycle", working_directory: "/project" },
+      prompt: "remember",
+    };
+    expect(
+      await app.request("/api/v1/hooks/recall", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(request),
+      }),
+    ).toMatchObject({ status: 401 });
+    const response = await app.request("/api/v1/hooks/recall", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(request),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      outcome: "skipped",
+      reason: "recall_not_authorized",
+    });
+  });
+
+  it("enforces the public capture route, conflict alert and local sink errors", async () => {
+    const policy: HookLifecyclePolicy = {
+      authorization: () => ({
+        installationId: "installation-1",
+        authorizationRevision: 1,
+        policyRevision: 1,
+        recallEnabled: true,
+        captureEnabled: true,
+      }),
+      allowsSource: () => true,
+    };
+    const capture = vi.fn(() => HOOK_CAPTURE_COMMITTED);
+    const { app, logs } = createHarness({
+      hookPolicy: policy,
+      hookCaptureSink: { capture },
+      withReviews: true,
+      withGovernance: true,
+    });
+    const request = {
+      contract_version: PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
+      event: {
+        client: "codex",
+        session_id: "private-session",
+        turn_id: "private-turn",
+        subagent: false,
+      },
+      authorization: {
+        installation_id: "installation-1",
+        authorization_revision: 1,
+        policy_revision: 1,
+      },
+      source: {
+        kind: "agent_lifecycle",
+        working_directory: "/private/project",
+      },
+      idempotency_key: `hook:v1:${"c".repeat(64)}`,
+      messages: [
+        { role: "user", content: "private user text" },
+        { role: "assistant", content: "private assistant text" },
+      ],
+    };
+    const post = (body: unknown) =>
+      app.request("/api/v1/hooks/capture", {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(body),
+      });
+
+    expect(
+      await (await post({ ...request, unexpected: true })).json(),
+    ).toMatchObject({
+      error: { code: "INVALID_HOOK_REQUEST" },
+    });
+    expect(await (await post(request)).json()).toMatchObject({
+      outcome: "captured",
+    });
+    expect(await (await post(request)).json()).toMatchObject({
+      outcome: "duplicate",
+    });
+    expect(
+      await (
+        await post({
+          ...request,
+          messages: [
+            request.messages[0],
+            { role: "assistant", content: "changed" },
+          ],
+        })
+      ).json(),
+    ).toMatchObject({ outcome: "conflict", reason: "idempotency_conflict" });
+    expect(capture).toHaveBeenCalledTimes(1);
+    const serializedLogs = JSON.stringify(logs);
+    expect(serializedLogs).toContain('"outcome":"conflict"');
+    expect(serializedLogs).not.toContain("private user text");
+    expect(serializedLogs).not.toContain("private assistant text");
+    expect(serializedLogs).not.toContain("/private/project");
+    expect(serializedLogs).not.toContain("private-session");
+
+    const failed = createHarness({
+      hookPolicy: policy,
+      hookCaptureSink: {
+        capture: () => {
+          throw new Error("local failure");
+        },
+      },
+      withReviews: true,
+      withGovernance: true,
+    });
+    const unavailable = await failed.app.request("/api/v1/hooks/capture", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify(request),
+    });
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toMatchObject({
+      error: { code: "HOOK_CAPTURE_UNAVAILABLE" },
+    });
+  });
   it("serves public health and version with request IDs", async () => {
     const { app } = createHarness({});
     const health = await app.request("/health", {
@@ -141,7 +304,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 7,
+      schemaVersion: 8,
     });
   });
 

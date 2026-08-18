@@ -101,3 +101,8 @@ export {
   type HookRecallRequest,
   type HookRecallResponse,
 } from "./hook-contract.js";
+export {
+  HOOK_CAPTURE_COMMITTED,
+  HookCaptureLedger,
+  type HookCaptureResult,
+} from "./hook-capture-ledger.js";

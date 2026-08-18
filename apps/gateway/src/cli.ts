@@ -1,5 +1,6 @@
 import {
   AuditLedger,
+  HookCaptureLedger,
   defaultMigrations,
   ImportLedger,
   MemoryGovernanceLedger,
@@ -29,6 +30,7 @@ let memoryReviews: MemoryReviewLedger | undefined;
 let memoryGovernance: MemoryGovernanceLedger | undefined;
 let audit: AuditLedger | undefined;
 let privacyDeletions: PrivacyDeletionService | undefined;
+let hookCaptures: HookCaptureLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -43,6 +45,7 @@ async function stop(signal: string): Promise<void> {
     memoryGovernance = undefined;
     audit = undefined;
     privacyDeletions = undefined;
+    hookCaptures = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -82,6 +85,7 @@ async function main(): Promise<void> {
       upstream,
       config.server.upstreamTimeoutMs,
     );
+    hookCaptures = new HookCaptureLedger(database);
     const app = createGatewayApp({
       config,
       upstream,
@@ -91,6 +95,17 @@ async function main(): Promise<void> {
       memoryGovernance,
       privacyDeletions,
       audit,
+      hookCaptures,
+      hookPolicy: {
+        authorization: () => ({
+          installationId: "unconfigured",
+          authorizationRevision: 1,
+          policyRevision: 1,
+          recallEnabled: false,
+          captureEnabled: false,
+        }),
+        allowsSource: () => false,
+      },
     });
     server = new PersonalMemoryGatewayServer(app, config);
 

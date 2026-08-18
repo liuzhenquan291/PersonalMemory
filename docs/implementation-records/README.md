@@ -34,6 +34,7 @@
 | M4.4   | completed | [第二客户端可移植性验证](M4.4.md)              |
 | M4     | completed | [双客户端 MCP 互操作退出验收](M4-EXIT.md)      |
 | M4.5.1 | completed | [冻结自动 Hook 契约与授权/隐私边界](M4.5.1.md) |
+| M4.5.2 | completed | [实现 Gateway Hook Adapter 与本地持久化边界](M4.5.2.md) |
 | M5.1   | completed | [一条命令安装器](M5.1.md)                      |
 | M5.2   | completed | [升级和数据库迁移](M5.2.md)                    |
 | M5.3   | completed | [备份、恢复和卸载](M5.3.md)                    |

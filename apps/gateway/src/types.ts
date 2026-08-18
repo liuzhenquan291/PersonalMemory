@@ -1,5 +1,6 @@
 import type {
   AuditLedger,
+  HookCaptureLedger,
   MemoryGovernanceLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
@@ -7,6 +8,7 @@ import type {
 } from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
 import type { PrivacyDeletionService } from "./privacy-deletions.js";
+import type { HookCaptureSink, HookLifecyclePolicy } from "./hook-lifecycle.js";
 
 export interface GatewayErrorEnvelope {
   error: {
@@ -22,13 +24,20 @@ export interface GatewayLogger {
 }
 
 export interface GatewayLogEvent {
-  event: "request.completed" | "request.failed";
+  event: "request.completed" | "request.failed" | "hook.lifecycle";
   requestId: string;
   method: string;
   path: string;
   status: number;
   durationMs: number;
   code?: string;
+  operation?: "recall" | "capture";
+  client?: "codex" | "claude-code";
+  outcome?: string;
+  itemCount?: number;
+  usedChars?: number;
+  estimatedTokens?: number;
+  idempotencyRef?: string;
 }
 
 export interface UpstreamGatewayClient {
@@ -50,6 +59,9 @@ export interface GatewayAppOptions {
   memoryGovernance?: MemoryGovernanceLedger;
   privacyDeletions?: PrivacyDeletionService;
   audit?: AuditLedger;
+  hookCaptures?: HookCaptureLedger;
+  hookPolicy?: HookLifecyclePolicy;
+  hookCaptureSink?: HookCaptureSink;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;
