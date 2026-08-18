@@ -2,7 +2,7 @@
 
 > 契约版本：`1.0.0`
 >
-> 状态：M4.5.1 契约已冻结，M4.5.2 Gateway Adapter 已实现；安装器、客户端 Adapter、生产捕获 sink 和真实客户端 E2E 在后续步骤实施。
+> 状态：M4.5.1 契约已冻结，M4.5.2 Gateway Adapter 与 M4.5.3 双客户端事件/turn 暂存 Adapter 已实现；安装器、Gateway 调用/outbox、生产捕获 sink 和真实客户端 E2E 在后续步骤实施。
 >
 > 适用客户端：Codex、Claude Code。
 
@@ -15,6 +15,8 @@ Hook 只是客户端 Adapter。它不得直接打开 SQLite、上游内核、数
 M4.5.1 只冻结公共契约和安全边界，不安装或启用 Hook，不改变现有 MCP 工具审批策略，不实现 outbox、模型配置或服务端敏感内容规则。
 
 M4.5.2 提供认证的 `/api/v1/hooks/recall` 与 `/api/v1/hooks/capture`。Gateway 以服务端授权和策略 revision 为权威，且只有状态、审核、有效期/冲突治理账本全部存在时才启用，只从 approved、未抑制的 L1 构造有界召回上下文。同步本地 `HookCaptureSink` 必须使用账本提供的活动 SQLite 事务写入并同步返回唯一提交凭证，才能与幂等落账一起提交；Promise、外部副作用或错误凭证不能视为成功。账本只保存 HMAC 键和独立载荷摘要。由于既有上游 `/capture` 可能触发模型处理，在 M4.6 统一模型外联授权前，生产 sink 默认不接线，不能以自动本地捕获授权替代模型外联同意。
+
+M4.5.3 只实现客户端事件标准化、请求构造和明文 turn 暂存，不安装 Hook，也不调用 Gateway。暂存目录/文件固定为 `0700`/`0600`，拒绝符号链接路径，以带 owner 存活校验和恢复互斥的跨进程锁串行化原子更新，并以 1 小时逻辑 TTL、128 条和 4 MiB 限制正文；每次访问先物理清除过期记录，无后续事件时的定时清扫由 M4.5.4 接入常驻本地服务执行。Stop 先取得随机 token 与短租约绑定的 claim；只有 Gateway 成功或后续步骤的持久 outbox 已接纳后才 acknowledge 删除，失败可 release，进程崩溃则租约到期后重领，陈旧 token 不能影响新认领。旧版 Claude 在一个待配对回合内复用随机且不含正文的 turn 标识，确认删除后同 session 下一回合生成新标识。
 
 ## 2. 已核验的客户端事件
 
