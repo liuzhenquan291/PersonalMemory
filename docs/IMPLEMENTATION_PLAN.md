@@ -534,7 +534,7 @@ M0–M5 的核心闭环、手动 MCP、治理和发布工程基线已完成，�
 
 ### M4.5 自动 Agent 记忆生命周期
 
-- 冻结 Hook 输入/输出、首次授权、手动工具边界、召回预算、捕获内容、稳定幂等和失败语义；
+- M4.5.1 已冻结 Hook 输入/输出、首次授权、手动工具边界、召回预算、捕获内容、稳定幂等和失败语义，见 [自动 Agent 记忆 Hook 契约](architecture/AUTOMATIC_AGENT_MEMORY_HOOKS.md) 和 [实施记录](implementation-records/M4.5.1.md)；
 - 实现只通过 PersonalMemory Gateway 的公共本地 Hook Adapter；
 - 为 Codex 和 Claude Code 提供配置保护、信任处理、回执、状态、升级和可逆卸载；
 - 实现自动召回、成功轮次自动捕获、注入不回写和有界 outbox；

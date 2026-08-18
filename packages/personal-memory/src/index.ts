@@ -85,3 +85,19 @@ export {
   type ImportJobView,
   type ImportRoundPayload,
 } from "./import-ledger.js";
+export {
+  PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
+  UNTRUSTED_HOOK_MEMORY_WARNING,
+  createPersonalMemoryHookContractManifest,
+  hookCaptureRequestSchema,
+  hookCaptureResponseSchema,
+  hookClientSchema,
+  hookRecallBudgetSchema,
+  hookRecallRequestSchema,
+  hookRecallResponseSchema,
+  type HookCaptureRequest,
+  type HookCaptureResponse,
+  type HookClient,
+  type HookRecallRequest,
+  type HookRecallResponse,
+} from "./hook-contract.js";
