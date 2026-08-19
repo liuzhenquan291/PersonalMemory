@@ -2,7 +2,7 @@
 
 > 契约版本：`1.0.0`
 >
-> 状态：M4.5.1 契约已冻结，M4.5.2 Gateway Adapter 与 M4.5.3 双客户端事件/turn 暂存 Adapter 已实现；安装器、Gateway 调用/outbox、生产捕获 sink 和真实客户端 E2E 在后续步骤实施。
+> 状态：M4.5.1 契约已冻结，M4.5.2 Gateway Adapter、M4.5.3 双客户端事件/turn 暂存 Adapter 与 M4.5.4 Gateway Runtime/私有 outbox 已实现；安装器、受管 worker、生产捕获 sink、Web/doctor 接线和真实客户端 E2E 在后续步骤实施。
 >
 > 适用客户端：Codex、Claude Code。
 
@@ -16,7 +16,9 @@ M4.5.1 只冻结公共契约和安全边界，不安装或启用 Hook，不改�
 
 M4.5.2 提供认证的 `/api/v1/hooks/recall` 与 `/api/v1/hooks/capture`。Gateway 以服务端授权和策略 revision 为权威，且只有状态、审核、有效期/冲突治理账本全部存在时才启用，只从 approved、未抑制的 L1 构造有界召回上下文。同步本地 `HookCaptureSink` 必须使用账本提供的活动 SQLite 事务写入并同步返回唯一提交凭证，才能与幂等落账一起提交；Promise、外部副作用或错误凭证不能视为成功。账本只保存 HMAC 键和独立载荷摘要。由于既有上游 `/capture` 可能触发模型处理，在 M4.6 统一模型外联授权前，生产 sink 默认不接线，不能以自动本地捕获授权替代模型外联同意。
 
-M4.5.3 只实现客户端事件标准化、请求构造和明文 turn 暂存，不安装 Hook，也不调用 Gateway。暂存目录/文件固定为 `0700`/`0600`，拒绝符号链接路径，以带 owner 存活校验和恢复互斥的跨进程锁串行化原子更新，并以 1 小时逻辑 TTL、128 条和 4 MiB 限制正文；每次访问先物理清除过期记录，无后续事件时的定时清扫由 M4.5.4 接入常驻本地服务执行。Stop 先取得随机 token 与短租约绑定的 claim；只有 Gateway 成功或后续步骤的持久 outbox 已接纳后才 acknowledge 删除，失败可 release，进程崩溃则租约到期后重领，陈旧 token 不能影响新认领。旧版 Claude 在一个待配对回合内复用随机且不含正文的 turn 标识，确认删除后同 session 下一回合生成新标识。
+M4.5.3 只实现客户端事件标准化、请求构造和明文 turn 暂存，不安装 Hook，也不调用 Gateway。暂存目录/文件固定为 `0700`/`0600`，拒绝符号链接路径，以带 owner 存活校验和恢复互斥的跨进程锁串行化原子更新，并以 1 小时逻辑 TTL、128 条和 4 MiB 限制正文；每次访问先物理清除过期记录，无后续事件时的定时清扫由正式安装接入的受管常驻 Hook worker 执行。Stop 先取得随机 token 与短租约绑定的 claim；只有 Gateway 成功或后续步骤的持久 outbox 已接纳后才 acknowledge 删除，失败可 release，进程崩溃则租约到期后重领，陈旧 token 不能影响新认领。旧版 Claude 在一个待配对回合内复用随机且不含正文的 turn 标识，确认删除后同 session 下一回合生成新标识。
+
+M4.5.4 提供认证的 loopback HTTP Gateway Runtime、Codex/Claude `additionalContext` 编码、统一 fail-open 编排和私有持久 outbox。UserPromptSubmit 从 turn 暂存开始共享 1 秒绝对 deadline，取消信号贯穿 turn-store 锁等待/读写和 Gateway 请求，Gateway 只获得扣除已耗时后的剩余预算；捕获 HTTP 调用限制为 1 秒并禁止重定向，召回与捕获响应正文分别限制为 16 KiB 与 4 KiB；只有网络/超时或 502/503/504 可排队。outbox 固定 64 个 0600 原子槽位、单项 256 KiB、正文 TTL 24 小时、claim 名义租约 30 秒，最多尝试 5 次并按 1 秒、5 秒、30 秒、60 秒退避；失败状态保留至 TTL，脱敏状态接口只报告 queued/failed/total。Stop 仅在 Gateway 终态、不可重试协议终态或 outbox 已持久接纳后确认删除 turn，outbox 持久化失败会释放认领；所有 Hook 错误都输出允许客户端继续的空对象。前台 Hook 不同步 flush backlog，独立维护接口留给受管 worker 调度。该步骤只提供调用、flush 与状态接口，不安装 Hook、不启动常驻 worker、不接 Web/doctor，也不绕过 M4.6 生产捕获 sink 的关闭边界。
 
 ## 2. 已核验的客户端事件
 

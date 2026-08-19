@@ -537,6 +537,7 @@ M0–M5 的核心闭环、手动 MCP、治理和发布工程基线已完成，�
 - M4.5.1 已冻结 Hook 输入/输出、首次授权、手动工具边界、召回预算、捕获内容、稳定幂等和失败语义，见 [自动 Agent 记忆 Hook 契约](architecture/AUTOMATIC_AGENT_MEMORY_HOOKS.md) 和 [实施记录](implementation-records/M4.5.1.md)；
 - M4.5.2 已实现只通过 PersonalMemory Gateway 的公共本地 Hook Adapter、服务端授权/策略校验、approved L1 召回和持久化幂等边界；M4.6 完成前生产捕获 sink 默认关闭，见 [实施记录](implementation-records/M4.5.2.md)；
 - M4.5.3 已实现 Codex/Claude Code 生命周期事件解析、私有有界 turn 暂存、旧版 Claude turn 降级和安装级 HMAC 生成，见 [实施记录](implementation-records/M4.5.3.md)；
+- M4.5.4 已实现认证 loopback Gateway Runtime、双客户端 additionalContext 编码、统一 fail-open 编排和私有有界 outbox；安装、常驻 worker、Web/doctor 状态接线与真实客户端 E2E 留给后续步骤，见 [实施记录](implementation-records/M4.5.4.md)；
 - 为 Codex 和 Claude Code 提供配置保护、信任处理、回执、状态、升级和可逆卸载；
 - 实现自动召回、成功轮次自动捕获、注入不回写和有界 outbox；
 - 在 L0 落盘前执行全局及按 Agent/项目/来源采集策略和敏感内容规则；

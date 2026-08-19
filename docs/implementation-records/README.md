@@ -36,6 +36,7 @@
 | M4.5.1 | completed | [冻结自动 Hook 契约与授权/隐私边界](M4.5.1.md)          |
 | M4.5.2 | completed | [实现 Gateway Hook Adapter 与本地持久化边界](M4.5.2.md) |
 | M4.5.3 | completed | [实现双客户端事件解析、turn 暂存与 HMAC](M4.5.3.md)     |
+| M4.5.4 | completed | [实现 Hook Runtime 与私有有界 outbox](M4.5.4.md)        |
 | M5.1   | completed | [一条命令安装器](M5.1.md)                               |
 | M5.2   | completed | [升级和数据库迁移](M5.2.md)                             |
 | M5.3   | completed | [备份、恢复和卸载](M5.3.md)                             |

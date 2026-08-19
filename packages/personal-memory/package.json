@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./hook-contract": {
+      "types": "./dist/hook-contract.d.ts",
+      "import": "./dist/hook-contract.js"
     }
   },
   "scripts": {

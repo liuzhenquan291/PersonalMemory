@@ -141,9 +141,10 @@ export class PrivateTurnStore {
     this.random = options.random ?? (() => randomBytes(16).toString("hex"));
   }
 
-  async remember(event, secret) {
+  async remember(event, secret, options = {}) {
     return this.#locked(async () => {
-      const records = await this.#read();
+      options.signal?.throwIfAborted();
+      const records = await this.#read(options.signal);
       const fresh = this.#fresh(records);
       const existing = fresh.find((item) =>
         event.turnId
@@ -155,7 +156,7 @@ export class PrivateTurnStore {
             item.turnId.startsWith("legacy:"),
       );
       if (existing) {
-        await this.#write(fresh);
+        await this.#write(fresh, options.signal);
         if (existing.prompt !== event.prompt || existing.cwd !== event.cwd)
           throw new Error("Turn payload conflicts with the staged prompt");
         return existing;
@@ -176,9 +177,10 @@ export class PrivateTurnStore {
           sessionId: event.sessionId,
           turnId,
         }),
+        options.signal,
       );
       return { ...event, turnId };
-    });
+    }, options.signal);
   }
 
   async claim(event) {
@@ -308,14 +310,14 @@ export class PrivateTurnStore {
     );
   }
 
-  async #read() {
+  async #read(signal) {
     try {
       const stat = await lstat(this.file);
       if (!stat.isFile() || (stat.mode & 0o077) !== 0)
         throw new Error("Turn store is not private");
       if (stat.size > 4 * 1024 * 1024)
         throw new Error("Turn store is too large");
-      const content = await readFile(this.file, "utf8");
+      const content = await readFile(this.file, { encoding: "utf8", signal });
       const parsed = JSON.parse(content);
       if (!Array.isArray(parsed)) throw new Error("Turn store is invalid");
       return parsed;
@@ -325,7 +327,8 @@ export class PrivateTurnStore {
     }
   }
 
-  async #write(records) {
+  async #write(records, signal) {
+    signal?.throwIfAborted();
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const directoryStat = await lstat(this.directory);
     if (!directoryStat.isDirectory() || (directoryStat.mode & 0o077) !== 0)
@@ -338,14 +341,17 @@ export class PrivateTurnStore {
       await writeFile(temporary, content, {
         mode: 0o600,
         flag: "wx",
+        signal,
       });
+      signal?.throwIfAborted();
       await rename(temporary, this.file);
     } finally {
       await unlink(temporary).catch(() => undefined);
     }
   }
 
-  async #locked(run) {
+  async #locked(run, signal) {
+    signal?.throwIfAborted();
     await this.#assertNoSymlinkAncestors();
     await mkdir(this.directory, { recursive: true, mode: 0o700 });
     const lock = path.join(this.directory, "turns.lock");
@@ -354,6 +360,7 @@ export class PrivateTurnStore {
       token: this.random(),
     });
     for (let attempt = 0; ; attempt += 1) {
+      signal?.throwIfAborted();
       try {
         await writeFile(lock, owner, { mode: 0o600, flag: "wx" });
         break;
@@ -362,7 +369,7 @@ export class PrivateTurnStore {
         const observed = await readFile(lock, "utf8").catch(() => undefined);
         if (observed !== undefined)
           await this.#recoverAbandonedLock(lock, observed);
-        await delay(10);
+        await delay(10, undefined, { signal });
       }
     }
     try {

@@ -98,7 +98,8 @@
 43. Hook 事件必须使用稳定的 Agent/session/turn 幂等标识；重复事件不得重复写入，相同键不同载荷必须冲突。普通 command Hook 不得自行再次调用 Agent；自动召回上下文及后台提炼 token 必须分别受预算和可观测性约束。
 44. 自动 Hook 公共契约以 `UserPromptSubmit` 的原始 prompt 和同 turn `Stop` 的最终 assistant 文本为事实源；不得依赖格式不稳定或异步滞后的 transcript 重建当前轮。Codex 使用原生 `turn_id`，Claude Code 优先使用 `prompt_id`，旧版本由客户端 Adapter 生成不含正文的稳定标识；公共请求必须显式声明非 subagent，捕获幂等键必须使用安装级私钥 HMAC 且不得包含正文。召回最多注入 5 条、4,000 字符、估算 1,000 token 并在 1 秒内 fail-open；客户端配置存在或 Hook 已信任不等同于产品授权，授权和策略 revision 仍由 Gateway 校验。
 45. 自动 Hook 捕获不得在模型外联门禁收口前直接复用可能触发模型处理的上游 `/capture`。Gateway 必须先停在显式注入的同步本地捕获边界，生产默认关闭；sink 只能使用账本传入的活动 SQLite 事务写入 L0，并同步返回唯一提交凭证，使本地写入与幂等落账同事务提交或整体回滚，异步 Promise 和事务外副作用不得视为成功。只有 M4.6 证明 L0 可本地落盘且未授权时不会提炼或外联后，才能接入生产 capture sink。持久化幂等账本只保存 HMAC 键、独立载荷摘要、状态和时间戳，不保存正文、cwd 或客户端配置。
-46. 客户端 Hook 的明文 turn 暂存必须位于私有、无符号链接路径，采用带 owner 存活校验和恢复互斥的跨进程锁、原子替换、1 小时逻辑 TTL、最多 128 条和 4 MiB 总上限；每次访问必须先把过期正文从磁盘清除，M4.5.4 接入常驻本地服务后还必须定时清扫无后续事件的过期记录。容量回收不得驱逐活动认领或在未保存新 turn 时返回成功。`Stop` 只能通过带随机 token 和短租约的 claim 读取，Gateway 捕获成功或请求已进入持久 outbox 后才 acknowledge 删除；崩溃后允许租约到期重领，旧 token 不得删除或释放新认领。同一原生 turn 的完全相同前置事件视为重试，不同正文或 cwd 必须冲突并保留首条；旧版 Claude 只在当前待配对回合内复用随机且不含正文的 turn 标识，完成后下一回合必须生成新标识。
+46. 客户端 Hook 的明文 turn 暂存必须位于私有、无符号链接路径，采用带 owner 存活校验和恢复互斥的跨进程锁、原子替换、1 小时逻辑 TTL、最多 128 条和 4 MiB 总上限；每次访问必须先把过期正文从磁盘清除，正式安装接入受管常驻 Hook worker 后还必须定时清扫无后续事件的过期记录。容量回收不得驱逐活动认领或在未保存新 turn 时返回成功。`Stop` 只能通过带随机 token 和短租约的 claim 读取，Gateway 捕获成功或请求已进入持久 outbox 后才 acknowledge 删除；崩溃后允许租约到期重领，旧 token 不得删除或释放新认领。同一原生 turn 的完全相同前置事件视为重试，不同正文或 cwd 必须冲突并保留首条；旧版 Claude 只在当前待配对回合内复用随机且不含正文的 turn 标识，完成后下一回合必须生成新标识。
+47. Hook Runtime 只能以 Bearer 认证访问显式 loopback HTTP Gateway，禁止凭据、重定向和非 loopback origin；UserPromptSubmit 从 turn 暂存开始必须共享 1 秒绝对 deadline，Gateway 只能使用剩余预算，捕获 HTTP 调用不得超过 1 秒，召回与捕获响应正文分别最多 16 KiB 与 4 KiB。只有网络/超时或 HTTP 502/503/504 可进入 outbox，鉴权、契约、冲突和策略结果必须按终态处理或 fail-open 报警，不得无限重试。outbox 必须位于私有无符号链接目录，固定最多 64 条、单条 256 KiB、正文 TTL 24 小时、claim 名义租约 30 秒；最多尝试 5 次，退避固定为 1 秒、5 秒、30 秒、60 秒，耗尽后保留失败状态至 TTL 并向状态接口暴露脱敏 backlog。并发入队与 flush 必须原子且同一项只能由一个消费者投递；只有 Gateway 返回终态、不可重试协议终态或 outbox 已持久接纳后才 acknowledge turn，outbox 持久化失败必须 release。前台 Hook 不得同步 flush backlog；任何 Hook 失败都只能返回允许客户端继续的空输出，固定不可信警告与召回正文只能进入客户端 `additionalContext` 通道且共同受字符/token 预算约束。
 
 ## 6. 工程与质量
 
@@ -198,3 +199,4 @@
 | 2026-08-13 | 冻结 M4.5.1 双客户端事件配对、transcript 降级、信任及公共契约预算          | 生效 |
 | 2026-08-18 | 冻结 M4.5.2 Gateway Hook Adapter、持久化幂等与生产捕获默认关闭边界         | 生效 |
 | 2026-08-18 | 冻结 M4.5.3 私有 turn 暂存、跨进程互斥、租约认领与旧版回合标识边界         | 生效 |
+| 2026-08-19 | 冻结 M4.5.4 loopback Gateway 调用、fail-open 与私有有界 outbox 边界        | 生效 |
