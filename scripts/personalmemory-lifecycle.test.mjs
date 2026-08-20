@@ -146,3 +146,43 @@ test("deletes only validated state and data roots after confirmation", async () 
     item.calls.some((call) => call[0] === "remove" && call[1] === "/safe/data"),
   );
 });
+
+test("reports and uninstalls managed Hook v3 state with the worker lifecycle", async () => {
+  const item = fixture();
+  const receipt = {
+    version: 3,
+    productVersion: "0.1.1",
+    schemaVersion: 7,
+    upstreamPid: 40,
+    gatewayPid: 41,
+    webPid: 42,
+    hookWorkerPid: 43,
+    hookWorkerGeneration: "a".repeat(32),
+    hookReceiptPath: "/safe/state/hooks/install.json",
+  };
+  item.options.readManagedReceiptImpl = async () => ({
+    receipt,
+    dataDirectory: item.dataDirectory,
+    stateDirectory: item.stateDirectory,
+  });
+  item.options.readManagedHookStatusImpl = async () => ({
+    installed: true,
+    codex: "installed_untrusted",
+    claude: "installed",
+    firstEventReceived: true,
+  });
+  item.options.readHookDoctorStatusImpl = async () => ({
+    worker: "healthy",
+    workerPid: 43,
+    workerGeneration: "a".repeat(32),
+    backlog: { queued: 1, failed: 0, total: 1 },
+  });
+  item.options.uninstallManagedHooksImpl = async () =>
+    item.calls.push(["uninstall-hooks"]);
+  const status = await managePersonalMemory("status", item.options);
+  assert.equal(status.hooks.worker, "healthy");
+  assert.equal(status.hooks.codex, "installed_untrusted");
+  await managePersonalMemory("uninstall", item.options);
+  assert.ok(item.calls.some((call) => call[0] === "stop" && call[1] === 43));
+  assert.ok(item.calls.some((call) => call[0] === "uninstall-hooks"));
+});

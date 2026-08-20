@@ -355,11 +355,12 @@ export class PrivateHookOutbox {
     };
   }
 
-  async flush(gateway) {
+  async flush(gateway, options = {}) {
     await this.#prepare();
     await this.#pruneAndRecover();
     const result = { attempted: 0, delivered: 0, deferred: 0, failed: 0 };
     for (const { slot, entry } of await this.#records()) {
+      if (result.attempted >= (options.maxEntries ?? 64)) break;
       if (entry.state === "failed" || entry.nextAttemptAt > this.now())
         continue;
       const claim = this.#claimFile(slot);
@@ -598,8 +599,8 @@ export class HookLifecycleRuntime {
     }
   }
 
-  async maintain(client) {
-    await this.#flushOutbox(client);
+  async maintain(client, options = {}) {
+    await this.#flushOutbox(client, options);
   }
 
   async #prompt(event, deadline, signal) {
@@ -705,19 +706,20 @@ export class HookLifecycleRuntime {
     return {};
   }
 
-  async #flushOutbox(client) {
+  async #flushOutbox(client, options) {
     const startedAt = Date.now();
     try {
-      const result = await this.outbox.flush(this.gateway);
+      const result = await this.outbox.flush(this.gateway, options);
       if (result.attempted > 0)
         this.#record("outbox", client, "flushed", {
           ...result,
           durationMs: Date.now() - startedAt,
         });
-    } catch {
+    } catch (error) {
       this.#record("outbox", client, "maintenance_error", {
         durationMs: Date.now() - startedAt,
       });
+      throw error;
     }
   }
 

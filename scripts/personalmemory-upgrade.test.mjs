@@ -82,12 +82,25 @@ test("upgrades a previous version through backup migration and restart", async (
 
 test("is idempotent when product and schema versions are current", async () => {
   const item = fixture();
-  item.receipt.version = 2;
+  item.receipt.version = 3;
   item.receipt.upstreamPid = 2000;
+  item.receipt.hookWorkerPid = 2003;
+  item.receipt.hookWorkerGeneration = "a".repeat(32);
+  item.receipt.hookReceiptPath = "/safe/state/hooks/install.json";
   item.receipt.productVersion = upgradeTarget.productVersion;
   item.receipt.schemaVersion = upgradeTarget.schemaVersion;
   assert.equal((await upgradePersonalMemory(item.options)).changed, false);
   assert.deepEqual(item.calls, []);
+});
+
+test("upgrades a current v2 receipt to the four-process managed Hook lifecycle", async () => {
+  const item = fixture();
+  item.receipt.version = 2;
+  item.receipt.upstreamPid = 2000;
+  item.receipt.productVersion = upgradeTarget.productVersion;
+  item.receipt.schemaVersion = upgradeTarget.schemaVersion;
+  assert.equal((await upgradePersonalMemory(item.options)).changed, true);
+  assert.ok(item.calls.some((call) => call[0] === "stop" && call[1] === 2000));
 });
 
 test("rejects insufficient space before build or service stop", async () => {

@@ -5,8 +5,10 @@ import { installPersonalMemory } from "./personalmemory-install-runtime.mjs";
 try {
   const result = await installPersonalMemory();
   process.stdout.write(
-    `${result.changed ? "PersonalMemory installed and started" : "PersonalMemory is already installed and healthy"}\n` +
+    `${result.changed ? "PersonalMemory installed and started" : "PersonalMemory is already installed and running"}\n` +
       `Web: ${result.webUrl}\nHealth: ${result.gatewayHealthUrl}\n` +
+      `Codex Hooks: ${result.codexHookStatus} (review the exact definitions with /hooks before trusting)\n` +
+      `Claude Code Hooks: ${result.claudeHookStatus}\n` +
       `Data: ${result.dataDirectory}\nLog: ${result.logPath}\n`,
   );
 } catch (error) {

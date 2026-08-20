@@ -5,6 +5,11 @@ import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
 import { installPersonalMemory } from "./personalmemory-install-runtime.mjs";
+import {
+  readManagedHookStatus,
+  uninstallManagedHooks,
+} from "./personalmemory-hook-install.mjs";
+import { readHookDoctorStatus } from "./personalmemory-hook-managed.mjs";
 
 async function defaultRun(command, args, options) {
   const child = spawn(command, args, options);
@@ -69,13 +74,19 @@ async function readManagedReceipt(stateDirectoryInput) {
   const receipt = JSON.parse(await readFile(target, "utf8"));
   const dataDirectory = path.resolve(receipt.dataDirectory ?? "");
   if (
-    !new Set([1, 2]).has(receipt.version) ||
+    !new Set([1, 2, 3]).has(receipt.version) ||
     dataDirectory === path.parse(dataDirectory).root ||
     path.resolve(receipt.secretPath ?? "") !==
       path.join(stateDirectory, "gateway.env") ||
     path.resolve(receipt.logPath ?? "") !==
       path.join(stateDirectory, "personalmemory.log") ||
     (receipt.version === 2 && !Number.isSafeInteger(receipt.upstreamPid)) ||
+    (receipt.version === 3 &&
+      (!Number.isSafeInteger(receipt.upstreamPid) ||
+        !Number.isSafeInteger(receipt.hookWorkerPid) ||
+        !/^[a-f0-9]{32}$/u.test(receipt.hookWorkerGeneration ?? "") ||
+        path.resolve(receipt.hookReceiptPath ?? "") !==
+          path.join(stateDirectory, "hooks", "install.json"))) ||
     !Number.isSafeInteger(receipt.gatewayPid) ||
     !Number.isSafeInteger(receipt.webPid)
   ) {
@@ -113,19 +124,53 @@ export async function managePersonalMemory(command, options = {}) {
   }
 
   if (command === "status") {
+    const hookInstall =
+      receipt.version === 3
+        ? await (options.readManagedHookStatusImpl ?? readManagedHookStatus)({
+            home: options.home,
+            stateDirectory,
+          })
+        : { installed: false };
+    const hookRuntime =
+      receipt.version === 3
+        ? await (options.readHookDoctorStatusImpl ?? readHookDoctorStatus)({
+            stateDirectory,
+          }).catch(() => ({ worker: "starting" }))
+        : { worker: "not_installed" };
+    if (
+      receipt.version === 3 &&
+      (hookRuntime.workerPid !== receipt.hookWorkerPid ||
+        hookRuntime.workerGeneration !== receipt.hookWorkerGeneration)
+    )
+      hookRuntime.worker = "degraded";
     return {
       installed: true,
       productVersion: receipt.productVersion,
       schemaVersion: receipt.schemaVersion,
       dataDirectory,
       stateDirectory,
+      hooks: { ...hookInstall, ...hookRuntime },
     };
+  }
+
+  if (command === "uninstall" && receipt.version === 3) {
+    const hookInstall = await (
+      options.readManagedHookStatusImpl ?? readManagedHookStatus
+    )({
+      home: options.home,
+      stateDirectory,
+    });
+    if (!hookInstall.installed)
+      throw new Error("Managed Hook installation is incomplete");
   }
 
   await Promise.all([
     stopImpl(receipt.webPid),
     stopImpl(receipt.gatewayPid),
     ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
+    ...(receipt.version === 3
+      ? [stopImpl(receipt.upstreamPid), stopImpl(receipt.hookWorkerPid)]
+      : []),
   ]);
   if (command === "stop") {
     await removeImpl(path.join(stateDirectory, "install.json"));
@@ -151,7 +196,12 @@ export async function managePersonalMemory(command, options = {}) {
       );
       return { backedUp: true, output: path.resolve(options.output) };
     } finally {
-      await installImpl({ root, dataDirectory, stateDirectory });
+      await installImpl({
+        root,
+        dataDirectory,
+        stateDirectory,
+        home: options.home,
+      });
     }
   }
 
@@ -182,11 +232,24 @@ export async function managePersonalMemory(command, options = {}) {
       );
       return { restored: true, input: path.resolve(options.input) };
     } finally {
-      await installImpl({ root, dataDirectory, stateDirectory });
+      await installImpl({
+        root,
+        dataDirectory,
+        stateDirectory,
+        home: options.home,
+      });
     }
   }
 
   if (command === "uninstall") {
+    if (receipt.version === 3) {
+      await (options.uninstallManagedHooksImpl ?? uninstallManagedHooks)({
+        home: options.home,
+        stateDirectory,
+        projectRoot: root,
+        nodePath: process.execPath,
+      });
+    }
     await removeImpl(stateDirectory, { recursive: true });
     if (options.purgeData) {
       await removeImpl(dataDirectory, { recursive: true });

@@ -407,3 +407,30 @@ test("active claims fail capacity closed and expired claims become evictable", a
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("lets the managed worker physically prune expired turns without a later Hook", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "pm-hook-maintain-"));
+  let now = 100;
+  try {
+    const store = new PrivateTurnStore(root, { now: () => now });
+    await store.remember(
+      {
+        kind: "prompt",
+        client: "codex",
+        sessionId: "session",
+        turnId: "turn",
+        cwd: "/project",
+        prompt: "private prompt",
+      },
+      "secret",
+    );
+    now += 60 * 60 * 1000 + 1;
+    assert.deepEqual(await store.maintain(), { retained: 0 });
+    assert.doesNotMatch(
+      await readFile(path.join(root, "turns.json"), "utf8"),
+      /private prompt/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

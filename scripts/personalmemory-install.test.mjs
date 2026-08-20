@@ -11,7 +11,14 @@ import {
   defaultInstallRoot,
   defaultStateRoot,
   installPersonalMemory,
+  waitForHookWorker,
 } from "./personalmemory-install-runtime.mjs";
+
+const readyWorker = async ({ pid }) => ({
+  worker: "healthy",
+  workerPid: pid,
+  lastMaintenanceAt: Date.now(),
+});
 
 function fakeChild(pid) {
   const child = new EventEmitter();
@@ -19,6 +26,39 @@ function fakeChild(pid) {
   child.unref = () => undefined;
   return child;
 }
+
+test("binds worker readiness to the live pid, generation and current time", async () => {
+  const pid = 42;
+  const generation = "a".repeat(32);
+  const current = {
+    worker: "healthy",
+    workerPid: pid,
+    workerGeneration: generation,
+    lastMaintenanceAt: Date.now(),
+  };
+  assert.equal(
+    await waitForHookWorker({
+      stateDirectory: "/unused",
+      pid,
+      generation,
+      timeoutMs: 100,
+      isAlive: () => true,
+      readStatus: async () => current,
+    }),
+    current,
+  );
+  await assert.rejects(
+    waitForHookWorker({
+      stateDirectory: "/unused",
+      pid,
+      generation,
+      timeoutMs: 1,
+      isAlive: () => false,
+      readStatus: async () => current,
+    }),
+    /exited/u,
+  );
+});
 
 test("checks the supported platform and minimum Node version", () => {
   assert.doesNotThrow(() =>
@@ -69,7 +109,9 @@ test("builds, starts, writes private state, and reports a healthy installation",
   const calls = [];
   let nextPid = 2_000_000;
   const result = await installPersonalMemory({
+    waitForHookWorkerImpl: readyWorker,
     root,
+    home: path.join(root, "home"),
     dataDirectory,
     stateDirectory: path.join(root, "state"),
     gatewayPort: 0,
@@ -88,7 +130,9 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.equal(result.changed, true);
   assert.equal(calls[0][0], "npm");
   assert.deepEqual(calls[0][1], ["run", "build:products"]);
-  assert.equal(calls.filter((call) => call[0] === process.execPath).length, 3);
+  assert.equal(calls.filter((call) => call[0] === process.execPath).length, 4);
+  assert.equal(result.codexHookStatus, "installed_untrusted");
+  assert.equal(result.claudeHookStatus, "installed");
   assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
   assert.equal((await stat(result.receiptPath)).mode & 0o777, 0o600);
   assert.equal((await stat(result.secretPath)).mode & 0o777, 0o600);
@@ -96,6 +140,10 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.match(secret, /PERSONALMEMORY_MODEL_ENABLED=false/);
   assert.match(secret, /PERSONALMEMORY_AUTH_TOKEN=\S+/);
   assert.doesNotMatch(await readFile(result.receiptPath, "utf8"), /AUTH_TOKEN/);
+  assert.equal(
+    (await stat(path.join(root, "state", "hooks", "secret"))).mode & 0o777,
+    0o600,
+  );
   await rm(root, { recursive: true });
 });
 
@@ -109,7 +157,9 @@ test("does not install dependencies when they are already present", async () => 
   const commands = [];
   let nextPid = 2_100_000;
   await installPersonalMemory({
+    waitForHookWorkerImpl: readyWorker,
     root,
+    home: path.join(root, "home"),
     dataDirectory: path.join(root, "data"),
     stateDirectory: path.join(root, "state"),
     gatewayPort: 0,
@@ -146,7 +196,9 @@ test("reuses a valid private credential when restarting without a receipt", asyn
   const environments = [];
   let nextPid = 2_150_000;
   await installPersonalMemory({
+    waitForHookWorkerImpl: readyWorker,
     root,
+    home: path.join(root, "home"),
     dataDirectory: path.join(root, "data"),
     stateDirectory,
     gatewayPort: 0,
@@ -173,6 +225,7 @@ test("fails before changing data when a port is occupied", async () => {
   await assert.rejects(
     installPersonalMemory({
       root,
+      home: path.join(root, "home"),
       dataDirectory: path.join(root, "data"),
       stateDirectory: path.join(root, "state"),
       assertPortAvailableImpl: async () => {
@@ -193,10 +246,12 @@ test("cleans started services and leaves no receipt after failed health checks",
     recursive: true,
   });
   const children = [];
+  let hookUninstallCalls = 0;
   let nextPid = 2_200_000;
   await assert.rejects(
     installPersonalMemory({
       root,
+      home: path.join(root, "home"),
       dataDirectory: path.join(root, "data"),
       stateDirectory: path.join(root, "state"),
       gatewayPort: 0,
@@ -209,10 +264,14 @@ test("cleans started services and leaves no receipt after failed health checks",
       },
       startupTimeoutMs: 1,
       stopStartedImpl: async (started) => children.push(...started),
+      uninstallManagedHooksImpl: async () => {
+        hookUninstallCalls += 1;
+      },
     }),
     /Timed out waiting/,
   );
-  assert.equal(children.length, 3);
+  assert.equal(children.length, 4);
+  assert.equal(hookUninstallCalls, 0);
   await assert.rejects(stat(path.join(root, "state", "install.json")), {
     code: "ENOENT",
   });

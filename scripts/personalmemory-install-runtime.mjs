@@ -15,8 +15,19 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
+import { URL } from "node:url";
 
-const RECEIPT_VERSION = 2;
+import {
+  installManagedHooks,
+  readManagedHookStatus,
+  uninstallManagedHooks,
+} from "./personalmemory-hook-install.mjs";
+import {
+  readHookDoctorStatus,
+  writeManagedHookRuntimeConfiguration,
+} from "./personalmemory-hook-managed.mjs";
+
+const RECEIPT_VERSION = 3;
 const PRODUCT_VERSION = "0.1.1";
 const SCHEMA_VERSION = 7;
 
@@ -119,6 +130,23 @@ async function loadOrCreateToken(secretPath) {
   return token;
 }
 
+async function loadOrCreateHookSecret(secretPath) {
+  try {
+    const info = await lstat(secretPath);
+    if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0)
+      throw new Error("Existing Hook secret must be a private regular file");
+    const secret = (await readFile(secretPath, "utf8")).trimEnd();
+    if (!/^[A-Za-z0-9_-]{43}$/u.test(secret))
+      throw new Error("Existing Hook secret is invalid");
+    return secret;
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const secret = randomBytes(32).toString("base64url");
+  await writePrivateAtomic(secretPath, `${secret}\n`);
+  return secret;
+}
+
 async function assertPortAvailable(host, port) {
   await new Promise((resolve, reject) => {
     const server = createServer();
@@ -180,6 +208,31 @@ async function waitForRecall(url, token, fetchImpl, timeoutMs = 30_000) {
   });
 }
 
+export async function waitForHookWorker(options) {
+  const deadline = Date.now() + options.timeoutMs;
+  while (Date.now() < deadline) {
+    if (!options.isAlive(options.pid))
+      throw new Error("Managed Hook worker exited before becoming ready");
+    try {
+      const status = await options.readStatus({
+        stateDirectory: options.stateDirectory,
+      });
+      if (
+        status.worker === "healthy" &&
+        status.workerPid === options.pid &&
+        status.workerGeneration === options.generation &&
+        status.lastMaintenanceAt <= Date.now() &&
+        Date.now() - status.lastMaintenanceAt <= 120_000
+      )
+        return status;
+    } catch {
+      // The worker may not have completed its first maintenance pass yet.
+    }
+    await setTimeout(50);
+  }
+  throw new Error("Managed Hook worker did not become ready");
+}
+
 function isAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -237,6 +290,7 @@ export async function installPersonalMemory(options = {}) {
   }
   const receiptPath = path.join(runtimeDirectory, "install.json");
   const secretPath = path.join(runtimeDirectory, "gateway.env");
+  const hookSecretPath = path.join(runtimeDirectory, "hooks", "secret");
   const logPath = path.join(runtimeDirectory, "personalmemory.log");
   const host = "127.0.0.1";
   const upstreamPort = options.upstreamPort ?? 8420;
@@ -248,22 +302,53 @@ export async function installPersonalMemory(options = {}) {
   const assertPortAvailableImpl =
     options.assertPortAvailableImpl ?? assertPortAvailable;
   const stopStartedImpl = options.stopStartedImpl ?? stopStarted;
+  const installManagedHooksImpl =
+    options.installManagedHooksImpl ?? installManagedHooks;
+  const uninstallManagedHooksImpl =
+    options.uninstallManagedHooksImpl ?? uninstallManagedHooks;
   const startupTimeoutMs = options.startupTimeoutMs ?? 30_000;
 
   if (await pathExists(receiptPath)) {
+    const receiptInfo = await lstat(receiptPath);
+    if (
+      !receiptInfo.isFile() ||
+      receiptInfo.isSymbolicLink() ||
+      (receiptInfo.mode & 0o077) !== 0
+    )
+      throw new Error(`Installation receipt must be private: ${receiptPath}`);
     const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
     if (
       receipt.version !== RECEIPT_VERSION ||
       !Number.isSafeInteger(receipt.upstreamPid) ||
       !Number.isSafeInteger(receipt.gatewayPid) ||
-      !Number.isSafeInteger(receipt.webPid)
+      !Number.isSafeInteger(receipt.webPid) ||
+      !Number.isSafeInteger(receipt.hookWorkerPid) ||
+      !/^[a-f0-9]{32}$/u.test(receipt.hookWorkerGeneration ?? "") ||
+      path.resolve(receipt.secretPath ?? "") !== secretPath ||
+      ![
+        receipt.upstreamHealthUrl,
+        receipt.gatewayHealthUrl,
+        receipt.recallUrl,
+        receipt.webUrl,
+      ].every((value) => {
+        try {
+          const url = new URL(value);
+          return (
+            url.protocol === "http:" &&
+            new Set(["127.0.0.1", "localhost", "[::1]"]).has(url.hostname)
+          );
+        } catch {
+          return false;
+        }
+      })
     ) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
     if (
       !isAlive(receipt.upstreamPid) ||
       !isAlive(receipt.gatewayPid) ||
-      !isAlive(receipt.webPid)
+      !isAlive(receipt.webPid) ||
+      !isAlive(receipt.hookWorkerPid)
     ) {
       throw new Error(
         `A stopped or partial installation exists at ${receiptPath}; remove only this stale receipt before retrying`,
@@ -275,7 +360,24 @@ export async function installPersonalMemory(options = {}) {
       waitForHttp(receipt.webUrl, fetchImpl, 3_000),
     ]);
     const token = await loadOrCreateToken(receipt.secretPath);
+    await loadOrCreateHookSecret(hookSecretPath);
     await waitForRecall(receipt.recallUrl, token, fetchImpl, 3_000);
+    const [hookInstall, hookRuntime] = await Promise.all([
+      readManagedHookStatus({
+        home: options.home,
+        stateDirectory: runtimeDirectory,
+      }),
+      readHookDoctorStatus({ stateDirectory: runtimeDirectory }),
+    ]);
+    if (
+      !hookInstall.installed ||
+      hookRuntime.worker !== "healthy" ||
+      hookRuntime.workerPid !== receipt.hookWorkerPid ||
+      hookRuntime.workerGeneration !== receipt.hookWorkerGeneration ||
+      !Number.isFinite(hookRuntime.lastMaintenanceAt) ||
+      Date.now() - hookRuntime.lastMaintenanceAt > 120_000
+    )
+      throw new Error("Managed Hook installation or worker is not healthy");
     return { ...receipt, changed: false, receiptPath };
   }
 
@@ -287,8 +389,24 @@ export async function installPersonalMemory(options = {}) {
   await run("npm", ["run", "build:products"], { cwd: root, stdio: "inherit" });
   await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
   const token = await loadOrCreateToken(secretPath);
+  await loadOrCreateHookSecret(hookSecretPath);
+  await writeManagedHookRuntimeConfiguration({
+    stateDirectory: runtimeDirectory,
+    gatewayBaseUrl: `http://${host}:${gatewayPort}`,
+    authorization: {
+      installation_id: "unconfigured",
+      authorization_revision: 1,
+      policy_revision: 1,
+    },
+    recallEnabled: false,
+    captureEnabled: false,
+  });
   const log = await open(logPath, "a", 0o600);
   const children = [];
+  const hookReceiptExisted = await pathExists(
+    path.join(runtimeDirectory, "hooks", "install.json"),
+  );
+  let hookInstallCompleted = false;
   try {
     const common = {
       cwd: root,
@@ -347,6 +465,20 @@ export async function installPersonalMemory(options = {}) {
       },
     );
     children.push(web);
+    const hookWorkerGeneration = randomBytes(16).toString("hex");
+    const hookWorker = spawnImpl(
+      process.execPath,
+      [path.join(root, "scripts", "personalmemory-hook-worker.mjs")],
+      {
+        ...common,
+        env: {
+          ...process.env,
+          PERSONALMEMORY_STATE_DIR: runtimeDirectory,
+          PERSONALMEMORY_HOOK_WORKER_GENERATION: hookWorkerGeneration,
+        },
+      },
+    );
+    children.push(hookWorker);
     await Promise.all([
       waitForHttp(
         `http://${host}:${upstreamPort}/health`,
@@ -370,6 +502,21 @@ export async function installPersonalMemory(options = {}) {
       fetchImpl,
       startupTimeoutMs,
     );
+    await (options.waitForHookWorkerImpl ?? waitForHookWorker)({
+      stateDirectory: runtimeDirectory,
+      pid: hookWorker.pid,
+      generation: hookWorkerGeneration,
+      timeoutMs: startupTimeoutMs,
+      isAlive,
+      readStatus: options.readHookDoctorStatusImpl ?? readHookDoctorStatus,
+    });
+    const hookInstall = await installManagedHooksImpl({
+      home: options.home,
+      stateDirectory: runtimeDirectory,
+      projectRoot: root,
+      nodePath: process.execPath,
+    });
+    hookInstallCompleted = true;
     const receipt = {
       version: RECEIPT_VERSION,
       productVersion: PRODUCT_VERSION,
@@ -379,11 +526,16 @@ export async function installPersonalMemory(options = {}) {
       upstreamPid: upstream.pid,
       gatewayPid: gateway.pid,
       webPid: web.pid,
+      hookWorkerPid: hookWorker.pid,
+      hookWorkerGeneration,
+      codexHookStatus: hookInstall.codex,
+      claudeHookStatus: hookInstall.claude,
       upstreamHealthUrl: `http://${host}:${upstreamPort}/health`,
       gatewayHealthUrl: `http://${host}:${gatewayPort}/health`,
       recallUrl: `http://${host}:${gatewayPort}/api/v1/recall/query`,
       webUrl: `http://${host}:${webPort}/memories`,
       secretPath,
+      hookReceiptPath: hookInstall.receiptPath,
       logPath,
     };
     await writePrivateAtomic(
@@ -393,9 +545,17 @@ export async function installPersonalMemory(options = {}) {
     upstream.unref();
     gateway.unref();
     web.unref();
+    hookWorker.unref();
     return { ...receipt, changed: true, receiptPath };
   } catch (error) {
     await stopStartedImpl(children);
+    if (hookInstallCompleted && !hookReceiptExisted)
+      await uninstallManagedHooksImpl({
+        home: options.home,
+        stateDirectory: runtimeDirectory,
+        projectRoot: root,
+        nodePath: process.execPath,
+      }).catch(() => undefined);
     await rm(receiptPath, { force: true });
     throw error;
   } finally {

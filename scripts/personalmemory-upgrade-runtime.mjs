@@ -105,13 +105,19 @@ async function defaultStop(pid) {
 
 function validateReceipt(receipt, dataDirectory, stateDirectory) {
   if (
-    !new Set([1, 2]).has(receipt.version) ||
+    !new Set([1, 2, 3]).has(receipt.version) ||
     path.resolve(receipt.dataDirectory) !== dataDirectory ||
     path.resolve(receipt.secretPath ?? "") !==
       path.join(stateDirectory, "gateway.env") ||
     path.resolve(receipt.logPath ?? "") !==
       path.join(stateDirectory, "personalmemory.log") ||
     (receipt.version === 2 && !Number.isSafeInteger(receipt.upstreamPid)) ||
+    (receipt.version === 3 &&
+      (!Number.isSafeInteger(receipt.upstreamPid) ||
+        !Number.isSafeInteger(receipt.hookWorkerPid) ||
+        !/^[a-f0-9]{32}$/u.test(receipt.hookWorkerGeneration ?? "") ||
+        path.resolve(receipt.hookReceiptPath ?? "") !==
+          path.join(stateDirectory, "hooks", "install.json"))) ||
     !Number.isSafeInteger(receipt.gatewayPid) ||
     !Number.isSafeInteger(receipt.webPid)
   ) {
@@ -151,7 +157,7 @@ export async function upgradePersonalMemory(options = {}) {
   const receipt = await readReceipt(stateDirectory);
   validateReceipt(receipt, dataDirectory, stateDirectory);
   if (
-    receipt.version === 2 &&
+    receipt.version === 3 &&
     receipt.productVersion === TARGET_PRODUCT_VERSION &&
     receipt.schemaVersion === TARGET_SCHEMA_VERSION
   ) {
@@ -187,6 +193,9 @@ export async function upgradePersonalMemory(options = {}) {
     stopImpl(receipt.webPid),
     stopImpl(receipt.gatewayPid),
     ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
+    ...(receipt.version === 3
+      ? [stopImpl(receipt.upstreamPid), stopImpl(receipt.hookWorkerPid)]
+      : []),
   ]);
   let backupCreated = false;
   try {
@@ -215,7 +224,12 @@ export async function upgradePersonalMemory(options = {}) {
       },
     );
     await removeReceipt(stateDirectory, receipt);
-    const started = await installImpl({ root, dataDirectory, stateDirectory });
+    const started = await installImpl({
+      root,
+      dataDirectory,
+      stateDirectory,
+      home: options.home,
+    });
     const next = {
       ...started,
       installedAt: receipt.installedAt,

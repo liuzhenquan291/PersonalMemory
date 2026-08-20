@@ -246,6 +246,15 @@ export class PrivateTurnStore {
     });
   }
 
+  async maintain(options = {}) {
+    return this.#locked(async () => {
+      options.signal?.throwIfAborted();
+      const records = this.#fresh(await this.#read(options.signal));
+      await this.#write(records, options.signal);
+      return { retained: records.length };
+    }, options.signal);
+  }
+
   #fresh(records) {
     const now = this.now();
     return records
