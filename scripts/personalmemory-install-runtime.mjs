@@ -27,6 +27,25 @@ import {
   writeManagedHookRuntimeConfiguration,
 } from "./personalmemory-hook-managed.mjs";
 
+const UPSTREAM_MODEL_ENVIRONMENT_KEYS = [
+  "TDAI_LLM_ENABLED",
+  "TDAI_LLM_BASE_URL",
+  "TDAI_LLM_API_KEY",
+  "TDAI_LLM_MODEL",
+  "TDAI_LLM_MAX_TOKENS",
+  "TDAI_LLM_TIMEOUT_MS",
+  "MEMORY_TENCENTDB_LLM_BASE_URL",
+  "MEMORY_TENCENTDB_LLM_API_KEY",
+  "MEMORY_TENCENTDB_LLM_MODEL",
+];
+
+export function buildModelDisabledUpstreamEnvironment(environment) {
+  const managed = { ...environment };
+  for (const key of UPSTREAM_MODEL_ENVIRONMENT_KEYS) delete managed[key];
+  managed.TDAI_LLM_ENABLED = "false";
+  return managed;
+}
+
 const RECEIPT_VERSION = 3;
 const PRODUCT_VERSION = "0.1.1";
 const SCHEMA_VERSION = 7;
@@ -419,7 +438,7 @@ export async function installPersonalMemory(options = {}) {
       {
         ...common,
         env: {
-          ...process.env,
+          ...buildModelDisabledUpstreamEnvironment(process.env),
           TDAI_GATEWAY_HOST: host,
           TDAI_GATEWAY_PORT: String(upstreamPort),
           TDAI_DATA_DIR: dataDirectory,

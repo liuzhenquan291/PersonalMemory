@@ -1689,7 +1689,7 @@ export class TdaiGateway {
    */
   private buildOffloadLlmClient() {
     const llmCfg = this.config.llm;
-    if (!llmCfg.baseUrl || !llmCfg.apiKey || !llmCfg.model) return null;
+    if (llmCfg.enabled === false || !llmCfg.baseUrl || !llmCfg.apiKey || !llmCfg.model) return null;
     const logger = this.logger;
 
     return {

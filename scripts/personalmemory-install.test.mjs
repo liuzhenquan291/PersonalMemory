@@ -8,6 +8,7 @@ import test from "node:test";
 
 import {
   assertSupportedEnvironment,
+  buildModelDisabledUpstreamEnvironment,
   defaultInstallRoot,
   defaultStateRoot,
   installPersonalMemory,
@@ -98,6 +99,22 @@ test("selects native private data roots", () => {
   );
 });
 
+test("builds a fail-closed upstream model environment", () => {
+  const environment = buildModelDisabledUpstreamEnvironment({
+    TDAI_LLM_ENABLED: "true",
+    TDAI_LLM_BASE_URL: "https://inherited.example.test/v1",
+    TDAI_LLM_API_KEY: "inherited-secret",
+    TDAI_LLM_MODEL: "inherited-model",
+    MEMORY_TENCENTDB_LLM_API_KEY: "legacy-inherited-secret",
+    PATH: "/test/bin",
+  });
+
+  assert.deepEqual(environment, {
+    PATH: "/test/bin",
+    TDAI_LLM_ENABLED: "false",
+  });
+});
+
 test("builds, starts, writes private state, and reports a healthy installation", async () => {
   const root = await mkdtemp(
     path.join(os.tmpdir(), "personalmemory-install-test-"),
@@ -133,6 +150,10 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.equal(calls.filter((call) => call[0] === process.execPath).length, 4);
   assert.equal(result.codexHookStatus, "installed_untrusted");
   assert.equal(result.claudeHookStatus, "installed");
+  assert.equal(calls[1][2].env.TDAI_LLM_ENABLED, "false");
+  assert.equal(calls[1][2].env.TDAI_LLM_BASE_URL, undefined);
+  assert.equal(calls[1][2].env.TDAI_LLM_API_KEY, undefined);
+  assert.equal(calls[1][2].env.TDAI_LLM_MODEL, undefined);
   assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
   assert.equal((await stat(result.receiptPath)).mode & 0o777, 0o600);
   assert.equal((await stat(result.secretPath)).mode & 0o777, 0o600);

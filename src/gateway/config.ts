@@ -393,6 +393,9 @@ export function loadGatewayConfig(overrides?: Partial<GatewayConfig>): GatewayCo
   // LLM config
   const llmConfig = obj(fileConfig, "llm");
   const llm: StandaloneLLMConfig = {
+    enabled:
+      envBoolean("TDAI_LLM_ENABLED") ??
+      (typeof llmConfig.enabled === "boolean" ? llmConfig.enabled : true),
     baseUrl: env("TDAI_LLM_BASE_URL") ?? str(llmConfig, "baseUrl") ?? "https://api.openai.com/v1",
     apiKey: env("TDAI_LLM_API_KEY") ?? str(llmConfig, "apiKey") ?? "",
     model: env("TDAI_LLM_MODEL") ?? str(llmConfig, "model") ?? "gpt-4o",
@@ -634,6 +637,14 @@ function envInt(key: string): number | undefined {
   if (!v) return undefined;
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : undefined;
+}
+
+function envBoolean(key: string): boolean | undefined {
+  const value = env(key)?.toLowerCase();
+  if (value === undefined) return undefined;
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  throw new Error(`${key} must be true, false, 1, or 0`);
 }
 
 function obj(c: Record<string, unknown>, key: string): Record<string, unknown> {

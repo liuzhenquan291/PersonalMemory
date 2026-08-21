@@ -40,6 +40,8 @@ const MAX_TOOL_ITERATIONS = 20;
 // ============================
 
 export interface StandaloneLLMConfig {
+  /** Final outbound gate. PersonalMemory managed launches set this explicitly. */
+  enabled?: boolean;
   /** OpenAI-compatible API base URL (e.g. "https://api.openai.com/v1"). */
   baseUrl: string;
   /** API key for authentication. */
@@ -213,6 +215,9 @@ export class StandaloneLLMRunner implements LLMRunner {
   }
 
   async run(params: LLMRunParams): Promise<string> {
+    if (this.config.enabled === false) {
+      throw new Error("Model outbound access is disabled");
+    }
     const runStartMs = Date.now();
     const timeoutMs = params.timeoutMs ?? this.config.timeoutMs ?? 120_000;
     const maxTokens = params.maxTokens ?? this.config.maxTokens ?? 4096;

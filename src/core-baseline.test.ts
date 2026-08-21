@@ -8,10 +8,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { StandaloneLLMRunner } from "./adapters/standalone/llm-runner.js";
 import { initOTelSDK, shutdownOTelSDK } from "./core/report/otel-sdk-init.js";
 import { LocalStorageBackend } from "./core/storage/local-backend.js";
+import { loadGatewayConfig } from "./gateway/config.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       rm(directory, { force: true, recursive: true }),
@@ -20,6 +22,46 @@ afterEach(async () => {
 });
 
 describe("PersonalMemory core baseline", () => {
+  it("keeps the upstream model gate disabled despite inherited credentials", () => {
+    vi.stubEnv("TDAI_LLM_ENABLED", "false");
+    vi.stubEnv("TDAI_LLM_BASE_URL", "https://models.example.test/v1");
+    vi.stubEnv("TDAI_LLM_API_KEY", "inherited-secret");
+    vi.stubEnv("TDAI_LLM_MODEL", "inherited-model");
+
+    expect(loadGatewayConfig().llm.enabled).toBe(false);
+  });
+
+  it("rejects model execution before any outbound request when disabled", async () => {
+    let requests = 0;
+    const server = createServer((_request, response) => {
+      requests += 1;
+      response.writeHead(500).end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("No test server address");
+
+    const runner = new StandaloneLLMRunner({
+      config: {
+        enabled: false,
+        apiKey: "inherited-secret",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`,
+        model: "inherited-model",
+      },
+    });
+
+    try {
+      await expect(
+        runner.run({ taskId: "disabled-gate", systemPrompt: "system", prompt: "prompt" }),
+      ).rejects.toThrow("Model outbound access is disabled");
+      expect(requests).toBe(0);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => error ? reject(error) : resolve()),
+      );
+    }
+  });
+
   it("round-trips memory data through isolated local storage", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "personalmemory-storage-"));
     temporaryDirectories.push(rootDir);
