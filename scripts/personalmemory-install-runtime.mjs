@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   chmod,
   lstat,
@@ -116,6 +116,12 @@ export async function resolveManagedUpstreamEnvironment({
     TDAI_LLM_API_KEY: config.model.apiKey.reveal(),
     TDAI_LLM_MODEL: config.model.name,
   };
+}
+
+export function hookInstallationId(secret) {
+  if (!/^[A-Za-z0-9_-]{43}$/u.test(secret))
+    throw new Error("Hook secret is invalid");
+  return `hook-install-${createHash("sha256").update(secret).digest("hex").slice(0, 32)}`;
 }
 
 const RECEIPT_VERSION = 3;
@@ -504,12 +510,13 @@ export async function installPersonalMemory(options = {}) {
     gatewayEnvironment,
     dataDirectory,
   });
-  await loadOrCreateHookSecret(hookSecretPath);
+  const hookSecret = await loadOrCreateHookSecret(hookSecretPath);
+  const installationId = hookInstallationId(hookSecret);
   await writeManagedHookRuntimeConfiguration({
     stateDirectory: runtimeDirectory,
     gatewayBaseUrl: `http://${host}:${gatewayPort}`,
     authorization: {
-      installation_id: "unconfigured",
+      installation_id: installationId,
       authorization_revision: 1,
       policy_revision: 1,
     },
@@ -559,6 +566,7 @@ export async function installPersonalMemory(options = {}) {
           PERSONALMEMORY_DATA_DIR: dataDirectory,
           PERSONALMEMORY_AUTH_ENABLED: "true",
           PERSONALMEMORY_AUTH_TOKEN: token,
+          PERSONALMEMORY_HOOK_INSTALLATION_ID: installationId,
         },
       },
     );

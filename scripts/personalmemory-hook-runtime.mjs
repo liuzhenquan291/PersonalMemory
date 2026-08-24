@@ -37,6 +37,7 @@ const MAX_OUTBOX_ATTEMPTS = 5;
 const RETRY_DELAYS_MS = [1000, 5000, 30_000, 60_000];
 const MAX_RECALL_RESPONSE_BYTES = 16 * 1024;
 const MAX_CAPTURE_RESPONSE_BYTES = 4 * 1024;
+const MAX_AUTHORIZATION_RESPONSE_BYTES = 4 * 1024;
 
 function canonicalizeFuturePath(target) {
   let existing = target;
@@ -176,6 +177,38 @@ export class HookGatewayClient {
     if (typeof this.token !== "string" || this.token.length < 1)
       throw new Error("Hook Gateway token is required");
     this.fetch = options.fetch ?? globalThis.fetch;
+  }
+
+  async authorization() {
+    const response = await this.fetch(
+      `${this.baseUrl}/api/v1/hooks/authorization`,
+      {
+        headers: { authorization: `Bearer ${this.token}` },
+        redirect: "manual",
+        signal: globalThis.AbortSignal.timeout(1000),
+      },
+    );
+    if (!response.ok)
+      throw new Error(
+        `Hook Gateway rejected authorization status with ${response.status}`,
+      );
+    const body = await readJsonLimited(
+      response,
+      MAX_AUTHORIZATION_RESPONSE_BYTES,
+    );
+    const value = body?.authorization;
+    if (
+      typeof value?.installation_id !== "string" ||
+      !Number.isInteger(value.authorization_revision) ||
+      value.authorization_revision < 1 ||
+      !Number.isInteger(value.policy_revision) ||
+      value.policy_revision < 1 ||
+      typeof value.recall_enabled !== "boolean" ||
+      typeof value.capture_enabled !== "boolean" ||
+      typeof value.changed_at !== "string"
+    )
+      throw new Error("Hook Gateway returned invalid authorization status");
+    return value;
   }
 
   async recall(request, options = {}) {

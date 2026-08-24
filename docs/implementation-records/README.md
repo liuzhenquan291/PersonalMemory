@@ -41,6 +41,7 @@
 | M4.6.1 | completed | [统一模型配置与权威出站门禁](M4.6.1.md)                |
 | M4.6.2 | completed | [版本化模型授权与受管生命周期映射](M4.6.2.md)          |
 | M4.6.3 | completed | [生产 Hook 本地 L0 capture sink](M4.6.3.md)           |
+| M4.6.4 | completed | [版本化 Hook 生命周期授权](M4.6.4.md)                |
 | M5.1   | completed | [一条命令安装器](M5.1.md)                               |
 | M5.2   | completed | [升级和数据库迁移](M5.2.md)                             |
 | M5.3   | completed | [备份、恢复和卸载](M5.3.md)                             |

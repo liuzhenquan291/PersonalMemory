@@ -1,6 +1,7 @@
 import {
   AuditLedger,
   HookCaptureLedger,
+  HookAuthorizationLedger,
   HOOK_CAPTURE_COMMITTED,
   ImportLedger,
   MemoryGovernanceLedger,
@@ -81,6 +82,11 @@ function createHarness(options: {
     () => `audit-event-${++auditSequence}`,
   );
   const hookCaptures = new HookCaptureLedger(database);
+  const hookAuthorizations = new HookAuthorizationLedger(
+    database,
+    "install_0123456789abcdef",
+    () => "2026-08-24T01:00:00.000Z",
+  );
   const modelAuthorizations = new ModelAuthorizationLedger(
     database,
     () => "2026-08-24T00:00:00.000Z",
@@ -95,6 +101,7 @@ function createHarness(options: {
     privacyDeletions: options.privacyDeletions,
     audit,
     hookCaptures,
+    hookAuthorizations,
     modelAuthorizations,
     hookPolicy: options.hookPolicy,
     hookCaptureSink: options.hookCaptureSink,
@@ -115,6 +122,7 @@ function createHarness(options: {
     memoryGovernance,
     audit,
     hookCaptures,
+    hookAuthorizations,
     modelAuthorizations,
   };
 }
@@ -147,6 +155,98 @@ interface ImportJobResponse {
 }
 
 describe("PersonalMemory Gateway app", () => {
+  it("independently authorizes and revokes automatic recall and local capture", async () => {
+    const { app } = createHarness({});
+
+    const initial = await app.request("/api/v1/hooks/authorization", {
+      headers: authHeaders,
+    });
+    expect(initial.status).toBe(200);
+    expect(await initial.json()).toEqual({
+      disclosure: {
+        version: 1,
+        recall: {
+          data: "approved L1 memory text",
+          timing: "before the model request",
+          purpose: "provide relevant memory for the current response",
+          destination: "the current agent model input",
+          budget:
+            "up to 5 items, 4000 characters, 1000 estimated tokens, and 1000 ms",
+          failure: "the prompt continues without memory",
+          revocation:
+            "the Gateway rejects recall immediately; clients synchronize the new revision before maintenance",
+        },
+        capture: {
+          data: "raw user and assistant text",
+          timing: "after a successful main-agent response",
+          purpose: "build local memory for later review and recall",
+          destination: "local L0 memory and a private retry outbox",
+          budget:
+            "one user/assistant pair per successful turn, a 1000 ms Gateway request, and a bounded 24-hour outbox",
+          failure: "the agent response is never blocked",
+          revocation:
+            "the Gateway rejects capture immediately; queued entries cannot flush under the old revision",
+        },
+      },
+      authorization: {
+        installation_id: "install_0123456789abcdef",
+        authorization_revision: 1,
+        policy_revision: 1,
+        recall_enabled: false,
+        capture_enabled: false,
+        changed_at: "2026-08-24T01:00:00.000Z",
+      },
+    });
+
+    const enabled = await app.request("/api/v1/hooks/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        disclosure_version: 1,
+        expected_authorization_revision: 1,
+        recall_enabled: true,
+        capture_enabled: false,
+      }),
+    });
+    expect(enabled.status).toBe(200);
+    expect(await enabled.json()).toMatchObject({
+      authorization: {
+        authorization_revision: 2,
+        recall_enabled: true,
+        capture_enabled: false,
+      },
+    });
+
+    const stale = await app.request("/api/v1/hooks/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        disclosure_version: 1,
+        expected_authorization_revision: 1,
+        recall_enabled: true,
+        capture_enabled: true,
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: { code: "HOOK_AUTHORIZATION_CHANGED" },
+    });
+
+    const revoked = await app.request("/api/v1/hooks/authorization", {
+      method: "DELETE",
+      headers: authHeaders,
+      body: JSON.stringify({ expected_authorization_revision: 2 }),
+    });
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toMatchObject({
+      authorization: {
+        authorization_revision: 3,
+        recall_enabled: false,
+        capture_enabled: false,
+      },
+    });
+  });
+
   it("keeps hook routes authenticated and validates the frozen request", async () => {
     const policy: HookLifecyclePolicy = {
       authorization: () => ({
@@ -311,7 +411,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 9,
+      schemaVersion: 10,
     });
   });
 

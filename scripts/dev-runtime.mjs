@@ -364,6 +364,8 @@ export async function createDevRuntime(options = {}) {
             PERSONALMEMORY_PORT: String(gatewayPort),
             PERSONALMEMORY_DATA_DIR: dataDirectory,
             PERSONALMEMORY_UPSTREAM_BASE_URL: `http://${host}:${upstreamPort}`,
+            PERSONALMEMORY_HOOK_INSTALLATION_ID:
+              "hook-install-00000000000000000000000000000000",
           },
         },
       );

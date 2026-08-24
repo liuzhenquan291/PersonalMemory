@@ -1,5 +1,6 @@
 import {
   AuditLedger,
+  HookAuthorizationLedger,
   type HookCaptureLedger,
   defaultMigrations,
   ImportLedger,
@@ -34,6 +35,7 @@ let memoryGovernance: MemoryGovernanceLedger | undefined;
 let audit: AuditLedger | undefined;
 let privacyDeletions: PrivacyDeletionService | undefined;
 let hookCaptures: HookCaptureLedger | undefined;
+let hookAuthorizations: HookAuthorizationLedger | undefined;
 let modelAuthorizations: ModelAuthorizationLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
@@ -50,6 +52,7 @@ async function stop(signal: string): Promise<void> {
     audit = undefined;
     privacyDeletions = undefined;
     hookCaptures = undefined;
+    hookAuthorizations = undefined;
     modelAuthorizations = undefined;
     hookCaptureDatabase?.close();
     hookCaptureDatabase = undefined;
@@ -95,6 +98,16 @@ async function main(): Promise<void> {
       config.server.upstreamTimeoutMs,
     );
     hookCaptures = productionHookCapture.ledger;
+    const hookInstallationId = process.env.PERSONALMEMORY_HOOK_INSTALLATION_ID;
+    if (!/^hook-install-[a-f0-9]{32}$/u.test(hookInstallationId ?? "")) {
+      throw new Error(
+        "Managed Hook installation identity is missing or invalid",
+      );
+    }
+    hookAuthorizations = new HookAuthorizationLedger(
+      database,
+      hookInstallationId!,
+    );
     modelAuthorizations = new ModelAuthorizationLedger(database);
     const app = createGatewayApp({
       config,
@@ -106,17 +119,12 @@ async function main(): Promise<void> {
       privacyDeletions,
       audit,
       hookCaptures,
+      hookAuthorizations,
       hookCaptureSink: productionHookCapture.sink,
       modelAuthorizations,
       hookPolicy: {
-        authorization: () => ({
-          installationId: "unconfigured",
-          authorizationRevision: 1,
-          policyRevision: 1,
-          recallEnabled: false,
-          captureEnabled: false,
-        }),
-        allowsSource: () => false,
+        authorization: () => hookAuthorizations!.status(),
+        allowsSource: () => true,
       },
     });
     server = new PersonalMemoryGatewayServer(app, config);

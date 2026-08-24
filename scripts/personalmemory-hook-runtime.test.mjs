@@ -114,6 +114,46 @@ test("recalls through the authenticated loopback Gateway and encodes client cont
   );
 });
 
+test("reads only a bounded authoritative Hook authorization response", async () => {
+  const calls = [];
+  const gateway = new HookGatewayClient({
+    baseUrl: "http://127.0.0.1:19876",
+    token: "fixture-token",
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      return new Response(
+        JSON.stringify({
+          disclosure: { version: 1 },
+          authorization: {
+            installation_id: "install-1",
+            authorization_revision: 4,
+            policy_revision: 2,
+            recall_enabled: true,
+            capture_enabled: false,
+            changed_at: "2026-08-24T02:00:00.000Z",
+          },
+        }),
+        { status: 200 },
+      );
+    },
+  });
+
+  assert.deepEqual(await gateway.authorization(), {
+    installation_id: "install-1",
+    authorization_revision: 4,
+    policy_revision: 2,
+    recall_enabled: true,
+    capture_enabled: false,
+    changed_at: "2026-08-24T02:00:00.000Z",
+  });
+  assert.equal(
+    calls[0].url,
+    "http://127.0.0.1:19876/api/v1/hooks/authorization",
+  );
+  assert.equal(calls[0].init.headers.authorization, "Bearer fixture-token");
+  assert.equal(calls[0].init.redirect, "manual");
+});
+
 test("queues only retryable capture availability failures", async () => {
   const responses = [
     new Response("unavailable", { status: 503 }),

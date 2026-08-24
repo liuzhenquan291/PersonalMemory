@@ -2,6 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import {
   type AuditAction,
   getModelOutboundDisclosure,
+  HookAuthorizationConflictError,
   hookCaptureRequestSchema,
   hookCaptureResponseSchema,
   hookRecallRequestSchema,
@@ -167,6 +168,63 @@ const modelDisclosureSchema = z
     sentFields: z.array(z.string().min(1)).min(1).max(16),
   })
   .strict();
+
+const hookAuthorizationUpdateSchema = z
+  .object({
+    disclosure_version: z.literal(1),
+    expected_authorization_revision: z.number().int().positive(),
+    recall_enabled: z.boolean(),
+    capture_enabled: z.boolean(),
+  })
+  .strict();
+
+const hookAuthorizationRevokeSchema = z
+  .object({ expected_authorization_revision: z.number().int().positive() })
+  .strict();
+
+const HOOK_AUTHORIZATION_DISCLOSURE = Object.freeze({
+  version: 1 as const,
+  recall: Object.freeze({
+    data: "approved L1 memory text",
+    timing: "before the model request",
+    purpose: "provide relevant memory for the current response",
+    destination: "the current agent model input",
+    budget:
+      "up to 5 items, 4000 characters, 1000 estimated tokens, and 1000 ms",
+    failure: "the prompt continues without memory",
+    revocation:
+      "the Gateway rejects recall immediately; clients synchronize the new revision before maintenance",
+  }),
+  capture: Object.freeze({
+    data: "raw user and assistant text",
+    timing: "after a successful main-agent response",
+    purpose: "build local memory for later review and recall",
+    destination: "local L0 memory and a private retry outbox",
+    budget:
+      "one user/assistant pair per successful turn, a 1000 ms Gateway request, and a bounded 24-hour outbox",
+    failure: "the agent response is never blocked",
+    revocation:
+      "the Gateway rejects capture immediately; queued entries cannot flush under the old revision",
+  }),
+});
+
+function hookAuthorizationResponse(status: {
+  installationId: string;
+  authorizationRevision: number;
+  policyRevision: number;
+  recallEnabled: boolean;
+  captureEnabled: boolean;
+  changedAt: string;
+}) {
+  return {
+    installation_id: status.installationId,
+    authorization_revision: status.authorizationRevision,
+    policy_revision: status.policyRevision,
+    recall_enabled: status.recallEnabled,
+    capture_enabled: status.captureEnabled,
+    changed_at: status.changedAt,
+  };
+}
 
 function toImportRounds(
   sessions: z.infer<typeof importSessionSchema>[],
@@ -471,6 +529,9 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/recall/query",
       "POST /api/v1/hooks/recall",
       "POST /api/v1/hooks/capture",
+      "GET /api/v1/hooks/authorization",
+      "POST /api/v1/hooks/authorization",
+      "DELETE /api/v1/hooks/authorization",
       "GET /api/v1/memories",
       "GET /api/v1/memory",
       "GET /api/v1/audit",
@@ -695,6 +756,95 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
   app.get("/api/v1/mcp/status", (context) => {
     authenticateMemoryRequest(context, false);
     return context.json({ status: "ready", api_version: API_VERSION });
+  });
+
+  const requireHookAuthorizations = () => {
+    if (!options.hookAuthorizations) {
+      throw new GatewayHttpError(
+        503,
+        "HOOK_AUTHORIZATION_UNAVAILABLE",
+        "Hook authorization storage is unavailable",
+      );
+    }
+    return options.hookAuthorizations;
+  };
+
+  app.get("/api/v1/hooks/authorization", (context) => {
+    authenticateMemoryRequest(context, false);
+    return context.json({
+      disclosure: HOOK_AUTHORIZATION_DISCLOSURE,
+      authorization: hookAuthorizationResponse(
+        requireHookAuthorizations().status(),
+      ),
+    });
+  });
+
+  app.post("/api/v1/hooks/authorization", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = hookAuthorizationUpdateSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the Hook authorization contract",
+      );
+    }
+    try {
+      const status = requireHookAuthorizations().update({
+        expectedRevision: parsed.data.expected_authorization_revision,
+        recallEnabled: parsed.data.recall_enabled,
+        captureEnabled: parsed.data.capture_enabled,
+      });
+      return context.json({ authorization: hookAuthorizationResponse(status) });
+    } catch (error) {
+      if (error instanceof HookAuthorizationConflictError) {
+        throw new GatewayHttpError(
+          409,
+          "HOOK_AUTHORIZATION_CHANGED",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  });
+
+  app.delete("/api/v1/hooks/authorization", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = hookAuthorizationRevokeSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the Hook authorization contract",
+      );
+    }
+    try {
+      const status = requireHookAuthorizations().update({
+        expectedRevision: parsed.data.expected_authorization_revision,
+        recallEnabled: false,
+        captureEnabled: false,
+      });
+      return context.json({ authorization: hookAuthorizationResponse(status) });
+    } catch (error) {
+      if (error instanceof HookAuthorizationConflictError) {
+        throw new GatewayHttpError(
+          409,
+          "HOOK_AUTHORIZATION_CHANGED",
+          error.message,
+        );
+      }
+      throw error;
+    }
   });
 
   const requireBearer = (authorization: string | undefined): void => {

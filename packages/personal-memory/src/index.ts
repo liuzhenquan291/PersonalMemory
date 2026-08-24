@@ -107,6 +107,11 @@ export {
   type HookCaptureResult,
 } from "./hook-capture-ledger.js";
 export {
+  HookAuthorizationConflictError,
+  HookAuthorizationLedger,
+  type HookAuthorizationStatus,
+} from "./hook-authorization-ledger.js";
+export {
   ModelAuthorizationLedger,
   type ModelAuthorizationStatus,
 } from "./model-authorization-ledger.js";

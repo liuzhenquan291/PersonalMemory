@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 9;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 10;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -189,6 +189,17 @@ CREATE TABLE personalmemory_model_authorizations (
 ) STRICT
 `;
 
+const HOOK_AUTHORIZATIONS_SQL = `
+CREATE TABLE personalmemory_hook_authorizations (
+  authorization_revision INTEGER PRIMARY KEY NOT NULL CHECK (authorization_revision > 0),
+  installation_id TEXT NOT NULL,
+  policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),
+  recall_enabled INTEGER NOT NULL CHECK (recall_enabled IN (0, 1)),
+  capture_enabled INTEGER NOT NULL CHECK (capture_enabled IN (0, 1)),
+  changed_at TEXT NOT NULL
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -260,5 +271,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_model_outbound_authorizations",
     checksum: checksum(MODEL_AUTHORIZATIONS_SQL),
     statements: [MODEL_AUTHORIZATIONS_SQL],
+  },
+  {
+    version: 10,
+    name: "add_hook_lifecycle_authorizations",
+    checksum: checksum(HOOK_AUTHORIZATIONS_SQL),
+    statements: [HOOK_AUTHORIZATIONS_SQL],
   },
 ]);

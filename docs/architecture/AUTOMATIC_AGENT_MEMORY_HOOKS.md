@@ -2,7 +2,7 @@
 
 > 契约版本：`1.0.0`
 >
-> 状态：M4.5.1–M4.5.5 已完成。生产捕获 sink 和产品授权界面在 M4.6 实施。
+> 状态：M4.5.1–M4.5.5、M4.6.3–M4.6.4 已完成。更窄采集策略和 Web 授权界面继续在 M4.6 实施。
 >
 > 适用客户端：Codex、Claude Code。
 
@@ -89,6 +89,8 @@ Stop Hook 永远返回“允许停止”的有效客户端 JSON，不得因捕�
 ## 6. 授权、策略与人工操作
 
 自动召回与自动本地捕获是两个独立、默认关闭的授权。首次安装或 Web 引导必须分别解释处理阶段、数据范围、预算、失败行为和撤销方式；只有用户明确开启后，Gateway 才签发版本化授权。Hook 配置存在、客户端信任 Hook 或 MCP 已连接都不等同于产品授权。
+
+M4.6.4 以产品 SQLite 账本和认证 `/api/v1/hooks/authorization` 作为权威事实源：GET 对 recall/capture 分别固定披露数据、处理时机、用途、目的地、预算、fail-open 和撤销效果，并返回当前状态；POST 以 expected revision 独立设置 recall/capture，DELETE 原子双关闭。安装身份从私有 Hook secret 单向派生；跨安装恢复时旧授权自动失效。受管 worker 在任何维护和 outbox flush 前同步权威 revision，安装身份不一致或同步失败均 fail closed，不使用旧授权处理正文。本步骤 policy revision 固定为 1，尚未提供 Agent/项目/来源排除、敏感内容和保留期设置。
 
 每次请求必须携带安装、授权和策略 revision；Gateway 以服务端当前值为权威。授权撤销、策略更新或安装身份变化后，旧请求必须 `skipped`，不得由 Adapter 猜测迁移。
 

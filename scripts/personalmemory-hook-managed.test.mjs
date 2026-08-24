@@ -169,6 +169,111 @@ test("loads credentials indirectly and records only redacted worker status", asy
   }
 });
 
+test("managed maintenance synchronizes authoritative Hook authorization", async () => {
+  const root = await stateFixture();
+  try {
+    const result = await runHookMaintenance({
+      stateDirectory: root,
+      gatewayFactory: () => ({
+        authorization: async () => ({
+          installation_id: "unconfigured",
+          authorization_revision: 4,
+          policy_revision: 2,
+          recall_enabled: true,
+          capture_enabled: false,
+          changed_at: "2026-08-24T02:00:00.000Z",
+        }),
+        recall: async () => ({
+          contract_version: "1.0.0",
+          data_classification: "untrusted_memory_data",
+          usage_warning: "warning",
+          outcome: "skipped",
+          reason: "no_match",
+          item_count: 0,
+          used_chars: 0,
+          estimated_tokens: 0,
+        }),
+        capture: async () => ({
+          contract_version: "1.0.0",
+          outcome: "skipped",
+          reason: "capture_not_authorized",
+          retryable: false,
+        }),
+      }),
+      now: () => 2345,
+    });
+    assert.equal(result.worker, "healthy");
+    const managed = await createManagedHookRuntime({
+      stateDirectory: root,
+      gatewayFactory: () => ({
+        recall: async () => ({}),
+        capture: async () => ({}),
+      }),
+    });
+    assert.deepEqual(managed.settings, {
+      version: 1,
+      gatewayBaseUrl: "http://127.0.0.1:8787",
+      authorization: {
+        installation_id: "unconfigured",
+        authorization_revision: 4,
+        policy_revision: 2,
+      },
+      recallEnabled: true,
+      captureEnabled: false,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("authorization sync failure blocks maintenance and outbox flush", async () => {
+  const root = await stateFixture();
+  let maintenanceCalls = 0;
+  try {
+    const result = await runHookMaintenance({
+      stateDirectory: root,
+      settings: {
+        gatewayBaseUrl: "http://127.0.0.1:8787",
+        authorization: {
+          installation_id: "unconfigured",
+          authorization_revision: 1,
+          policy_revision: 1,
+        },
+      },
+      gateway: {
+        authorization: async () => ({
+          installation_id: "different-installation",
+          authorization_revision: 2,
+          policy_revision: 1,
+          recall_enabled: true,
+          capture_enabled: true,
+          changed_at: "2026-08-24T02:00:00.000Z",
+        }),
+      },
+      runtime: {
+        maintain: async () => {
+          maintenanceCalls += 1;
+        },
+      },
+      turns: {
+        maintain: async () => {
+          maintenanceCalls += 1;
+        },
+      },
+      outbox: {
+        status: async () => ({ queued: 1, failed: 0, total: 1 }),
+      },
+      now: () => 3456,
+    });
+
+    assert.equal(result.worker, "degraded");
+    assert.equal(maintenanceCalls, 0);
+    assert.deepEqual(result.backlog, { queued: 1, failed: 0, total: 1 });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("executes both installed client definitions in an isolated HOME against a local Gateway", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "pm-hook-e2e-"));
   const home = path.join(root, "home");

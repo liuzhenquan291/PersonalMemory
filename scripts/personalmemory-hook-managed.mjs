@@ -110,7 +110,7 @@ export async function createManagedHookRuntime(options = {}) {
     secret: hookSecret,
     telemetry: options.telemetry,
   });
-  return { runtime, turns, outbox, settings, hooksDirectory };
+  return { runtime, turns, outbox, gateway, settings, hooksDirectory };
 }
 
 export async function recordFirstHookEvent(options) {
@@ -165,6 +165,26 @@ export async function runHookMaintenance(options = {}) {
       options.runtime && options.turns && options.outbox
         ? options
         : await createManagedHookRuntime(options);
+    if (managed.gateway?.authorization) {
+      const current = await managed.gateway.authorization();
+      if (
+        current.installation_id !==
+        managed.settings.authorization.installation_id
+      )
+        throw new Error("Hook authorization installation identity changed");
+      await writeManagedHookRuntimeConfiguration({
+        stateDirectory,
+        gatewayBaseUrl: managed.settings.gatewayBaseUrl,
+        authorization: {
+          installation_id: current.installation_id,
+          authorization_revision: current.authorization_revision,
+          policy_revision: current.policy_revision,
+        },
+        recallEnabled: current.recall_enabled,
+        captureEnabled: current.capture_enabled,
+      });
+      managed = await createManagedHookRuntime(options);
+    }
     await managed.turns.maintain();
     await managed.runtime.maintain("managed-worker", {
       maxEntries: options.maxEntries ?? 16,
