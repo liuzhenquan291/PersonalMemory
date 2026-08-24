@@ -11,6 +11,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { createServer } from "node:net";
+import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -38,12 +39,83 @@ const UPSTREAM_MODEL_ENVIRONMENT_KEYS = [
   "MEMORY_TENCENTDB_LLM_API_KEY",
   "MEMORY_TENCENTDB_LLM_MODEL",
 ];
+const PRODUCT_MODEL_ENVIRONMENT_KEYS = [
+  "PERSONALMEMORY_MODEL_ENABLED",
+  "PERSONALMEMORY_MODEL_PROVIDER",
+  "PERSONALMEMORY_MODEL_BASE_URL",
+  "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS",
+  "PERSONALMEMORY_MODEL_API_KEY",
+  "PERSONALMEMORY_MODEL_NAME",
+];
+const PRIVATE_GATEWAY_ENVIRONMENT_KEYS = new Set([
+  "PERSONALMEMORY_AUTH_ENABLED",
+  "PERSONALMEMORY_AUTH_TOKEN",
+  ...PRODUCT_MODEL_ENVIRONMENT_KEYS,
+]);
+const MODEL_PROXY_ENVIRONMENT_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "NODE_USE_ENV_PROXY",
+];
 
 export function buildModelDisabledUpstreamEnvironment(environment) {
   const managed = { ...environment };
-  for (const key of UPSTREAM_MODEL_ENVIRONMENT_KEYS) delete managed[key];
+  for (const key of [
+    ...UPSTREAM_MODEL_ENVIRONMENT_KEYS,
+    ...MODEL_PROXY_ENVIRONMENT_KEYS,
+  ])
+    delete managed[key];
   managed.TDAI_LLM_ENABLED = "false";
   return managed;
+}
+
+function buildManagedGatewayEnvironment(environment, gatewayEnvironment) {
+  const managed = { ...environment };
+  for (const key of PRODUCT_MODEL_ENVIRONMENT_KEYS) delete managed[key];
+  return { ...managed, ...gatewayEnvironment };
+}
+
+export async function resolveManagedUpstreamEnvironment({
+  environment,
+  gatewayEnvironment,
+  dataDirectory,
+}) {
+  const disabled = buildModelDisabledUpstreamEnvironment(environment);
+  if (gatewayEnvironment.PERSONALMEMORY_MODEL_ENABLED !== "true") {
+    return disabled;
+  }
+  const { ModelAuthorizationLedger, getModelOutboundDisclosure, loadConfig } =
+    await import("@personalmemory/core");
+  const { config } = loadConfig({ environment: gatewayEnvironment });
+  const disclosure = getModelOutboundDisclosure(config);
+  if (!disclosure) return disabled;
+  let database;
+  try {
+    database = new DatabaseSync(
+      path.join(dataDirectory, "personalmemory.sqlite"),
+      { readOnly: true },
+    );
+    if (
+      new ModelAuthorizationLedger(database).status(disclosure).status !==
+      "authorized"
+    )
+      return disabled;
+  } catch {
+    return disabled;
+  } finally {
+    database?.close();
+  }
+  return {
+    ...disabled,
+    TDAI_LLM_ENABLED: "true",
+    TDAI_LLM_BASE_URL: config.model.baseUrl.href.replace(/\/$/u, ""),
+    TDAI_LLM_API_KEY: config.model.apiKey.reveal(),
+    TDAI_LLM_MODEL: config.model.name,
+  };
 }
 
 const RECEIPT_VERSION = 3;
@@ -115,7 +187,7 @@ async function writePrivateAtomic(target, contents) {
   await chmod(target, 0o600);
 }
 
-async function loadOrCreateToken(secretPath) {
+async function loadOrCreateGatewayEnvironment(secretPath) {
   try {
     const info = await lstat(secretPath);
     if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o077) !== 0) {
@@ -124,20 +196,30 @@ async function loadOrCreateToken(secretPath) {
       );
     }
     const contents = await readFile(secretPath, "utf8");
-    const lines = contents.trimEnd().split("\n");
-    if (
-      lines.length !== 3 ||
-      lines[0] !== "PERSONALMEMORY_AUTH_ENABLED=true" ||
-      !lines[1].startsWith("PERSONALMEMORY_AUTH_TOKEN=") ||
-      lines[2] !== "PERSONALMEMORY_MODEL_ENABLED=false"
-    ) {
-      throw new Error("Existing Gateway credential has an invalid format");
+    const environment = {};
+    for (const line of contents.trimEnd().split("\n")) {
+      const separator = line.indexOf("=");
+      const key = line.slice(0, separator);
+      const value = line.slice(separator + 1);
+      if (
+        separator <= 0 ||
+        !PRIVATE_GATEWAY_ENVIRONMENT_KEYS.has(key) ||
+        Object.hasOwn(environment, key) ||
+        value.length === 0
+      )
+        throw new Error("Existing Gateway credential has an invalid format");
+      environment[key] = value;
     }
-    const token = lines[1].slice("PERSONALMEMORY_AUTH_TOKEN=".length);
+    const token = environment.PERSONALMEMORY_AUTH_TOKEN;
+    if (
+      environment.PERSONALMEMORY_AUTH_ENABLED !== "true" ||
+      !new Set(["true", "false"]).has(environment.PERSONALMEMORY_MODEL_ENABLED)
+    )
+      throw new Error("Existing Gateway credential has an invalid format");
     if (!/^[A-Za-z0-9_-]{43}$/u.test(token)) {
       throw new Error("Existing Gateway credential token is invalid");
     }
-    return token;
+    return { token, environment };
   } catch (error) {
     if (error.code !== "ENOENT") throw error;
   }
@@ -146,7 +228,14 @@ async function loadOrCreateToken(secretPath) {
     secretPath,
     `PERSONALMEMORY_AUTH_ENABLED=true\nPERSONALMEMORY_AUTH_TOKEN=${token}\nPERSONALMEMORY_MODEL_ENABLED=false\n`,
   );
-  return token;
+  return {
+    token,
+    environment: {
+      PERSONALMEMORY_AUTH_ENABLED: "true",
+      PERSONALMEMORY_AUTH_TOKEN: token,
+      PERSONALMEMORY_MODEL_ENABLED: "false",
+    },
+  };
 }
 
 async function loadOrCreateHookSecret(secretPath) {
@@ -288,16 +377,17 @@ async function defaultRun(command, args, options) {
 
 export async function installPersonalMemory(options = {}) {
   assertSupportedEnvironment(options);
+  const environment = options.environment ?? process.env;
   const root = options.root ?? path.resolve(import.meta.dirname, "..");
   const dataDirectory = path.resolve(
     options.dataDirectory ??
-      process.env.PERSONALMEMORY_DATA_DIR ??
-      defaultInstallRoot(),
+      environment.PERSONALMEMORY_DATA_DIR ??
+      defaultInstallRoot(environment),
   );
   const runtimeDirectory = path.resolve(
     options.stateDirectory ??
-      process.env.PERSONALMEMORY_STATE_DIR ??
-      defaultStateRoot(),
+      environment.PERSONALMEMORY_STATE_DIR ??
+      defaultStateRoot(environment),
   );
   if (
     runtimeDirectory === dataDirectory ||
@@ -378,7 +468,7 @@ export async function installPersonalMemory(options = {}) {
       waitForHttp(receipt.gatewayHealthUrl, fetchImpl, 3_000),
       waitForHttp(receipt.webUrl, fetchImpl, 3_000),
     ]);
-    const token = await loadOrCreateToken(receipt.secretPath);
+    const { token } = await loadOrCreateGatewayEnvironment(receipt.secretPath);
     await loadOrCreateHookSecret(hookSecretPath);
     await waitForRecall(receipt.recallUrl, token, fetchImpl, 3_000);
     const [hookInstall, hookRuntime] = await Promise.all([
@@ -407,7 +497,13 @@ export async function installPersonalMemory(options = {}) {
     await run("npm", ["ci"], { cwd: root, stdio: "inherit" });
   await run("npm", ["run", "build:products"], { cwd: root, stdio: "inherit" });
   await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
-  const token = await loadOrCreateToken(secretPath);
+  const { token, environment: gatewayEnvironment } =
+    await loadOrCreateGatewayEnvironment(secretPath);
+  const upstreamEnvironment = await resolveManagedUpstreamEnvironment({
+    environment,
+    gatewayEnvironment,
+    dataDirectory,
+  });
   await loadOrCreateHookSecret(hookSecretPath);
   await writeManagedHookRuntimeConfiguration({
     stateDirectory: runtimeDirectory,
@@ -438,7 +534,7 @@ export async function installPersonalMemory(options = {}) {
       {
         ...common,
         env: {
-          ...buildModelDisabledUpstreamEnvironment(process.env),
+          ...upstreamEnvironment,
           TDAI_GATEWAY_HOST: host,
           TDAI_GATEWAY_PORT: String(upstreamPort),
           TDAI_DATA_DIR: dataDirectory,
@@ -452,13 +548,12 @@ export async function installPersonalMemory(options = {}) {
       {
         ...common,
         env: {
-          ...process.env,
+          ...buildManagedGatewayEnvironment(environment, gatewayEnvironment),
           PERSONALMEMORY_HOST: host,
           PERSONALMEMORY_PORT: String(gatewayPort),
           PERSONALMEMORY_DATA_DIR: dataDirectory,
           PERSONALMEMORY_AUTH_ENABLED: "true",
           PERSONALMEMORY_AUTH_TOKEN: token,
-          PERSONALMEMORY_MODEL_ENABLED: "false",
         },
       },
     );
@@ -478,7 +573,7 @@ export async function installPersonalMemory(options = {}) {
         ...common,
         cwd: path.join(root, "apps", "web"),
         env: {
-          ...process.env,
+          ...environment,
           PERSONALMEMORY_DEV_GATEWAY_PORT: String(gatewayPort),
         },
       },
@@ -491,7 +586,7 @@ export async function installPersonalMemory(options = {}) {
       {
         ...common,
         env: {
-          ...process.env,
+          ...environment,
           PERSONALMEMORY_STATE_DIR: runtimeDirectory,
           PERSONALMEMORY_HOOK_WORKER_GENERATION: hookWorkerGeneration,
         },

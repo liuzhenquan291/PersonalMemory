@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 8;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 9;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -171,6 +171,24 @@ CREATE TABLE personalmemory_hook_captures (
 ) STRICT
 `;
 
+const MODEL_AUTHORIZATIONS_SQL = `
+CREATE TABLE personalmemory_model_authorizations (
+  revision INTEGER PRIMARY KEY NOT NULL CHECK (revision > 0),
+  disclosure_version INTEGER NOT NULL CHECK (disclosure_version > 0),
+  disclosure_hash TEXT NOT NULL CHECK (length(disclosure_hash) = 64),
+  provider TEXT NOT NULL CHECK (provider IN ('local', 'openai-compatible')),
+  target_origin TEXT NOT NULL,
+  sent_fields_json TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('authorized', 'revoked')),
+  authorized_at TEXT,
+  revoked_at TEXT,
+  CHECK (
+    (status = 'authorized' AND authorized_at IS NOT NULL AND revoked_at IS NULL) OR
+    (status = 'revoked' AND authorized_at IS NULL AND revoked_at IS NOT NULL)
+  )
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -236,5 +254,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_hook_capture_idempotency",
     checksum: checksum(HOOK_CAPTURES_SQL),
     statements: [HOOK_CAPTURES_SQL],
+  },
+  {
+    version: 9,
+    name: "add_model_outbound_authorizations",
+    checksum: checksum(MODEL_AUTHORIZATIONS_SQL),
+    statements: [MODEL_AUTHORIZATIONS_SQL],
   },
 ]);

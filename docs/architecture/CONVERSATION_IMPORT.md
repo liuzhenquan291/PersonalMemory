@@ -39,6 +39,6 @@ PersonalMemory Gateway 只通过不读取代理环境变量的 loopback HTTP 调
 导入实现本身不连接远端模型或其他网络目标。默认模型关闭时无需外联确认。
 
 配置模型 provider 后，`GET /api/v1/config/status` 会先返回 provider、目标 origin 和发送字段。
-提交方必须显式设置 `model_outbound_acknowledged: true`，否则导入在调用上游前返回
+提交方必须先通过模型授权 API 持久授权当前版本披露；逐请求设置 `model_outbound_acknowledged: true` 不能替代该授权，否则导入在调用上游前返回
 `409 MODEL_OUTBOUND_CONSENT_REQUIRED`。该确认不进入幂等载荷，也不替代 provider allowlist、
 远端 HTTPS 和密钥脱敏规则。

@@ -62,6 +62,53 @@ describe("PersonalMemory core baseline", () => {
     }
   });
 
+  it("does not follow model redirects beyond the configured origin", async () => {
+    let redirectedRequests = 0;
+    const redirectedServer = createServer((_request, response) => {
+      redirectedRequests += 1;
+      response.writeHead(500).end();
+    });
+    await new Promise<void>((resolve) => redirectedServer.listen(0, "127.0.0.1", resolve));
+    const redirectedAddress = redirectedServer.address();
+    if (!redirectedAddress || typeof redirectedAddress === "string") {
+      throw new Error("No redirected test server address");
+    }
+    const allowedServer = createServer((_request, response) => {
+      response.writeHead(307, {
+        location: `http://127.0.0.1:${redirectedAddress.port}/v1/chat/completions`,
+      }).end();
+    });
+    await new Promise<void>((resolve) => allowedServer.listen(0, "127.0.0.1", resolve));
+    const allowedAddress = allowedServer.address();
+    if (!allowedAddress || typeof allowedAddress === "string") {
+      throw new Error("No allowed test server address");
+    }
+
+    const runner = new StandaloneLLMRunner({
+      config: {
+        enabled: true,
+        apiKey: "test-placeholder",
+        baseUrl: `http://127.0.0.1:${allowedAddress.port}/v1`,
+        model: "offline-model",
+      },
+    });
+
+    try {
+      await expect(runner.run({
+        taskId: "redirect-gate",
+        systemPrompt: "system",
+        prompt: "prompt",
+      })).rejects.toThrow();
+      expect(redirectedRequests).toBe(0);
+    } finally {
+      await Promise.all([allowedServer, redirectedServer].map((server) =>
+        new Promise<void>((resolve, reject) =>
+          server.close((error) => error ? reject(error) : resolve()),
+        ),
+      ));
+    }
+  });
+
   it("round-trips memory data through isolated local storage", async () => {
     const rootDir = await mkdtemp(join(tmpdir(), "personalmemory-storage-"));
     temporaryDirectories.push(rootDir);

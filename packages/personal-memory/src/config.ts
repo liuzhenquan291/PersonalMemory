@@ -30,6 +30,7 @@ const fileConfigSchema = z
         enabled: z.boolean().optional(),
         provider: z.enum(["local", "openai-compatible"]).optional(),
         baseUrl: z.url().optional(),
+        name: z.string().min(1).optional(),
         allowedOrigins: z.array(z.url()).optional(),
       })
       .strict()
@@ -58,6 +59,7 @@ export interface PersonalMemoryConfig {
     enabled: boolean;
     provider?: "local" | "openai-compatible";
     baseUrl?: URL;
+    name?: string;
     allowedOrigins: readonly string[];
     apiKey?: SecretValue;
   };
@@ -72,9 +74,14 @@ export interface LoadedConfig {
 }
 
 export interface ModelOutboundDisclosure {
+  version: 1;
   provider: "local" | "openai-compatible";
   targetOrigin: string;
-  sentFields: readonly ["model input", "selected memory context"];
+  sentFields: readonly [
+    "model input",
+    "selected memory context",
+    "imported conversation messages",
+  ];
 }
 
 export class ConfigurationError extends Error {
@@ -316,10 +323,16 @@ export function loadConfig(
     "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS",
   );
   const apiKeyValue = environment.PERSONALMEMORY_MODEL_API_KEY;
+  const modelName = environment.PERSONALMEMORY_MODEL_NAME ?? file.model?.name;
 
   if (modelEnabled && (!provider || !baseUrl)) {
     throw new ConfigurationError(
       "Model access is enabled but provider or base URL is missing",
+    );
+  }
+  if (modelEnabled && !modelName?.trim()) {
+    throw new ConfigurationError(
+      "Model access is enabled but PERSONALMEMORY_MODEL_NAME is missing",
     );
   }
   if (modelEnabled && baseUrl) {
@@ -421,6 +434,7 @@ export function loadConfig(
       enabled: modelEnabled,
       ...(provider ? { provider } : {}),
       ...(baseUrl ? { baseUrl } : {}),
+      ...(modelName ? { name: modelName } : {}),
       allowedOrigins,
       ...(apiKeyValue
         ? {
@@ -488,8 +502,13 @@ export function getModelOutboundDisclosure(
     return undefined;
   }
   return {
+    version: 1,
     provider: config.model.provider,
     targetOrigin: config.model.baseUrl.origin,
-    sentFields: ["model input", "selected memory context"],
+    sentFields: [
+      "model input",
+      "selected memory context",
+      "imported conversation messages",
+    ],
   };
 }

@@ -2,6 +2,7 @@ import type {
   AuditLedger,
   HookCaptureLedger,
   MemoryGovernanceLedger,
+  ModelAuthorizationLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
   PersonalMemoryConfig,
@@ -60,6 +61,7 @@ export interface GatewayAppOptions {
   privacyDeletions?: PrivacyDeletionService;
   audit?: AuditLedger;
   hookCaptures?: HookCaptureLedger;
+  modelAuthorizations?: ModelAuthorizationLedger;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;
   logger?: GatewayLogger;

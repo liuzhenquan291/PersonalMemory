@@ -54,6 +54,19 @@ test("stops services and removes only the receipt", async () => {
   ]);
 });
 
+test("restarts managed services so model authorization changes take effect", async () => {
+  const item = fixture();
+  const result = await managePersonalMemory("restart", item.options);
+  assert.equal(result.restarted, true);
+  assert.deepEqual(item.calls, [
+    ["stop", 42],
+    ["stop", 41],
+    ["stop", 40],
+    ["remove", "/safe/state/install.json"],
+    ["install"],
+  ]);
+});
+
 test("creates and verifies a backup then restarts", async () => {
   const item = fixture();
   const result = await managePersonalMemory("backup", {

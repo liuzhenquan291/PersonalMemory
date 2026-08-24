@@ -41,6 +41,7 @@ npm run upgrade:product
 
 ```bash
 npm run lifecycle:product -- status
+npm run lifecycle:product -- restart
 npm run lifecycle:product -- backup --output /absolute/backup
 npm run lifecycle:product -- restore --input /absolute/backup
 npm run lifecycle:product -- stop

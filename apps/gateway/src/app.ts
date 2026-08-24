@@ -159,6 +159,15 @@ const batchImportSchema = z
     }
   });
 
+const modelDisclosureSchema = z
+  .object({
+    version: z.literal(1),
+    provider: z.enum(["local", "openai-compatible"]),
+    targetOrigin: z.url(),
+    sentFields: z.array(z.string().min(1)).min(1).max(16),
+  })
+  .strict();
+
 function toImportRounds(
   sessions: z.infer<typeof importSessionSchema>[],
 ): ImportRoundPayload[] {
@@ -680,15 +689,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         options.config.server.authenticationEnabled &&
         !!options.config.server.authenticationToken,
       modelConfigured: options.config.model.enabled,
-      modelOutboundDisclosure: disclosure
-        ? {
-            ...disclosure,
-            sentFields: [
-              ...disclosure.sentFields,
-              "imported conversation messages",
-            ],
-          }
-        : undefined,
+      modelOutboundDisclosure: disclosure,
     });
   });
   app.get("/api/v1/mcp/status", (context) => {
@@ -820,6 +821,80 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     return options.importManager;
   };
 
+  const requireModelDisclosure = () => {
+    const disclosure = getModelOutboundDisclosure(options.config);
+    if (!disclosure) {
+      throw new GatewayHttpError(
+        409,
+        "MODEL_CONFIG_REQUIRED",
+        "Configure a model provider before authorizing outbound access",
+      );
+    }
+    if (!options.modelAuthorizations) {
+      throw new GatewayHttpError(
+        503,
+        "MODEL_AUTHORIZATION_UNAVAILABLE",
+        "Model authorization storage is unavailable",
+      );
+    }
+    return { disclosure, ledger: options.modelAuthorizations };
+  };
+
+  app.get("/api/v1/model/authorization", (context) => {
+    authenticateMemoryRequest(context, false);
+    const { disclosure, ledger } = requireModelDisclosure();
+    return context.json({
+      disclosure,
+      authorization: ledger.status(disclosure),
+      restart_required: false,
+    });
+  });
+
+  app.post("/api/v1/model/authorization", async (context) => {
+    authenticateMemoryRequest(context);
+    const input = await readLimitedJson(
+      context.req.raw,
+      options.config.server.requestBodyLimitBytes,
+    );
+    const parsed = modelDisclosureSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the model disclosure contract",
+      );
+    }
+    const { disclosure, ledger } = requireModelDisclosure();
+    if (
+      parsed.data.version !== disclosure.version ||
+      parsed.data.provider !== disclosure.provider ||
+      new URL(parsed.data.targetOrigin).origin !== disclosure.targetOrigin ||
+      parsed.data.sentFields.length !== disclosure.sentFields.length ||
+      parsed.data.sentFields.some(
+        (field, index) => field !== disclosure.sentFields[index],
+      )
+    ) {
+      throw new GatewayHttpError(
+        409,
+        "MODEL_DISCLOSURE_CHANGED",
+        "Model disclosure changed; reload it before authorizing",
+      );
+    }
+    return context.json({
+      authorization: ledger.authorize(disclosure),
+      restart_required: true,
+    });
+  });
+
+  app.delete("/api/v1/model/authorization", (context) => {
+    authenticateMemoryRequest(context);
+    const { disclosure, ledger } = requireModelDisclosure();
+    return context.json({
+      authorization: ledger.revoke(disclosure),
+      restart_required: true,
+    });
+  });
+
   const submitImport = async (
     context: Context<GatewayEnv>,
     schema: typeof singleImportSchema | typeof batchImportSchema,
@@ -840,14 +915,14 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
     const sessions =
       "session" in parsed.data ? [parsed.data.session] : parsed.data.sessions;
     const disclosure = getModelOutboundDisclosure(options.config);
-    if (disclosure && parsed.data.model_outbound_acknowledged !== true) {
+    if (
+      disclosure &&
+      options.modelAuthorizations?.status(disclosure).status !== "authorized"
+    ) {
       throw new GatewayHttpError(
         409,
         "MODEL_OUTBOUND_CONSENT_REQUIRED",
-        `Confirm model outbound fields (${[
-          ...disclosure.sentFields,
-          "imported conversation messages",
-        ].join(", ")}) to ${disclosure.provider} at ${disclosure.targetOrigin}`,
+        `Authorize model outbound fields (${disclosure.sentFields.join(", ")}) to ${disclosure.provider} at ${disclosure.targetOrigin}`,
       );
     }
     try {

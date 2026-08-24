@@ -135,7 +135,20 @@ describe("PersonalMemory configuration", () => {
           PERSONALMEMORY_MODEL_ENABLED: "true",
           PERSONALMEMORY_MODEL_PROVIDER: "openai-compatible",
           PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
+          PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
           PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        },
+      }),
+    ).toThrow(/PERSONALMEMORY_MODEL_NAME/);
+
+    expect(() =>
+      loadConfig({
+        environment: {
+          PERSONALMEMORY_MODEL_ENABLED: "true",
+          PERSONALMEMORY_MODEL_PROVIDER: "openai-compatible",
+          PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
+          PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+          PERSONALMEMORY_MODEL_NAME: "test-model",
         },
       }),
     ).toThrow(/not in PERSONALMEMORY_MODEL_ALLOWED_ORIGINS/);
@@ -147,14 +160,20 @@ describe("PersonalMemory configuration", () => {
         PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
         PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
         PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        PERSONALMEMORY_MODEL_NAME: "test-model",
       },
     });
     expect(loaded.readiness).toEqual({ ready: true });
     expect(loaded.config.model.apiKey?.toString()).toBe("[REDACTED]");
     expect(getModelOutboundDisclosure(loaded.config)).toEqual({
+      version: 1,
       provider: "openai-compatible",
       targetOrigin: "https://models.example.test",
-      sentFields: ["model input", "selected memory context"],
+      sentFields: [
+        "model input",
+        "selected memory context",
+        "imported conversation messages",
+      ],
     });
   });
 
@@ -163,6 +182,7 @@ describe("PersonalMemory configuration", () => {
       PERSONALMEMORY_MODEL_ENABLED: "true",
       PERSONALMEMORY_MODEL_PROVIDER: "openai-compatible",
       PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+      PERSONALMEMORY_MODEL_NAME: "test-model",
     };
     expect(() =>
       loadConfig({
@@ -195,6 +215,7 @@ describe("PersonalMemory configuration", () => {
         PERSONALMEMORY_MODEL_BASE_URL: "https://allowed.example.test/v1",
         PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://allowed.example.test",
         PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        PERSONALMEMORY_MODEL_NAME: "test-model",
       },
     });
 
@@ -219,6 +240,7 @@ describe("PersonalMemory configuration", () => {
           PERSONALMEMORY_MODEL_ALLOWED_ORIGINS:
             "https://models.example.test,http://models.example.test",
           PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+          PERSONALMEMORY_MODEL_NAME: "test-model",
         },
       }),
     ).toThrow(/MODEL_ALLOWED_ORIGINS require HTTPS/);
@@ -230,6 +252,7 @@ describe("PersonalMemory configuration", () => {
         PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
         PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
         PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        PERSONALMEMORY_MODEL_NAME: "test-model",
       },
     });
     const manuallyExpandedConfig = {

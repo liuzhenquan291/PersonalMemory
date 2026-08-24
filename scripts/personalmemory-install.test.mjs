@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import process from "node:process";
 import test from "node:test";
+import {
+  ModelAuthorizationLedger,
+  defaultMigrations,
+  migrateDatabase,
+} from "@personalmemory/core";
 
 import {
   assertSupportedEnvironment,
@@ -12,6 +18,7 @@ import {
   defaultInstallRoot,
   defaultStateRoot,
   installPersonalMemory,
+  resolveManagedUpstreamEnvironment,
   waitForHookWorker,
 } from "./personalmemory-install-runtime.mjs";
 
@@ -113,6 +120,126 @@ test("builds a fail-closed upstream model environment", () => {
     PATH: "/test/bin",
     TDAI_LLM_ENABLED: "false",
   });
+});
+
+test("maps only a currently authorized private model configuration upstream", async () => {
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), "personalmemory-install-model-authorized-"),
+  );
+  const stateDirectory = path.join(root, "state");
+  const dataDirectory = path.join(root, "data");
+  await mkdir(path.join(root, "node_modules", "vite", "bin"), {
+    recursive: true,
+  });
+  await mkdir(stateDirectory, { recursive: true, mode: 0o700 });
+  await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
+  const token = "m".repeat(43);
+  await import("node:fs/promises").then(({ writeFile }) =>
+    writeFile(
+      path.join(stateDirectory, "gateway.env"),
+      [
+        "PERSONALMEMORY_AUTH_ENABLED=true",
+        `PERSONALMEMORY_AUTH_TOKEN=${token}`,
+        "PERSONALMEMORY_MODEL_ENABLED=true",
+        "PERSONALMEMORY_MODEL_PROVIDER=openai-compatible",
+        "PERSONALMEMORY_MODEL_BASE_URL=https://models.example.test/v1",
+        "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS=https://models.example.test",
+        "PERSONALMEMORY_MODEL_API_KEY=private-model-key",
+        "PERSONALMEMORY_MODEL_NAME=test-model",
+        "",
+      ].join("\n"),
+      { mode: 0o600 },
+    ),
+  );
+  const database = new DatabaseSync(
+    path.join(dataDirectory, "personalmemory.sqlite"),
+  );
+  migrateDatabase(database, defaultMigrations);
+  new ModelAuthorizationLedger(database).authorize({
+    version: 1,
+    provider: "openai-compatible",
+    targetOrigin: "https://models.example.test",
+    sentFields: [
+      "model input",
+      "selected memory context",
+      "imported conversation messages",
+    ],
+  });
+  database.close();
+
+  const environments = [];
+  let nextPid = 2_050_000;
+  await installPersonalMemory({
+    waitForHookWorkerImpl: readyWorker,
+    root,
+    home: path.join(root, "home"),
+    dataDirectory,
+    stateDirectory,
+    gatewayPort: 0,
+    webPort: 0,
+    environment: {
+      PATH: process.env.PATH,
+      TDAI_LLM_ENABLED: "true",
+      TDAI_LLM_BASE_URL: "https://inherited.example.test/v1",
+      TDAI_LLM_API_KEY: "inherited-secret",
+      HTTPS_PROXY: "http://proxy.example.test:8080",
+      NODE_USE_ENV_PROXY: "1",
+    },
+    run: async () => undefined,
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: (_command, _args, options) => {
+      environments.push(options.env);
+      return fakeChild(nextPid++);
+    },
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
+  });
+
+  assert.equal(environments[0].TDAI_LLM_ENABLED, "true");
+  assert.equal(
+    environments[0].TDAI_LLM_BASE_URL,
+    "https://models.example.test/v1",
+  );
+  assert.equal(environments[0].TDAI_LLM_API_KEY, "private-model-key");
+  assert.equal(environments[0].TDAI_LLM_MODEL, "test-model");
+  assert.equal(environments[0].HTTPS_PROXY, undefined);
+  assert.equal(environments[0].NODE_USE_ENV_PROXY, undefined);
+  assert.equal(environments[1].PERSONALMEMORY_MODEL_ENABLED, "true");
+  assert.equal(environments[1].PERSONALMEMORY_MODEL_NAME, "test-model");
+
+  const revokedDatabase = new DatabaseSync(
+    path.join(dataDirectory, "personalmemory.sqlite"),
+  );
+  new ModelAuthorizationLedger(revokedDatabase).revoke({
+    version: 1,
+    provider: "openai-compatible",
+    targetOrigin: "https://models.example.test",
+    sentFields: [
+      "model input",
+      "selected memory context",
+      "imported conversation messages",
+    ],
+  });
+  revokedDatabase.close();
+  const revokedEnvironment = await resolveManagedUpstreamEnvironment({
+    environment: {
+      PATH: process.env.PATH,
+      TDAI_LLM_ENABLED: "true",
+      TDAI_LLM_API_KEY: "inherited-secret",
+      HTTPS_PROXY: "http://proxy.example.test:8080",
+    },
+    gatewayEnvironment: {
+      ...environments[1],
+      PERSONALMEMORY_PORT: "8787",
+    },
+    dataDirectory,
+  });
+  assert.equal(revokedEnvironment.TDAI_LLM_ENABLED, "false");
+  assert.equal(revokedEnvironment.TDAI_LLM_API_KEY, undefined);
+  assert.equal(revokedEnvironment.HTTPS_PROXY, undefined);
+  await rm(root, { recursive: true });
 });
 
 test("builds, starts, writes private state, and reports a healthy installation", async () => {

@@ -1705,6 +1705,7 @@ export class TdaiGateway {
         try {
           const response = await fetch(`${llmCfg.baseUrl}/chat/completions`, {
             method: "POST",
+            redirect: "manual",
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${llmCfg.apiKey}`,

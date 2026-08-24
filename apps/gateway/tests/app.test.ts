@@ -4,6 +4,7 @@ import {
   HOOK_CAPTURE_COMMITTED,
   ImportLedger,
   MemoryGovernanceLedger,
+  ModelAuthorizationLedger,
   MemoryStateLedger,
   MemoryReviewLedger,
   PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
@@ -80,6 +81,10 @@ function createHarness(options: {
     () => `audit-event-${++auditSequence}`,
   );
   const hookCaptures = new HookCaptureLedger(database);
+  const modelAuthorizations = new ModelAuthorizationLedger(
+    database,
+    () => "2026-08-24T00:00:00.000Z",
+  );
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
@@ -90,6 +95,7 @@ function createHarness(options: {
     privacyDeletions: options.privacyDeletions,
     audit,
     hookCaptures,
+    modelAuthorizations,
     hookPolicy: options.hookPolicy,
     hookCaptureSink: options.hookCaptureSink,
     now: options.now,
@@ -109,6 +115,7 @@ function createHarness(options: {
     memoryGovernance,
     audit,
     hookCaptures,
+    modelAuthorizations,
   };
 }
 
@@ -304,7 +311,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 8,
+      schemaVersion: 9,
     });
   });
 
@@ -791,7 +798,7 @@ describe("PersonalMemory Gateway app", () => {
     ).toBe(409);
   });
 
-  it("requires explicit model outbound acknowledgement and discloses fields first", async () => {
+  it("does not accept a per-request acknowledgement as model authorization", async () => {
     const { config } = loadConfig({
       environment: {
         PERSONALMEMORY_AUTH_ENABLED: "true",
@@ -801,6 +808,7 @@ describe("PersonalMemory Gateway app", () => {
         PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
         PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
         PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        PERSONALMEMORY_MODEL_NAME: "test-model",
       },
     });
     const { app, upstream } = createHarness({ config });
@@ -837,7 +845,7 @@ describe("PersonalMemory Gateway app", () => {
     });
     expect(upstream.request).not.toHaveBeenCalled();
 
-    const accepted = await app.request("/api/v1/conversations/capture", {
+    const stillDenied = await app.request("/api/v1/conversations/capture", {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({
@@ -845,7 +853,130 @@ describe("PersonalMemory Gateway app", () => {
         model_outbound_acknowledged: true,
       }),
     });
-    expect(accepted.status).toBe(202);
+    expect(stillDenied.status).toBe(409);
+    expect(await stillDenied.json()).toMatchObject({
+      error: { code: "MODEL_OUTBOUND_CONSENT_REQUIRED" },
+    });
+    expect(upstream.request).not.toHaveBeenCalled();
+  });
+
+  it("persists versioned model authorization and rejects stale disclosure", async () => {
+    const { config } = loadConfig({
+      environment: {
+        PERSONALMEMORY_AUTH_ENABLED: "true",
+        PERSONALMEMORY_AUTH_TOKEN: "test-auth-secret",
+        PERSONALMEMORY_MODEL_ENABLED: "true",
+        PERSONALMEMORY_MODEL_PROVIDER: "openai-compatible",
+        PERSONALMEMORY_MODEL_BASE_URL: "https://models.example.test/v1",
+        PERSONALMEMORY_MODEL_ALLOWED_ORIGINS: "https://models.example.test",
+        PERSONALMEMORY_MODEL_API_KEY: "private-model-key",
+        PERSONALMEMORY_MODEL_NAME: "test-model",
+      },
+    });
+    const { app, upstream } = createHarness({ config });
+
+    const initial = await app.request("/api/v1/model/authorization", {
+      headers: authHeaders,
+    });
+    expect(await initial.json()).toEqual({
+      disclosure: {
+        version: 1,
+        provider: "openai-compatible",
+        targetOrigin: "https://models.example.test",
+        sentFields: [
+          "model input",
+          "selected memory context",
+          "imported conversation messages",
+        ],
+      },
+      authorization: { status: "required", revision: 0 },
+      restart_required: false,
+    });
+    expect(
+      JSON.stringify(
+        await app
+          .request("/api/v1/model/authorization", {
+            headers: authHeaders,
+          })
+          .then((response) => response.json()),
+      ),
+    ).not.toContain("private-model-key");
+
+    const stale = await app.request("/api/v1/model/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        version: 1,
+        provider: "openai-compatible",
+        targetOrigin: "https://changed.example.test",
+        sentFields: [
+          "model input",
+          "selected memory context",
+          "imported conversation messages",
+        ],
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: { code: "MODEL_DISCLOSURE_CHANGED" },
+    });
+
+    const authorized = await app.request("/api/v1/model/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        version: 1,
+        provider: "openai-compatible",
+        targetOrigin: "https://models.example.test",
+        sentFields: [
+          "model input",
+          "selected memory context",
+          "imported conversation messages",
+        ],
+      }),
+    });
+    expect(await authorized.json()).toEqual({
+      authorization: {
+        status: "authorized",
+        revision: 1,
+        authorizedAt: "2026-08-24T00:00:00.000Z",
+      },
+      restart_required: true,
+    });
+
+    const payload = {
+      idempotency_key: "persistent-authorization-key",
+      session: {
+        session_key: "session-persistent-authorization",
+        messages: [
+          { role: "user", content: "private user" },
+          { role: "assistant", content: "private assistant" },
+        ],
+      },
+    };
+    expect(
+      (
+        await app.request("/api/v1/conversations/capture", {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify(payload),
+        })
+      ).status,
+    ).toBe(202);
+
+    const revoked = await app.request("/api/v1/model/authorization", {
+      method: "DELETE",
+      headers: authHeaders,
+    });
+    expect(await revoked.json()).toEqual({
+      authorization: {
+        status: "revoked",
+        revision: 2,
+        revokedAt: "2026-08-24T00:00:00.000Z",
+      },
+      restart_required: true,
+    });
+    expect(upstream.request).toHaveBeenCalledTimes(1);
   });
 
   it("reports partial batch failure and retries only the failed round", async () => {

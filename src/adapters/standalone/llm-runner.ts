@@ -35,6 +35,17 @@ const TAG = "[memory-tdai] [standalone-runner]";
 // Max iterations in the tool-call loop to prevent infinite loops
 const MAX_TOOL_ITERATIONS = 20;
 
+function createOriginLockedFetch(baseUrl: string): typeof fetch {
+  const allowedOrigin = new URL(baseUrl).origin;
+  return async (input, init) => {
+    const target = new URL(input instanceof Request ? input.url : String(input));
+    if (target.origin !== allowedOrigin) {
+      throw new Error(`Model request origin is not allowed: ${target.origin}`);
+    }
+    return fetch(input, { ...init, redirect: "manual" });
+  };
+}
+
 // ============================
 // Configuration
 // ============================
@@ -235,6 +246,7 @@ export class StandaloneLLMRunner implements LLMRunner {
       baseURL: this.config.baseUrl,
       apiKey: this.config.apiKey,
       compatibility: "compatible",
+      fetch: createOriginLockedFetch(this.config.baseUrl),
     });
 
     // Select tools based on mode + storage

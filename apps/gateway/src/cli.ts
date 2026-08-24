@@ -4,6 +4,7 @@ import {
   defaultMigrations,
   ImportLedger,
   MemoryGovernanceLedger,
+  ModelAuthorizationLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
   acquireRuntimeMarker,
@@ -31,6 +32,7 @@ let memoryGovernance: MemoryGovernanceLedger | undefined;
 let audit: AuditLedger | undefined;
 let privacyDeletions: PrivacyDeletionService | undefined;
 let hookCaptures: HookCaptureLedger | undefined;
+let modelAuthorizations: ModelAuthorizationLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -46,6 +48,7 @@ async function stop(signal: string): Promise<void> {
     audit = undefined;
     privacyDeletions = undefined;
     hookCaptures = undefined;
+    modelAuthorizations = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -86,6 +89,7 @@ async function main(): Promise<void> {
       config.server.upstreamTimeoutMs,
     );
     hookCaptures = new HookCaptureLedger(database);
+    modelAuthorizations = new ModelAuthorizationLedger(database);
     const app = createGatewayApp({
       config,
       upstream,
@@ -96,6 +100,7 @@ async function main(): Promise<void> {
       privacyDeletions,
       audit,
       hookCaptures,
+      modelAuthorizations,
       hookPolicy: {
         authorization: () => ({
           installationId: "unconfigured",

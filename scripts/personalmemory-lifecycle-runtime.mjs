@@ -177,6 +177,17 @@ export async function managePersonalMemory(command, options = {}) {
     return { stopped: true, dataDirectory, stateDirectory };
   }
 
+  if (command === "restart") {
+    await removeImpl(path.join(stateDirectory, "install.json"));
+    await installImpl({
+      root,
+      dataDirectory,
+      stateDirectory,
+      home: options.home,
+    });
+    return { restarted: true, dataDirectory, stateDirectory };
+  }
+
   if (command === "backup") {
     await removeImpl(path.join(stateDirectory, "install.json"));
     try {
