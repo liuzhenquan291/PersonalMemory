@@ -3,6 +3,7 @@ import {
   type AuditAction,
   getModelOutboundDisclosure,
   HookAuthorizationConflictError,
+  CapturePolicyConflictError,
   hookCaptureRequestSchema,
   hookCaptureResponseSchema,
   hookRecallRequestSchema,
@@ -181,6 +182,50 @@ const hookAuthorizationUpdateSchema = z
 const hookAuthorizationRevokeSchema = z
   .object({ expected_authorization_revision: z.number().int().positive() })
   .strict();
+
+const capturePolicyUpdateSchema = z
+  .object({
+    expected_policy_revision: z.number().int().positive(),
+    capture_enabled: z.boolean(),
+    excluded_clients: z.array(z.enum(["codex", "claude-code"])).max(2),
+    excluded_working_directories: z
+      .array(z.string().startsWith("/").max(4_096))
+      .max(128),
+    excluded_sources: z.array(z.literal("agent_lifecycle")).max(1),
+    sensitive_categories: z
+      .array(z.enum(["credentials", "financial", "identity"]))
+      .max(3),
+    l0_retention_days: z.number().int().min(1).max(3_650).nullable(),
+    l1_retention_days: z.number().int().min(1).max(3_650).nullable(),
+  })
+  .strict();
+
+const capturePolicyHistoryQuerySchema = z
+  .object({
+    before_revision: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+
+function capturePolicyResponse(
+  status: NonNullable<
+    GatewayAppOptions["capturePolicies"]
+  >["status"] extends () => infer T
+    ? T
+    : never,
+) {
+  return {
+    policy_revision: status.revision,
+    capture_enabled: status.captureEnabled,
+    excluded_clients: status.excludedClients,
+    excluded_working_directories: status.excludedWorkingDirectories,
+    excluded_sources: status.excludedSources,
+    sensitive_categories: status.sensitiveCategories,
+    l0_retention_days: status.l0RetentionDays,
+    l1_retention_days: status.l1RetentionDays,
+    changed_at: status.changedAt,
+  };
+}
 
 const HOOK_AUTHORIZATION_DISCLOSURE = Object.freeze({
   version: 1 as const,
@@ -532,6 +577,9 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "GET /api/v1/hooks/authorization",
       "POST /api/v1/hooks/authorization",
       "DELETE /api/v1/hooks/authorization",
+      "GET /api/v1/capture-policy",
+      "GET /api/v1/capture-policy/history",
+      "PUT /api/v1/capture-policy",
       "GET /api/v1/memories",
       "GET /api/v1/memory",
       "GET /api/v1/audit",
@@ -712,7 +760,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       if (context.req.method === "OPTIONS") {
         context.header(
           "access-control-allow-methods",
-          "GET, POST, DELETE, OPTIONS",
+          "GET, POST, PUT, DELETE, OPTIONS",
         );
         context.header(
           "access-control-allow-headers",
@@ -840,6 +888,110 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         throw new GatewayHttpError(
           409,
           "HOOK_AUTHORIZATION_CHANGED",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  });
+
+  const requireCapturePolicies = () => {
+    if (!options.capturePolicies)
+      throw new GatewayHttpError(
+        503,
+        "CAPTURE_POLICY_UNAVAILABLE",
+        "Capture policy storage is unavailable",
+      );
+    return options.capturePolicies;
+  };
+
+  app.get("/api/v1/capture-policy", (context) => {
+    authenticateMemoryRequest(context, false);
+    return context.json({
+      policy: capturePolicyResponse(requireCapturePolicies().status()),
+    });
+  });
+
+  app.get("/api/v1/capture-policy/history", (context) => {
+    authenticateMemoryRequest(context, false);
+    const query = capturePolicyHistoryQuerySchema.safeParse(
+      context.req.query(),
+    );
+    if (!query.success)
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Query does not match the capture policy history contract",
+      );
+    return context.json({
+      policies: requireCapturePolicies()
+        .history({
+          limit: query.data.limit,
+          ...(query.data.before_revision === undefined
+            ? {}
+            : { beforeRevision: query.data.before_revision }),
+        })
+        .map(capturePolicyResponse),
+    });
+  });
+
+  app.put("/api/v1/capture-policy", async (context) => {
+    authenticateMemoryRequest(context);
+    const parsed = capturePolicyUpdateSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success)
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the capture policy contract",
+      );
+    const authorizations = requireHookAuthorizations();
+    if (
+      authorizations.status().policyRevision !==
+      parsed.data.expected_policy_revision
+    ) {
+      throw new GatewayHttpError(
+        409,
+        "CAPTURE_POLICY_CHANGED",
+        "Capture policy changed; reload it before updating",
+      );
+    }
+    try {
+      const result = authorizations.advancePolicyRevision(
+        parsed.data.expected_policy_revision,
+        parsed.data.expected_policy_revision + 1,
+        () =>
+          requireCapturePolicies().update({
+            expectedRevision: parsed.data.expected_policy_revision,
+            captureEnabled: parsed.data.capture_enabled,
+            excludedClients: [...new Set(parsed.data.excluded_clients)].sort(),
+            excludedWorkingDirectories: [
+              ...new Set(parsed.data.excluded_working_directories),
+            ].sort(),
+            excludedSources: [...new Set(parsed.data.excluded_sources)],
+            sensitiveCategories: [
+              ...new Set(parsed.data.sensitive_categories),
+            ].sort(),
+            l0RetentionDays: parsed.data.l0_retention_days,
+            l1RetentionDays: parsed.data.l1_retention_days,
+          }),
+      );
+      return context.json({
+        policy: capturePolicyResponse(result.policy),
+        authorization: hookAuthorizationResponse(result.authorization),
+      });
+    } catch (error) {
+      if (
+        error instanceof CapturePolicyConflictError ||
+        error instanceof HookAuthorizationConflictError
+      ) {
+        throw new GatewayHttpError(
+          409,
+          "CAPTURE_POLICY_CHANGED",
           error.message,
         );
       }

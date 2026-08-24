@@ -115,3 +115,9 @@ export {
   ModelAuthorizationLedger,
   type ModelAuthorizationStatus,
 } from "./model-authorization-ledger.js";
+export {
+  CapturePolicyConflictError,
+  CapturePolicyLedger,
+  type CapturePolicyStatus,
+  type SensitiveCategory,
+} from "./capture-policy-ledger.js";

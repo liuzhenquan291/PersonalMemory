@@ -97,6 +97,49 @@ export class HookAuthorizationLedger {
     return toStatus(next);
   }
 
+  advancePolicyRevision<T>(
+    expectedPolicyRevision: number,
+    nextPolicyRevision: number,
+    updatePolicy: () => T,
+  ): { authorization: HookAuthorizationStatus; policy: T } {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.currentRow()!;
+      if (
+        current.policy_revision !== expectedPolicyRevision ||
+        nextPolicyRevision !== expectedPolicyRevision + 1
+      ) {
+        throw new HookAuthorizationConflictError();
+      }
+      const policy = updatePolicy();
+      const next = {
+        ...current,
+        authorization_revision: current.authorization_revision + 1,
+        policy_revision: nextPolicyRevision,
+        changed_at: this.now(),
+      };
+      this.database
+        .prepare(
+          `INSERT INTO personalmemory_hook_authorizations
+      (authorization_revision, installation_id, policy_revision, recall_enabled, capture_enabled, changed_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          next.authorization_revision,
+          next.installation_id,
+          next.policy_revision,
+          next.recall_enabled,
+          next.capture_enabled,
+          next.changed_at,
+        );
+      this.database.exec("COMMIT");
+      return { authorization: toStatus(next), policy };
+    } catch (error) {
+      if (this.database.isTransaction) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   private currentRow(): HookAuthorizationRow | undefined {
     return this.database
       .prepare(

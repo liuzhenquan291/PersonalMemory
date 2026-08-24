@@ -65,6 +65,7 @@ function createService(options: {
   captureEnabled?: boolean;
   allowsSource?: boolean;
   capture?: () => void;
+  sensitiveCategory?: string;
 }) {
   const database = new DatabaseSync(":memory:");
   migrateDatabase(database, defaultMigrations);
@@ -98,6 +99,7 @@ function createService(options: {
       captureEnabled: options.captureEnabled ?? true,
     }),
     allowsSource: () => options.allowsSource ?? true,
+    sensitiveCategory: () => options.sensitiveCategory,
   };
   return {
     database,
@@ -142,6 +144,28 @@ describe("HookLifecycleService", () => {
       excluded.service.capture(captureRequest, "request-1"),
     ).resolves.toMatchObject({ outcome: "skipped", reason: "policy_excluded" });
     excluded.database.close();
+  });
+
+  it("excludes sensitive capture before the sink or idempotency ledger", async () => {
+    const capture = vi.fn();
+    const blocked = createService({
+      capture,
+      sensitiveCategory: "credentials",
+    });
+    await expect(
+      blocked.service.capture(captureRequest, "request-1"),
+    ).resolves.toMatchObject({
+      outcome: "skipped",
+      reason: "sensitive_content_excluded",
+      retryable: false,
+    });
+    expect(capture).not.toHaveBeenCalled();
+    expect(
+      blocked.database
+        .prepare("SELECT COUNT(*) AS count FROM personalmemory_hook_captures")
+        .get(),
+    ).toEqual({ count: 0 });
+    blocked.database.close();
   });
 
   it("never recalls an approved memory suppressed by product governance", async () => {

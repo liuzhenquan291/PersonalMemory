@@ -2,6 +2,7 @@ import type {
   AuditLedger,
   HookCaptureLedger,
   HookAuthorizationLedger,
+  CapturePolicyLedger,
   MemoryGovernanceLedger,
   ModelAuthorizationLedger,
   MemoryReviewLedger,
@@ -63,6 +64,7 @@ export interface GatewayAppOptions {
   audit?: AuditLedger;
   hookCaptures?: HookCaptureLedger;
   hookAuthorizations?: HookAuthorizationLedger;
+  capturePolicies?: CapturePolicyLedger;
   modelAuthorizations?: ModelAuthorizationLedger;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;

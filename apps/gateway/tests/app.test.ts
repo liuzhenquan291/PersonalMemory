@@ -1,5 +1,6 @@
 import {
   AuditLedger,
+  CapturePolicyLedger,
   HookCaptureLedger,
   HookAuthorizationLedger,
   HOOK_CAPTURE_COMMITTED,
@@ -87,6 +88,10 @@ function createHarness(options: {
     "install_0123456789abcdef",
     () => "2026-08-24T01:00:00.000Z",
   );
+  const capturePolicies = new CapturePolicyLedger(
+    database,
+    () => "2026-08-24T01:00:00.000Z",
+  );
   const modelAuthorizations = new ModelAuthorizationLedger(
     database,
     () => "2026-08-24T00:00:00.000Z",
@@ -102,6 +107,7 @@ function createHarness(options: {
     audit,
     hookCaptures,
     hookAuthorizations,
+    capturePolicies,
     modelAuthorizations,
     hookPolicy: options.hookPolicy,
     hookCaptureSink: options.hookCaptureSink,
@@ -123,6 +129,7 @@ function createHarness(options: {
     audit,
     hookCaptures,
     hookAuthorizations,
+    capturePolicies,
     modelAuthorizations,
   };
 }
@@ -244,6 +251,75 @@ describe("PersonalMemory Gateway app", () => {
         recall_enabled: false,
         capture_enabled: false,
       },
+    });
+  });
+
+  it("exposes a versioned authenticated capture policy without leaking content", async () => {
+    const { app } = createHarness({});
+    const initial = await app.request("/api/v1/capture-policy", {
+      headers: authHeaders,
+    });
+    expect(initial.status).toBe(200);
+    expect(await initial.json()).toMatchObject({
+      policy: {
+        policy_revision: 1,
+        capture_enabled: true,
+        sensitive_categories: ["credentials", "financial", "identity"],
+        l0_retention_days: null,
+        l1_retention_days: null,
+      },
+    });
+
+    const updated = await app.request("/api/v1/capture-policy", {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({
+        expected_policy_revision: 1,
+        capture_enabled: true,
+        excluded_clients: ["codex"],
+        excluded_working_directories: ["/private/work/../project"],
+        excluded_sources: [],
+        sensitive_categories: ["credentials"],
+        l0_retention_days: 30,
+        l1_retention_days: 365,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({
+      policy: {
+        policy_revision: 2,
+        excluded_clients: ["codex"],
+        excluded_working_directories: ["/private/project"],
+        l0_retention_days: 30,
+        l1_retention_days: 365,
+      },
+      authorization: { authorization_revision: 2, policy_revision: 2 },
+    });
+
+    const stale = await app.request("/api/v1/capture-policy", {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({
+        expected_policy_revision: 1,
+        capture_enabled: false,
+        excluded_clients: [],
+        excluded_working_directories: [],
+        excluded_sources: [],
+        sensitive_categories: [],
+        l0_retention_days: null,
+        l1_retention_days: null,
+      }),
+    });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({
+      error: { code: "CAPTURE_POLICY_CHANGED" },
+    });
+    const history = await app.request(
+      "/api/v1/capture-policy/history?before_revision=3&limit=1",
+      { headers: authHeaders },
+    );
+    expect(await history.json()).toMatchObject({
+      policies: [{ policy_revision: 2 }],
     });
   });
 
@@ -411,7 +487,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 10,
+      schemaVersion: 11,
     });
   });
 

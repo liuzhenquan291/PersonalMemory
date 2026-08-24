@@ -8,6 +8,42 @@ import {
 } from "../src/index.js";
 
 describe("HookAuthorizationLedger", () => {
+  it("advances policy and authorization revisions atomically", () => {
+    const database = new DatabaseSync(":memory:");
+    migrateDatabase(database, defaultMigrations);
+    const ledger = new HookAuthorizationLedger(
+      database,
+      "install_0123456789abcdef",
+    );
+    const result = ledger.advancePolicyRevision(1, 2, () => "policy-updated");
+    expect(result).toMatchObject({
+      policy: "policy-updated",
+      authorization: { authorizationRevision: 2, policyRevision: 2 },
+    });
+
+    expect(() =>
+      ledger.advancePolicyRevision(2, 3, () => {
+        database
+          .prepare(
+            "INSERT INTO personalmemory_capture_policies (revision, capture_enabled, excluded_clients_json, excluded_working_directories_json, excluded_sources_json, sensitive_categories_json, changed_at) VALUES (1, 1, '[]', '[]', '[]', '[]', 'now')",
+          )
+          .run();
+        throw new Error("policy failure");
+      }),
+    ).toThrow("policy failure");
+    expect(ledger.status()).toMatchObject({
+      authorizationRevision: 2,
+      policyRevision: 2,
+    });
+    expect(
+      database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM personalmemory_capture_policies",
+        )
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
   it("keeps recall and local capture disabled until independently authorized", () => {
     const database = new DatabaseSync(":memory:");
     migrateDatabase(database, defaultMigrations);

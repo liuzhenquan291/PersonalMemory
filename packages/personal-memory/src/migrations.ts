@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 10;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 11;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -200,6 +200,20 @@ CREATE TABLE personalmemory_hook_authorizations (
 ) STRICT
 `;
 
+const CAPTURE_POLICIES_SQL = `
+CREATE TABLE personalmemory_capture_policies (
+  revision INTEGER PRIMARY KEY NOT NULL CHECK (revision > 0),
+  capture_enabled INTEGER NOT NULL CHECK (capture_enabled IN (0, 1)),
+  excluded_clients_json TEXT NOT NULL,
+  excluded_working_directories_json TEXT NOT NULL,
+  excluded_sources_json TEXT NOT NULL,
+  sensitive_categories_json TEXT NOT NULL,
+  l0_retention_days INTEGER CHECK (l0_retention_days IS NULL OR l0_retention_days BETWEEN 1 AND 3650),
+  l1_retention_days INTEGER CHECK (l1_retention_days IS NULL OR l1_retention_days BETWEEN 1 AND 3650),
+  changed_at TEXT NOT NULL
+) STRICT
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -277,5 +291,11 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_hook_lifecycle_authorizations",
     checksum: checksum(HOOK_AUTHORIZATIONS_SQL),
     statements: [HOOK_AUTHORIZATIONS_SQL],
+  },
+  {
+    version: 11,
+    name: "add_capture_policy_and_retention",
+    checksum: checksum(CAPTURE_POLICIES_SQL),
+    statements: [CAPTURE_POLICIES_SQL],
   },
 ]);

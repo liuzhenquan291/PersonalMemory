@@ -1,6 +1,7 @@
 import {
   AuditLedger,
   HookAuthorizationLedger,
+  CapturePolicyLedger,
   type HookCaptureLedger,
   defaultMigrations,
   ImportLedger,
@@ -108,6 +109,7 @@ async function main(): Promise<void> {
       database,
       hookInstallationId!,
     );
+    const capturePolicies = new CapturePolicyLedger(database);
     modelAuthorizations = new ModelAuthorizationLedger(database);
     const app = createGatewayApp({
       config,
@@ -120,11 +122,19 @@ async function main(): Promise<void> {
       audit,
       hookCaptures,
       hookAuthorizations,
+      capturePolicies,
       hookCaptureSink: productionHookCapture.sink,
       modelAuthorizations,
       hookPolicy: {
         authorization: () => hookAuthorizations!.status(),
-        allowsSource: () => true,
+        allowsSource: ({ operation, client, workingDirectory }) =>
+          operation === "recall" ||
+          capturePolicies.allowsSource({
+            client,
+            workingDirectory,
+            source: "agent_lifecycle",
+          }),
+        sensitiveCategory: (text) => capturePolicies.sensitiveCategory(text),
       },
     });
     server = new PersonalMemoryGatewayServer(app, config);

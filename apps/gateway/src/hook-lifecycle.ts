@@ -27,6 +27,7 @@ export interface HookLifecyclePolicy {
     client: HookRecallRequest["event"]["client"];
     workingDirectory: string;
   }): boolean;
+  sensitiveCategory?(text: string): string | undefined;
 }
 
 export interface HookCaptureSink {
@@ -153,6 +154,18 @@ export class HookLifecycleService {
           denied === "recall_not_authorized"
             ? "capture_not_authorized"
             : denied,
+        retryable: false,
+      };
+    }
+    if (
+      this.policy.sensitiveCategory?.(
+        request.messages.map(({ content }) => content).join("\n"),
+      )
+    ) {
+      return {
+        contract_version: PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
+        outcome: "skipped",
+        reason: "sensitive_content_excluded",
         retryable: false,
       };
     }
