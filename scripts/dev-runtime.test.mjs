@@ -145,6 +145,7 @@ test("cancels startup immediately when stopped before readiness", async () => {
     path.join(process.cwd(), ".personalmemory-dev-cancel-"),
   );
   const runtime = await createDevRuntime({
+    upstreamPort: await freePort(),
     gatewayPort: await freePort(),
     webPort: await freePort(),
     temporaryRoot,
@@ -189,6 +190,7 @@ test("handles asynchronous spawn errors through shared cleanup", async () => {
   let stoppedChildren = 0;
   let reportedError;
   const runtime = await createDevRuntime({
+    upstreamPort: await freePort(),
     gatewayPort: await freePort(),
     webPort: await freePort(),
     temporaryRoot,
@@ -220,9 +222,9 @@ test("handles asynchronous spawn errors through shared cleanup", async () => {
   });
   await assert.rejects(
     runtime.start(),
-    /Gateway exited before shutdown \(EAGAIN\)/,
+    /Upstream Gateway exited before shutdown \(EAGAIN\)/,
   );
-  assert.equal(stoppedChildren, 2);
+  assert.equal(stoppedChildren, 1);
   assert.match(reportedError.message, /EAGAIN/);
   assert.equal(await pathExists(runtime.dataDirectory), false);
   await rm(temporaryRoot, { recursive: true });
@@ -239,6 +241,7 @@ test("cleans safely when a competitor takes a port after preflight", async () =>
     response.end("occupied");
   });
   const runtime = await createDevRuntime({
+    upstreamPort: await freePort(),
     gatewayPort,
     webPort: await freePort(),
     temporaryRoot,
@@ -281,11 +284,13 @@ test("starts, stops and starts both real services again without leaking ports or
     path.join(process.cwd(), ".personalmemory-dev-integration-"),
   );
   const gatewayPort = await freePort();
+  const upstreamPort = await freePort();
   const webPort = await freePort();
 
   for (let iteration = 0; iteration < 2; iteration += 1) {
     const runtime = await createDevRuntime({
       gatewayPort,
+      upstreamPort,
       webPort,
       temporaryRoot,
       stdio: "ignore",
@@ -309,6 +314,7 @@ test("starts, stops and starts both real services again without leaking ports or
     await runtime.stop();
     assert.equal(await pathExists(runtime.dataDirectory), false);
     await assertPortAvailable("127.0.0.1", gatewayPort);
+    await assertPortAvailable("127.0.0.1", upstreamPort);
     await assertPortAvailable("127.0.0.1", webPort);
   }
   await rm(temporaryRoot, { recursive: true });
@@ -319,10 +325,12 @@ test("stops sibling processes and cleans data when one service exits unexpectedl
     path.join(process.cwd(), ".personalmemory-dev-failure-"),
   );
   const gatewayPort = await freePort();
+  const upstreamPort = await freePort();
   const webPort = await freePort();
   let unexpectedError;
   const runtime = await createDevRuntime({
     gatewayPort,
+    upstreamPort,
     webPort,
     temporaryRoot,
     stdio: "ignore",
@@ -331,18 +339,20 @@ test("stops sibling processes and cleans data when one service exits unexpectedl
     },
   });
   await runtime.start();
-  runtime.children[0].kill("SIGTERM");
+  runtime.children[1].kill("SIGTERM");
 
   await waitUntil(() => unexpectedError !== undefined);
   assert.match(unexpectedError.message, /Gateway exited before shutdown/);
   await waitUntil(async () => !(await pathExists(runtime.dataDirectory)));
   await assertPortAvailable("127.0.0.1", gatewayPort);
+  await assertPortAvailable("127.0.0.1", upstreamPort);
   await assertPortAvailable("127.0.0.1", webPort);
   await rm(temporaryRoot, { recursive: true });
 });
 
 test("the real CLI handles two signals before readiness and exits cleanly", async () => {
   const gatewayPort = await freePort();
+  const upstreamPort = await freePort();
   const webPort = await freePort();
   const devRoot = path.join(process.cwd(), ".personalmemory-dev");
   const before = new Set(await readdir(devRoot).catch(() => []));
@@ -351,6 +361,7 @@ test("the real CLI handles two signals before readiness and exits cleanly", asyn
     detached: true,
     env: {
       ...process.env,
+      PERSONALMEMORY_DEV_UPSTREAM_PORT: String(upstreamPort),
       PERSONALMEMORY_DEV_GATEWAY_PORT: String(gatewayPort),
       PERSONALMEMORY_DEV_WEB_PORT: String(webPort),
     },
@@ -377,6 +388,7 @@ test("the real CLI handles two signals before readiness and exits cleanly", asyn
   assert.equal(result.signal, null);
   assert.doesNotMatch(output, /environment failed/i);
   await assertPortAvailable("127.0.0.1", gatewayPort);
+  await assertPortAvailable("127.0.0.1", upstreamPort);
   await assertPortAvailable("127.0.0.1", webPort);
   const after = new Set(await readdir(devRoot).catch(() => []));
   assert.deepEqual(after, before);

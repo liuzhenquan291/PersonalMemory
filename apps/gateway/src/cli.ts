@@ -1,6 +1,6 @@
 import {
   AuditLedger,
-  HookCaptureLedger,
+  type HookCaptureLedger,
   defaultMigrations,
   ImportLedger,
   MemoryGovernanceLedger,
@@ -21,10 +21,12 @@ import { PersonalMemoryGatewayServer } from "./server.js";
 import { FetchUpstreamGatewayClient } from "./upstream-client.js";
 import { ConversationImportManager } from "./import-manager.js";
 import { PrivacyDeletionService } from "./privacy-deletions.js";
+import { createProductionHookCapture } from "./local-l0-hook-capture.js";
 
 let server: PersonalMemoryGatewayServer | undefined;
 let stopping = false;
 let database: DatabaseSync | undefined;
+let hookCaptureDatabase: DatabaseSync | undefined;
 let importManager: ConversationImportManager | undefined;
 let memoryStates: MemoryStateLedger | undefined;
 let memoryReviews: MemoryReviewLedger | undefined;
@@ -49,6 +51,8 @@ async function stop(signal: string): Promise<void> {
     privacyDeletions = undefined;
     hookCaptures = undefined;
     modelAuthorizations = undefined;
+    hookCaptureDatabase?.close();
+    hookCaptureDatabase = undefined;
     database?.close();
     database = undefined;
     releaseRuntimeMarker?.();
@@ -70,6 +74,8 @@ async function main(): Promise<void> {
     releaseRuntimeMarker = acquireRuntimeMarker(dataDirectory);
     database = new DatabaseSync(join(dataDirectory, "personalmemory.sqlite"));
     migrateDatabase(database, defaultMigrations);
+    const productionHookCapture = createProductionHookCapture(dataDirectory);
+    hookCaptureDatabase = productionHookCapture.database;
     const upstream = new FetchUpstreamGatewayClient(
       config.server.upstreamBaseUrl,
     );
@@ -88,7 +94,7 @@ async function main(): Promise<void> {
       upstream,
       config.server.upstreamTimeoutMs,
     );
-    hookCaptures = new HookCaptureLedger(database);
+    hookCaptures = productionHookCapture.ledger;
     modelAuthorizations = new ModelAuthorizationLedger(database);
     const app = createGatewayApp({
       config,
@@ -100,6 +106,7 @@ async function main(): Promise<void> {
       privacyDeletions,
       audit,
       hookCaptures,
+      hookCaptureSink: productionHookCapture.sink,
       modelAuthorizations,
       hookPolicy: {
         authorization: () => ({

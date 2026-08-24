@@ -394,6 +394,7 @@ test("cleans started services and leaves no receipt after failed health checks",
     recursive: true,
   });
   const children = [];
+  let healthRequests = 0;
   let hookUninstallCalls = 0;
   let nextPid = 2_200_000;
   await assert.rejects(
@@ -408,6 +409,7 @@ test("cleans started services and leaves no receipt after failed health checks",
       assertPortAvailableImpl: async () => undefined,
       spawnImpl: () => fakeChild(nextPid++),
       fetchImpl: async () => {
+        if (healthRequests++ === 0) return { ok: true };
         throw new Error("health unavailable");
       },
       startupTimeoutMs: 1,

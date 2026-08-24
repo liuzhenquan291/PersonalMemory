@@ -542,6 +542,11 @@ export async function installPersonalMemory(options = {}) {
       },
     );
     children.push(upstream);
+    await waitForHttp(
+      `http://${host}:${upstreamPort}/health`,
+      fetchImpl,
+      startupTimeoutMs,
+    );
     const gateway = spawnImpl(
       process.execPath,
       [path.join(root, "apps", "gateway", "dist", "cli.js")],

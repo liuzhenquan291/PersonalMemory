@@ -60,6 +60,11 @@ export {
   type HookCaptureSink,
   type HookLifecyclePolicy,
 } from "./hook-lifecycle.js";
+export {
+  createLocalL0HookCaptureSink,
+  createProductionHookCapture,
+  initializeLocalL0HookCaptureDatabase,
+} from "./local-l0-hook-capture.js";
 export type {
   UpstreamTransport,
   UpstreamTransportResponse,

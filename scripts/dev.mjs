@@ -28,6 +28,11 @@ async function stop(signal) {
 async function main() {
   try {
     runtime = await createDevRuntime({
+      upstreamPort: parseDevPort(
+        process.env.PERSONALMEMORY_DEV_UPSTREAM_PORT,
+        8420,
+        "PERSONALMEMORY_DEV_UPSTREAM_PORT",
+      ),
       gatewayPort: parseDevPort(
         process.env.PERSONALMEMORY_DEV_GATEWAY_PORT,
         8787,
@@ -50,6 +55,7 @@ async function main() {
     process.stdout.write("\nPersonalMemory development environment is ready\n");
     process.stdout.write(`Web:     ${ready.webUrl}\n`);
     process.stdout.write(`Gateway: ${ready.gatewayUrl}/health\n`);
+    process.stdout.write(`Upstream: ${ready.upstreamUrl}/health\n`);
     process.stdout.write(`Data:    ${ready.dataDirectory} (temporary)\n`);
     process.stdout.write("Press Ctrl+C to stop all services.\n\n");
   } catch (error) {

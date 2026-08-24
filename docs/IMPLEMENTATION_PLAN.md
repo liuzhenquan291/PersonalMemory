@@ -547,6 +547,7 @@ M0–M5 的核心闭环、手动 MCP、治理和发布工程基线已完成，�
 
 - M4.6.1 已完成：受管启动显式向上游传递模型启用状态，模型关闭时净化继承的 `TDAI_LLM_*`/旧版别名，并在受管上游 Gateway 的通用 Runner 和直接 offload 客户端建立最终执行门禁；本步骤不启用生产 Hook capture sink，见 [实施记录](implementation-records/M4.6.1.md)；
 - M4.6.2 已完成：新增绑定 provider/origin/发送字段的版本化授权账本与 Gateway API，逐请求确认不再放行；受管启动只映射当前已授权的私有模型配置，未授权、撤销或账本异常时保持禁用并净化代理环境；受管 restart 应用授权变化，模型客户端禁止跨 origin 重定向，见 [实施记录](implementation-records/M4.6.2.md)；
+- M4.6.3 已完成：生产 Gateway 注入同步本地 L0 sink，Hook 幂等账本与原始 user/assistant 行在 `vectors.db` 同事务提交；sink 不调用模型、embedding 或上游捕获路径，模型未授权时沿用最终门禁保持零提炼、零外联；全量门禁及 Standards/Spec 独立审查通过，见 [实施记录](implementation-records/M4.6.3.md)；
 - 统一产品 Gateway 与上游核心的模型配置和权威出站门禁；
 - 提供单一模型配置、版本化外联同意、发送字段披露、连通性验证和关闭流程；
 - 未授权时只保存 L0 并暂停模型提炼；

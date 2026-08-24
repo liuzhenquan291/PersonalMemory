@@ -7,6 +7,7 @@ import { clearTimeout, setTimeout } from "node:timers";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_GATEWAY_PORT = 8787;
+const DEFAULT_UPSTREAM_PORT = 8420;
 const DEFAULT_WEB_PORT = 4173;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const FORCE_KILL_TIMEOUT_MS = 1_000;
@@ -216,6 +217,7 @@ export async function createDevRuntime(options = {}) {
   const root = options.root ?? projectRootFromModule();
   const host = "127.0.0.1";
   const gatewayPort = options.gatewayPort ?? DEFAULT_GATEWAY_PORT;
+  const upstreamPort = options.upstreamPort ?? DEFAULT_UPSTREAM_PORT;
   const webPort = options.webPort ?? DEFAULT_WEB_PORT;
   const spawnImpl = options.spawnImpl ?? spawn;
   const stopChildImpl = options.stopChildImpl ?? stopChild;
@@ -297,6 +299,8 @@ export async function createDevRuntime(options = {}) {
   async function start() {
     try {
       assertNotStopping();
+      await assertPortAvailable(host, upstreamPort);
+      assertNotStopping();
       await assertPortAvailable(host, gatewayPort);
       assertNotStopping();
       await assertPortAvailable(host, webPort);
@@ -310,6 +314,45 @@ export async function createDevRuntime(options = {}) {
         env: { ...process.env },
         stdio: options.stdio ?? "inherit",
       };
+      const upstream = spawnImpl(
+        process.execPath,
+        ["--import", "tsx", "src/gateway/server.ts"],
+        {
+          ...common,
+          env: {
+            ...common.env,
+            TDAI_GATEWAY_HOST: host,
+            TDAI_GATEWAY_PORT: String(upstreamPort),
+            TDAI_DATA_DIR: dataDirectory,
+            TDAI_LLM_ENABLED: "false",
+          },
+        },
+      );
+      children.push(upstream);
+      let upstreamSettled = false;
+      upstream.once("error", (error) => {
+        if (upstreamSettled) return;
+        upstreamSettled = true;
+        handleUnexpectedExit(
+          "Upstream Gateway",
+          error.code ?? "spawn-error",
+          undefined,
+        );
+      });
+      upstream.once("exit", (code, signal) => {
+        if (upstreamSettled) return;
+        upstreamSettled = true;
+        handleUnexpectedExit("Upstream Gateway", code, signal);
+      });
+
+      await Promise.race([
+        waitForHttp(`http://${host}:${upstreamPort}/health`, {
+          signal: startupController.signal,
+        }),
+        unexpectedExit,
+      ]);
+      assertNotStopping();
+
       const gateway = spawnImpl(
         process.execPath,
         ["--import", "tsx", "apps/gateway/src/cli.ts"],
@@ -320,6 +363,7 @@ export async function createDevRuntime(options = {}) {
             PERSONALMEMORY_HOST: host,
             PERSONALMEMORY_PORT: String(gatewayPort),
             PERSONALMEMORY_DATA_DIR: dataDirectory,
+            PERSONALMEMORY_UPSTREAM_BASE_URL: `http://${host}:${upstreamPort}`,
           },
         },
       );
@@ -375,6 +419,7 @@ export async function createDevRuntime(options = {}) {
       ]);
       assertNotStopping();
       return {
+        upstreamUrl: `http://${host}:${upstreamPort}`,
         gatewayUrl: `http://${host}:${gatewayPort}`,
         webUrl: `http://${host}:${webPort}/memories`,
         dataDirectory,
