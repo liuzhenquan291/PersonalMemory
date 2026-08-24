@@ -550,10 +550,11 @@ M0–M5 的核心闭环、手动 MCP、治理和发布工程基线已完成，�
 - M4.6.3 已完成：生产 Gateway 注入同步本地 L0 sink，Hook 幂等账本与原始 user/assistant 行在 `vectors.db` 同事务提交；sink 不调用模型、embedding 或上游捕获路径，模型未授权时沿用最终门禁保持零提炼、零外联；全量门禁及 Standards/Spec 独立审查通过，见 [实施记录](implementation-records/M4.6.3.md)；
 - M4.6.4 已完成：自动召回与自动本地捕获由版本化账本独立启停，认证 API 提供完整固定披露、expected revision 更新和双关闭撤销；受管 worker 在维护/flush 前同步权威 revision，新安装身份自动使旧授权失效；完整门禁及 Standards/Spec 独立审查通过，见 [实施记录](implementation-records/M4.6.4.md)；
 - M4.6.5 已完成：版本化采集策略提供全局、Agent、工作目录树和来源排除，固定敏感类别在 L0/幂等落账前整轮阻断；认证 API 提供用户可见策略、expected revision 更新及 Hook policy revision 同步，并记录独立 L0/L1 保留期。自动物理清理因受 M3.4 级联删除矩阵约束而明确后置为独立接线，不在本步骤越权删除，见 [实施记录](implementation-records/M4.6.5.md)；
+- M4.6.6.1 已冻结保留期执行授权、独立截止点、有界批次、M3.4 级联复用、登记副本整件删除、生命周期互斥和恢复 staging 防复活契约；M4.6.5 的保留天数不自动构成物理删除授权，生产自动清理继续关闭，见 [架构契约](architecture/RETENTION_EXECUTION.md) 和 [实施记录](implementation-records/M4.6.6.1.md)；
 - 统一产品 Gateway 与上游核心的模型配置和权威出站门禁；
 - 提供单一模型配置、版本化外联同意、发送字段披露、连通性验证和关闭流程；
 - 未授权时只保存 L0 并暂停模型提炼；
-- 将版本化 L0/L1 保留期接入既有受保护清理器，覆盖索引、派生资产、导出、备份和恢复后不复活验证。
+- M4.6.6.2 将版本化 L0/L1 保留期接入既有受保护清理器，覆盖执行授权、索引、派生资产、导出、备份和恢复后不复活验证。
 
 ### M4.7 现有承诺收口
 
