@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { managePersonalMemory } from "./personalmemory-lifecycle-runtime.mjs";
+import {
+  managePersonalMemory,
+  writePrivateAtomic,
+} from "./personalmemory-lifecycle-runtime.mjs";
 
 function fixture() {
   const calls = [];
@@ -39,9 +42,48 @@ function fixture() {
       },
       retentionPreflightImpl: async (_stateDirectory, token) =>
         calls.push(["retention", token]),
+      createRetentionRestoreFilesImpl: async () => {
+        calls.push(["retention-restore-snapshot"]);
+        return "/safe/state/retention-restore-snapshot.json";
+      },
     },
   };
 }
+
+test("cleans private atomic-write temporaries after every failed stage", async () => {
+  for (const failedStage of ["write", "chmod", "rename"]) {
+    const calls = [];
+    const fail = async () => {
+      throw new Error(`${failedStage} failed`);
+    };
+    await assert.rejects(
+      writePrivateAtomic(
+        "/safe/state/snapshot.json",
+        { private: true },
+        {
+          writeFileImpl:
+            failedStage === "write"
+              ? fail
+              : async (target) => calls.push(["write", target]),
+          chmodImpl:
+            failedStage === "chmod"
+              ? fail
+              : async (target) => calls.push(["chmod", target]),
+          renameImpl:
+            failedStage === "rename"
+              ? fail
+              : async (source) => calls.push(["rename", source]),
+          removeImpl: async (target) => calls.push(["remove", target]),
+        },
+      ),
+      new RegExp(`${failedStage} failed`, "u"),
+    );
+    const writtenPath = calls.find((call) => call[0] === "write")?.[1];
+    const removedPath = calls.find((call) => call[0] === "remove")?.[1];
+    assert.match(removedPath, /^\/safe\/state\/snapshot\.json\.tmp-/u);
+    if (writtenPath) assert.equal(removedPath, writtenPath);
+  }
+});
 
 test("reports managed status without stopping services", async () => {
   const item = fixture();
@@ -123,7 +165,31 @@ test("restores only after verification and restarts", async () => {
     .filter((call) => call[0] === "npm")
     .map((call) => call[1][1]);
   assert.deepEqual(commands, ["data:verify", "data:restore"]);
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.ok(
+    item.calls.some(
+      (call) =>
+        call[0] === "npm" &&
+        call[1].includes("--retention-envelope") &&
+        call[1].includes("/safe/state/retention-restore-snapshot.json"),
+    ),
+  );
+  assert.ok(
+    item.calls.some((call) => call[0] === "retention-restore-snapshot"),
+  );
+  const snapshotIndex = item.calls.findIndex(
+    (call) => call[0] === "retention-restore-snapshot",
+  );
+  const finalStopIndex = Math.max(
+    ...item.calls
+      .map((call, index) => (call[0] === "stop" ? index : -1))
+      .filter((index) => index >= 0),
+  );
+  assert.ok(snapshotIndex > finalStopIndex);
+  assert.deepEqual(item.calls.slice(-3), [
+    ["install"],
+    ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
+    ["release"],
+  ]);
 });
 
 test("restarts the existing data when restore verification fails", async () => {
@@ -138,7 +204,11 @@ test("restarts the existing data when restore verification fails", async () => {
     }),
     /invalid backup/,
   );
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.deepEqual(item.calls.slice(-3), [
+    ["install"],
+    ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
+    ["release"],
+  ]);
 });
 
 test("does not stop services when restore cannot acquire the lifecycle lock", async () => {

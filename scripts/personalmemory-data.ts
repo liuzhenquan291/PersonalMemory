@@ -2,9 +2,12 @@ import {
   createPortableBackup,
   createReadableExport,
   loadConfig,
+  parseRetentionRestoreSnapshot,
   restorePortableBackup,
   verifyPortableBackup,
 } from "@personalmemory/core";
+import { readFile, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import process from "node:process";
 import { request } from "node:http";
@@ -68,6 +71,29 @@ function artifactNameWarning(
     : "建议使用 personalmemory-backup-YYYYMMDD 命名；移动、复制或改名后的副本无法被产品继续追踪。";
 }
 
+async function withDiagnosticsOnStderr<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
+  const original = {
+    debug: console.debug,
+    info: console.info,
+    log: console.log,
+  };
+  const redirect = (...values: unknown[]): void => {
+    process.stderr.write(`${values.map(String).join(" ")}\n`);
+  };
+  console.debug = redirect;
+  console.info = redirect;
+  console.log = redirect;
+  try {
+    return await operation();
+  } finally {
+    console.debug = original.debug;
+    console.info = original.info;
+    console.log = original.log;
+  }
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === "verify") {
@@ -107,9 +133,61 @@ async function main(): Promise<void> {
         `Confirmation must exactly match: RESTORE ${dataDirectory}`,
       );
     }
+    const input = path.resolve(required("--input"));
+    const snapshotPath = option("--retention-envelope");
+    const snapshot = snapshotPath
+      ? parseRetentionRestoreSnapshot(
+          JSON.parse(await readFile(snapshotPath, "utf8")),
+        )
+      : undefined;
+    const deferredArtifact = snapshot?.active_artifacts.find(
+      (artifact) => path.resolve(artifact.path) === input,
+    );
+    const executionAuthorized =
+      snapshot?.envelope.payload.authorization?.status === "authorized";
     const result = await restorePortableBackup(
-      required("--input"),
+      input,
       dataDirectory,
+      snapshot
+        ? {
+            prepareStaging: async (stagingDirectory) =>
+              withDiagnosticsOnStderr(async () =>
+                (
+                  await import("./personalmemory-retention-restore.js")
+                ).prepareRetentionRestoreStaging({
+                  stagingDirectory,
+                  envelope: snapshot,
+                  deferredArtifactPath: input,
+                }),
+              ),
+            finalizeRestored: async (restoredDirectory) => {
+              if (!executionAuthorized || !deferredArtifact) return;
+              await rm(input, { recursive: true });
+              const database = new DatabaseSync(
+                path.join(restoredDirectory, "personalmemory.sqlite"),
+              );
+              try {
+                database
+                  .prepare(
+                    `INSERT INTO personalmemory_managed_artifacts
+                     (id, kind, path, status, created_at, deleted_at)
+                     VALUES (?, ?, ?, 'deleted', ?, ?)
+                     ON CONFLICT(path) DO UPDATE SET
+                       status = 'deleted', deleted_at = excluded.deleted_at`,
+                  )
+                  .run(
+                    deferredArtifact.id,
+                    deferredArtifact.kind,
+                    input,
+                    deferredArtifact.created_at,
+                    new Date().toISOString(),
+                  );
+              } finally {
+                database.close();
+              }
+            },
+          }
+        : {},
     );
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;

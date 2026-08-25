@@ -565,6 +565,7 @@ export async function restorePortableBackup(
   dataDirectoryInput: string,
   options: {
     prepareStaging?: (stagingDirectory: string) => Promise<void>;
+    finalizeRestored?: (dataDirectory: string) => Promise<void>;
   } = {},
 ): Promise<{ restored: true; rollbackDirectory?: string }> {
   const backupDirectory = resolved(backupDirectoryInput);
@@ -592,6 +593,7 @@ export async function restorePortableBackup(
     `.${path.basename(dataDirectory)}.pre-restore-${randomUUID()}`,
   );
   let hadExisting = false;
+  let switched = false;
   try {
     await mkdir(staging, { mode: 0o700 });
     for (const asset of manifest.assets) {
@@ -618,9 +620,12 @@ export async function restorePortableBackup(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
     await rename(staging, dataDirectory);
+    switched = true;
+    await options.finalizeRestored?.(dataDirectory);
   } catch (error) {
     if (hadExisting) {
       try {
+        if (switched) await rm(dataDirectory, { recursive: true, force: true });
         await rename(rollback, dataDirectory);
       } catch (rollbackError) {
         throw new AggregateError(

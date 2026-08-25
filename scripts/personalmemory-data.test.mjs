@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,6 +16,10 @@ import { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
 import {
+  CapturePolicyLedger,
+  ManagedArtifactLedger,
+  RetentionAuthorizationLedger,
+  createRetentionRestoreSnapshot,
   defaultMigrations,
   migrateDatabase,
 } from "../packages/personal-memory/dist/index.js";
@@ -47,6 +52,12 @@ test("data CLI exports, backs up, verifies and restores an offline data root", (
     mkdirSync(data, { mode: 0o700 });
     const product = new DatabaseSync(path.join(data, "personalmemory.sqlite"));
     migrateDatabase(product, defaultMigrations);
+    product.exec(
+      `INSERT INTO personalmemory_hook_authorizations
+       (authorization_revision, installation_id, policy_revision,
+        recall_enabled, capture_enabled, changed_at)
+       VALUES (1, 'install-fixture', 1, 0, 0, '2026-08-25T00:00:00.000Z')`,
+    );
     product.close();
     const vectors = new DatabaseSync(path.join(data, "vectors.db"));
     vectors.exec("CREATE TABLE search_fixture (content TEXT NOT NULL)");
@@ -86,6 +97,85 @@ test("data CLI exports, backs up, verifies and restores an offline data root", (
       readFileSync(path.join(data, "persona.md"), "utf8"),
       "original",
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("restore applies the current retention envelope before starting data", () => {
+  const root = mkdtempSync(
+    path.join(realpathSync(tmpdir()), "personalmemory-retention-restore-"),
+  );
+  const data = path.join(root, "data");
+  const backup = path.join(root, "personalmemory-backup-input");
+  const snapshotPath = path.join(root, "retention-snapshot.json");
+  try {
+    chmodSync(root, 0o700);
+    mkdirSync(data, { mode: 0o700 });
+    const product = new DatabaseSync(path.join(data, "personalmemory.sqlite"));
+    migrateDatabase(product, defaultMigrations);
+    product.exec(
+      `INSERT INTO personalmemory_hook_authorizations
+       (authorization_revision, installation_id, policy_revision,
+        recall_enabled, capture_enabled, changed_at)
+       VALUES (1, 'install-fixture', 1, 0, 0, '2026-08-25T00:00:00.000Z')`,
+    );
+    product.close();
+    const vectors = new DatabaseSync(path.join(data, "vectors.db"));
+    vectors.exec("CREATE TABLE search_fixture (content TEXT NOT NULL)");
+    vectors.close();
+    mkdirSync(path.join(data, ".metadata"));
+    writeFileSync(
+      path.join(data, ".metadata", "manifest.json"),
+      `${JSON.stringify({
+        version: 1,
+        createdAt: "2026-08-25T00:00:00.000Z",
+        store: { type: "sqlite", sqlite: { path: "vectors.db" } },
+        seed: null,
+      })}\n`,
+    );
+    writeFileSync(path.join(data, "persona.md"), "backup-value", {
+      mode: 0o600,
+    });
+    run(data, "backup", "--output", backup);
+
+    const current = new DatabaseSync(path.join(data, "personalmemory.sqlite"));
+    const policy = new CapturePolicyLedger(current);
+    new RetentionAuthorizationLedger(current).authorize(policy.status(), 0);
+    new ManagedArtifactLedger(current).register("portable_backup", backup);
+    const snapshot = createRetentionRestoreSnapshot(current);
+    current.close();
+    writeFileSync(snapshotPath, JSON.stringify(snapshot), { mode: 0o600 });
+    writeFileSync(path.join(data, "persona.md"), "current-value");
+
+    const restored = JSON.parse(
+      run(
+        data,
+        "restore",
+        "--input",
+        backup,
+        "--confirm",
+        `RESTORE ${data}`,
+        "--retention-envelope",
+        snapshotPath,
+      ),
+    );
+    assert.equal(restored.restored, true);
+    assert.equal(
+      readFileSync(path.join(data, "persona.md"), "utf8"),
+      "backup-value",
+    );
+    assert.equal(existsSync(backup), false);
+    const restoredDatabase = new DatabaseSync(
+      path.join(data, "personalmemory.sqlite"),
+    );
+    assert.equal(
+      new RetentionAuthorizationLedger(restoredDatabase).status(
+        new CapturePolicyLedger(restoredDatabase).status(),
+      ).status,
+      "authorized",
+    );
+    restoredDatabase.close();
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

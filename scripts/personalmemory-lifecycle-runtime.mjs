@@ -1,10 +1,22 @@
 import { spawn } from "node:child_process";
-import { lstat, readFile, rm } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
-import { DataLifecycleMutex } from "@personalmemory/core";
+import {
+  DataLifecycleMutex,
+  createRetentionRestoreSnapshot,
+} from "@personalmemory/core";
 
 import { installPersonalMemory } from "./personalmemory-install-runtime.mjs";
 import {
@@ -37,6 +49,58 @@ async function drainRetentionBeforeBackup(stateDirectory, lifecycleToken) {
       throw new Error("Retention maintenance did not complete before backup");
   }
   throw new Error("Retention maintenance exceeded the backup safety bound");
+}
+
+export async function writePrivateAtomic(target, value, operations = {}) {
+  const write = operations.writeFileImpl ?? writeFile;
+  const setMode = operations.chmodImpl ?? chmod;
+  const move = operations.renameImpl ?? rename;
+  const remove = operations.removeImpl ?? rm;
+  const temporary = `${target}.tmp-${randomUUID()}`;
+  try {
+    await write(temporary, `${JSON.stringify(value)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    await setMode(temporary, 0o600);
+    await move(temporary, target);
+  } catch (error) {
+    try {
+      await remove(temporary, { force: true });
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `Private atomic write failed and temporary cleanup failed: ${temporary}`,
+        { cause: cleanupError },
+      );
+    }
+    throw error;
+  }
+}
+
+async function createRetentionRestoreFiles(dataDirectory, stateDirectory) {
+  const database = new DatabaseSync(
+    path.join(dataDirectory, "personalmemory.sqlite"),
+    { readOnly: true },
+  );
+  let snapshot;
+  try {
+    snapshot = createRetentionRestoreSnapshot(database);
+  } finally {
+    database.close();
+  }
+  const envelopePath = path.join(
+    stateDirectory,
+    "retention-restore-envelope.json",
+  );
+  const snapshotPath = path.join(
+    stateDirectory,
+    `retention-restore-snapshot-${randomUUID()}.json`,
+  );
+  await writePrivateAtomic(envelopePath, snapshot.envelope);
+  await writePrivateAtomic(snapshotPath, snapshot);
+  return snapshotPath;
 }
 
 async function defaultRun(command, args, options) {
@@ -143,6 +207,7 @@ export async function managePersonalMemory(command, options = {}) {
     ((installOptions) => installPersonalMemory(installOptions));
   const root = options.root ?? path.resolve(import.meta.dirname, "..");
   let lifecycleLease;
+  let retentionRestoreSnapshotPath;
 
   if (
     command === "uninstall" &&
@@ -212,7 +277,6 @@ export async function managePersonalMemory(command, options = {}) {
       throw error;
     }
   }
-
   try {
     await Promise.all([
       stopImpl(receipt.webPid),
@@ -223,7 +287,12 @@ export async function managePersonalMemory(command, options = {}) {
         : []),
     ]);
   } catch (error) {
-    lifecycleLease?.release();
+    try {
+      if (retentionRestoreSnapshotPath)
+        await removeImpl(retentionRestoreSnapshotPath, { force: true });
+    } finally {
+      lifecycleLease?.release();
+    }
     throw error;
   }
   if (command === "stop") {
@@ -277,6 +346,9 @@ export async function managePersonalMemory(command, options = {}) {
   if (command === "restore") {
     await removeImpl(path.join(stateDirectory, "install.json"));
     try {
+      retentionRestoreSnapshotPath = await (
+        options.createRetentionRestoreFilesImpl ?? createRetentionRestoreFiles
+      )(dataDirectory, stateDirectory);
       await runImpl(
         "npm",
         ["run", "data:verify", "--", "--input", options.input],
@@ -292,6 +364,8 @@ export async function managePersonalMemory(command, options = {}) {
           options.input,
           "--confirm",
           `RESTORE ${dataDirectory}`,
+          "--retention-envelope",
+          retentionRestoreSnapshotPath,
         ],
         {
           cwd: root,
@@ -309,7 +383,12 @@ export async function managePersonalMemory(command, options = {}) {
           home: options.home,
         });
       } finally {
-        lifecycleLease?.release();
+        try {
+          if (retentionRestoreSnapshotPath)
+            await removeImpl(retentionRestoreSnapshotPath, { force: true });
+        } finally {
+          lifecycleLease?.release();
+        }
       }
     }
   }

@@ -271,6 +271,23 @@ describe("portable PersonalMemory data", () => {
     expect(readFileSync(join(data, "persona.md"), "utf8")).toBe("current");
   });
 
+  it("rolls back current data when post-switch finalization fails", async () => {
+    const root = sandbox();
+    const data = fixture(root);
+    const backup = join(root, "backup");
+    await createPortableBackup(data, backup);
+    writeFileSync(join(data, "persona.md"), "current");
+
+    await expect(
+      restorePortableBackup(backup, data, {
+        finalizeRestored: async () => {
+          throw new Error("deferred backup deletion failed");
+        },
+      }),
+    ).rejects.toThrow(/deferred backup deletion failed/u);
+    expect(readFileSync(join(data, "persona.md"), "utf8")).toBe("current");
+  });
+
   it("rejects newer backup versions and unsafe destinations", async () => {
     const root = sandbox();
     const data = fixture(root);

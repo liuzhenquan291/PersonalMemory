@@ -139,3 +139,11 @@ export {
   type RetentionRunStatus,
   type RetentionRunView,
 } from "./retention-execution-ledger.js";
+export {
+  applyRetentionRestoreEnvelope,
+  createRetentionRestoreSnapshot,
+  parseRetentionRestoreEnvelope,
+  parseRetentionRestoreSnapshot,
+  type RetentionRestoreEnvelope,
+  type RetentionRestoreSnapshot,
+} from "./retention-restore-envelope.js";
