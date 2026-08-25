@@ -102,6 +102,73 @@ test("isolates and removes a run-specific temporary data directory", async () =>
   await rm(temporaryRoot, { recursive: true });
 });
 
+test("removes a partially initialized run when state directory creation fails", async () => {
+  const temporaryRoot = await mkdtemp(
+    path.join(process.cwd(), ".personalmemory-dev-partial-"),
+  );
+  let calls = 0;
+  await assert.rejects(
+    createDevRuntime({
+      temporaryRoot,
+      async mkdtempImpl(prefix) {
+        calls += 1;
+        if (calls === 2) throw new Error("injected state directory failure");
+        return mkdtemp(prefix);
+      },
+    }),
+    /injected state directory failure/,
+  );
+  assert.deepEqual(await readdir(temporaryRoot), []);
+  await rm(temporaryRoot, { recursive: true });
+});
+
+test("never removes an injected directory outside the development root", async () => {
+  const temporaryRoot = await mkdtemp(
+    path.join(process.cwd(), ".personalmemory-dev-outside-root-"),
+  );
+  const outsideDirectory = await mkdtemp(
+    path.join(process.cwd(), ".personalmemory-dev-outside-target-"),
+  );
+  let calls = 0;
+  await assert.rejects(
+    createDevRuntime({
+      temporaryRoot,
+      async mkdtempImpl() {
+        calls += 1;
+        if (calls === 1) return outsideDirectory;
+        throw new Error("injected state directory failure");
+      },
+    }),
+    /injected state directory failure/,
+  );
+  assert.equal(await pathExists(outsideDirectory), true);
+  await rm(outsideDirectory, { recursive: true });
+  await rm(temporaryRoot, { recursive: true });
+});
+
+test("never treats another run's state directory as a data directory", async () => {
+  const temporaryRoot = await mkdtemp(
+    path.join(process.cwd(), ".personalmemory-dev-cross-prefix-"),
+  );
+  const existingStateDirectory = await mkdtemp(
+    path.join(temporaryRoot, "personalmemory-dev-state-"),
+  );
+  let calls = 0;
+  await assert.rejects(
+    createDevRuntime({
+      temporaryRoot,
+      async mkdtempImpl() {
+        calls += 1;
+        if (calls === 1) return existingStateDirectory;
+        throw new Error("injected state directory failure");
+      },
+    }),
+    /injected state directory failure/,
+  );
+  assert.equal(await pathExists(existingStateDirectory), true);
+  await rm(temporaryRoot, { recursive: true });
+});
+
 test("rejects symlink and broadly writable temporary roots", async () => {
   const realRoot = await mkdtemp(
     path.join(process.cwd(), ".personalmemory-dev-safe-"),
@@ -313,6 +380,7 @@ test("starts, stops and starts both real services again without leaking ports or
 
     await runtime.stop();
     assert.equal(await pathExists(runtime.dataDirectory), false);
+    assert.equal(await pathExists(runtime.stateDirectory), false);
     await assertPortAvailable("127.0.0.1", gatewayPort);
     await assertPortAvailable("127.0.0.1", upstreamPort);
     await assertPortAvailable("127.0.0.1", webPort);

@@ -15,7 +15,11 @@
  */
 
 import crypto from "node:crypto";
-import { sanitizeText, stripCodeBlocks, shouldCaptureL0 } from "../../utils/sanitize.js";
+import {
+  sanitizeText,
+  stripCodeBlocks,
+  shouldCaptureL0,
+} from "../../utils/sanitize.js";
 import type { StorageAdapter } from "../storage/adapter.js";
 import { StoragePaths } from "../storage/types.js";
 import type { Logger } from "../types.js";
@@ -105,7 +109,17 @@ export async function recordConversation(params: {
   /** StorageAdapter for file operations (COS/local). Falls back to fs when absent. */
   storage?: StorageAdapter;
 }): Promise<ConversationMessage[]> {
-  const { sessionKey, sessionId, rawMessages, baseDir, logger, originalUserText, afterTimestamp, originalUserMessageCount, storage } = params;
+  const {
+    sessionKey,
+    sessionId,
+    rawMessages,
+    baseDir,
+    logger,
+    originalUserText,
+    afterTimestamp,
+    originalUserMessageCount,
+    storage,
+  } = params;
 
   // Step 1: Position slice + extract user/assistant messages.
   //
@@ -115,13 +129,20 @@ export async function recordConversation(params: {
   //     turn's new messages. This is immune to timestamp drift after gateway restarts.
   //   Layer 2 (timestamp cursor): The existing afterTimestamp filter below acts as a fallback
   //     when the position slice is unavailable (cache expired, process restart, etc.).
-  const usePositionSlice = originalUserMessageCount != null && originalUserMessageCount > 0
-    && originalUserMessageCount <= rawMessages.length;
+  const usePositionSlice =
+    originalUserMessageCount != null &&
+    originalUserMessageCount > 0 &&
+    originalUserMessageCount <= rawMessages.length;
   const slicedMessages = usePositionSlice
     ? rawMessages.slice(originalUserMessageCount)
     : rawMessages;
 
-  const allExtracted = extractUserAssistantMessages(slicedMessages);
+  const cursor = afterTimestamp ?? 0;
+  const fallbackTimestamp = Math.max(Date.now(), cursor + 1);
+  const allExtracted = extractUserAssistantMessages(
+    slicedMessages,
+    fallbackTimestamp,
+  );
 
   if (usePositionSlice) {
     logger?.debug?.(
@@ -141,30 +162,26 @@ export async function recordConversation(params: {
     );
   }
 
-  logger?.debug?.(`${TAG} Extracted ${allExtracted.length} user/assistant messages from ${slicedMessages.length} total`);
+  logger?.debug?.(
+    `${TAG} Extracted ${allExtracted.length} user/assistant messages from ${slicedMessages.length} total`,
+  );
 
   // Step 1.5: Incremental filter — only keep messages newer than the cursor.
   //
-  // Uses strict greater-than (>) which is safe because:
-  //   - The cursor is set to max(timestamps) of the LAST recorded batch.
-  //   - The next agent turn's messages will have timestamps strictly greater than
-  //     the previous turn (there's at least one LLM API call between turns, which
-  //     takes hundreds of milliseconds minimum — no same-millisecond collision).
-  //   - All messages within a single turn are captured together as one batch,
-  //     so even if multiple messages share the same timestamp, they are either
-  //     all included (new batch) or all excluded (already captured).
-  //   - If a message lacks a timestamp field, extractUserAssistantMessages()
-  //     assigns Date.now() at extraction time, which is always > previous cursor.
-  const cursor = afterTimestamp ?? 0;
-  const extracted = cursor !== 0
-    ? allExtracted.filter((m) => m.timestamp > cursor)
-    : allExtracted;
+  // Uses strict greater-than (>). Explicit timestamps retain their source values.
+  // Messages without timestamps share one fallback value for the whole batch:
+  // max(Date.now(), cursor + 1). This keeps the turn together and guarantees that
+  // a same-millisecond initial cursor cannot discard only the first message.
+  const extracted =
+    cursor !== 0
+      ? allExtracted.filter((m) => m.timestamp > cursor)
+      : allExtracted;
 
   if (extracted.length > 0) {
     const first = extracted[0];
     logger?.debug?.(
       `${TAG} First captured message: role=${first.role}, ts=${first.timestamp}, ` +
-      `date=${new Date(first.timestamp).toISOString()}, content=${first.content.slice(0, 80)}${first.content.length > 80 ? "…" : ""}`,
+        `date=${new Date(first.timestamp).toISOString()}, content=${first.content.slice(0, 80)}${first.content.length > 80 ? "…" : ""}`,
     );
   }
 
@@ -175,10 +192,14 @@ export async function recordConversation(params: {
 
     // Safety valve: if timestamp filter passed everything through and position slice
     // was not available, this likely indicates timestamp drift after a gateway restart.
-    if (!usePositionSlice && extracted.length === allExtracted.length && allExtracted.length > 8) {
+    if (
+      !usePositionSlice &&
+      extracted.length === allExtracted.length &&
+      allExtracted.length > 8
+    ) {
       logger?.warn?.(
         `${TAG} ⚠ Safety valve: all ${allExtracted.length} messages passed timestamp filter (cursor=${cursor}) — ` +
-        `possible timestamp drift after gateway restart. Position slice was not available (no cached messageCount).`,
+          `possible timestamp drift after gateway restart. Position slice was not available (no cached messageCount).`,
       );
     }
   }
@@ -205,20 +226,29 @@ export async function recordConversation(params: {
   if (originalUserText) {
     // Determine the target raw message that contains the polluted user prompt
     const targetRaw: Record<string, unknown> | undefined = usePositionSlice
-      ? slicedMessages[0] as Record<string, unknown> | undefined
-      : (originalUserMessageCount != null && originalUserMessageCount >= 0 && originalUserMessageCount < rawMessages.length)
-        ? rawMessages[originalUserMessageCount] as Record<string, unknown> | undefined
+      ? (slicedMessages[0] as Record<string, unknown> | undefined)
+      : originalUserMessageCount != null &&
+          originalUserMessageCount >= 0 &&
+          originalUserMessageCount < rawMessages.length
+        ? (rawMessages[originalUserMessageCount] as
+            Record<string, unknown> | undefined)
         : undefined;
 
-    const targetTs = targetRaw && typeof targetRaw.timestamp === "number" ? targetRaw.timestamp : undefined;
+    const targetTs =
+      targetRaw && typeof targetRaw.timestamp === "number"
+        ? targetRaw.timestamp
+        : undefined;
 
     if (targetTs != null) {
       let replaced = false;
       for (let i = 0; i < extracted.length; i++) {
-        if (extracted[i].role === "user" && extracted[i].timestamp === targetTs) {
+        if (
+          extracted[i].role === "user" &&
+          extracted[i].timestamp === targetTs
+        ) {
           logger?.debug?.(
             `${TAG} Replacing user message at timestamp=${targetTs} with cached original prompt ` +
-            `(${originalUserText.length} chars, was ${extracted[i].content.length} chars) [positionSlice=${usePositionSlice}]`,
+              `(${originalUserText.length} chars, was ${extracted[i].content.length} chars) [positionSlice=${usePositionSlice}]`,
           );
           extracted[i] = { ...extracted[i], content: originalUserText };
           replaced = true;
@@ -228,18 +258,18 @@ export async function recordConversation(params: {
       if (!replaced) {
         logger?.warn?.(
           `${TAG} Target user message (ts=${targetTs}) not found in extracted batch — ` +
-          `possibly filtered by cursor. Skipping replacement, will rely on sanitizeText().`,
+            `possibly filtered by cursor. Skipping replacement, will rely on sanitizeText().`,
         );
       }
     } else if (targetRaw) {
       logger?.warn?.(
         `${TAG} Target raw message has no valid timestamp — ` +
-        `skipping replacement, will rely on sanitizeText().`,
+          `skipping replacement, will rely on sanitizeText().`,
       );
     } else {
       logger?.warn?.(
         `${TAG} Have originalUserText but cannot locate target raw message — ` +
-        `skipping replacement, will rely on sanitizeText().`,
+          `skipping replacement, will rely on sanitizeText().`,
       );
     }
   }
@@ -256,7 +286,9 @@ export async function recordConversation(params: {
     })
     .filter((m) => shouldCaptureL0(m.content));
 
-  logger?.debug?.(`${TAG} After sanitize+filter: ${filtered.length} messages (from ${extracted.length})`);
+  logger?.debug?.(
+    `${TAG} After sanitize+filter: ${filtered.length} messages (from ${extracted.length})`,
+  );
 
   if (filtered.length === 0) {
     logger?.debug?.(`${TAG} All messages filtered out, skipping L0 write`);
@@ -293,9 +325,13 @@ export async function recordConversation(params: {
       await fs.default.mkdir(outDir, { recursive: true });
       await fs.default.appendFile(outPath, lines.join("\n") + "\n", "utf-8");
     }
-    logger?.debug?.(`${TAG} Recorded ${filtered.length} messages to ${recordKey}`);
+    logger?.debug?.(
+      `${TAG} Recorded ${filtered.length} messages to ${recordKey}`,
+    );
   } catch (err) {
-    logger?.error(`${TAG} Failed to write L0 file: ${err instanceof Error ? err.message : String(err)}`);
+    logger?.error(
+      `${TAG} Failed to write L0 file: ${err instanceof Error ? err.message : String(err)}`,
+    );
     // Return filtered messages anyway so L1 can still process them
   }
 
@@ -321,12 +357,17 @@ export async function readConversationRecords(
   let entries: string[];
   try {
     if (storage) {
-      entries = await storage.readdirNames(StoragePaths.conversationsDir, ".jsonl");
+      entries = await storage.readdirNames(
+        StoragePaths.conversationsDir,
+        ".jsonl",
+      );
     } else {
       const fs = await import("node:fs/promises");
       const path = await import("node:path");
       const conversationsDir = path.default.join(baseDir, "conversations");
-      const dirEntries = await fs.default.readdir(conversationsDir, { withFileTypes: true });
+      const dirEntries = await fs.default.readdir(conversationsDir, {
+        withFileTypes: true,
+      });
       entries = dirEntries
         .filter((entry) => entry.isFile())
         .map((entry) => entry.name);
@@ -350,11 +391,16 @@ export async function readConversationRecords(
     let raw: string | null;
     try {
       if (storage) {
-        raw = await storage.readFile(`${StoragePaths.conversationsDir}${fileName}`);
+        raw = await storage.readFile(
+          `${StoragePaths.conversationsDir}${fileName}`,
+        );
       } else {
         const fs = await import("node:fs/promises");
         const path = await import("node:path");
-        raw = await fs.default.readFile(path.default.join(baseDir, "conversations", fileName), "utf-8");
+        raw = await fs.default.readFile(
+          path.default.join(baseDir, "conversations", fileName),
+          "utf-8",
+        );
       }
     } catch {
       logger?.warn?.(`${TAG} Failed to read L0 file: ${fileName}`);
@@ -373,27 +419,41 @@ export async function readConversationRecords(
         const lineSessionKey = parsed.sessionKey as string | undefined;
         if (lineSessionKey !== sessionKey) continue;
 
-        if (typeof parsed.role === "string" && typeof parsed.content === "string") {
+        if (
+          typeof parsed.role === "string" &&
+          typeof parsed.content === "string"
+        ) {
           // Flat format: { sessionKey, sessionId, recordedAt, id, role, content, timestamp }
           // Wrap into L0ConversationRecord for uniform downstream consumption
           const msg: ConversationMessage = {
-            id: (typeof parsed.id === "string" && parsed.id) ? parsed.id : generateMessageId(),
+            id:
+              typeof parsed.id === "string" && parsed.id
+                ? parsed.id
+                : generateMessageId(),
             role: parsed.role as "user" | "assistant",
             content: parsed.content as string,
-            timestamp: typeof parsed.timestamp === "number" ? parsed.timestamp : Date.now(),
+            timestamp:
+              typeof parsed.timestamp === "number"
+                ? parsed.timestamp
+                : Date.now(),
           };
           records.push({
             sessionKey: (parsed.sessionKey as string) || sessionKey,
             sessionId: (parsed.sessionId as string) || "",
-            recordedAt: (parsed.recordedAt as string) || new Date().toISOString(),
+            recordedAt:
+              (parsed.recordedAt as string) || new Date().toISOString(),
             messageCount: 1,
             messages: [msg],
           });
         } else {
-          logger?.warn?.(`${TAG} Unrecognized JSONL line format in ${fileName}:${i + 1}`);
+          logger?.warn?.(
+            `${TAG} Unrecognized JSONL line format in ${fileName}:${i + 1}`,
+          );
         }
       } catch {
-        logger?.warn?.(`${TAG} Skipping malformed JSONL line in ${fileName}:${i + 1}`);
+        logger?.warn?.(
+          `${TAG} Skipping malformed JSONL line in ${fileName}:${i + 1}`,
+        );
       }
     }
   }
@@ -483,14 +543,20 @@ export async function readConversationMessagesGroupedBySessionId(
   const records = await readConversationRecords(sessionKey, baseDir, logger);
 
   // Collect all messages with their sessionId, filtering by recorded_at cursor
-  const allMessages: Array<{ sessionId: string; msg: ConversationMessage & { recordedAtMs: number } }> = [];
+  const allMessages: Array<{
+    sessionId: string;
+    msg: ConversationMessage & { recordedAtMs: number };
+  }> = [];
 
   for (const record of records) {
     const sid = record.sessionId || "";
     const recMs = Date.parse(record.recordedAt) || 0;
     if (afterRecordedAtMs && recMs <= afterRecordedAtMs) continue;
     for (const msg of record.messages) {
-      allMessages.push({ sessionId: sid, msg: { ...msg, recordedAtMs: recMs } });
+      allMessages.push({
+        sessionId: sid,
+        msg: { ...msg, recordedAtMs: recMs },
+      });
     }
   }
 
@@ -508,7 +574,10 @@ export async function readConversationMessagesGroupedBySessionId(
   }
 
   // Re-group by sessionId
-  const groupMap = new Map<string, Array<ConversationMessage & { recordedAtMs: number }>>();
+  const groupMap = new Map<
+    string,
+    Array<ConversationMessage & { recordedAtMs: number }>
+  >();
   for (const { sessionId, msg } of selected) {
     let group = groupMap.get(sessionId);
     if (!group) {
@@ -537,7 +606,10 @@ export async function readConversationMessagesGroupedBySessionId(
 /**
  * Extract user and assistant messages from raw hook message array.
  */
-function extractUserAssistantMessages(messages: unknown[]): ConversationMessage[] {
+function extractUserAssistantMessages(
+  messages: unknown[],
+  fallbackTimestamp = Date.now(),
+): ConversationMessage[] {
   const result: ConversationMessage[] = [];
 
   for (const msg of messages) {
@@ -568,13 +640,17 @@ function extractUserAssistantMessages(messages: unknown[]): ConversationMessage[
     // Strip inline base64 image data URIs that some providers embed in string content.
     // These are not useful for memory and would pollute FTS / embedding indexes.
     if (content && /data:image\/[a-z+]+;base64,/i.test(content)) {
-      content = content.replace(/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/gi, "[image]");
+      content = content.replace(
+        /data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]+/gi,
+        "[image]",
+      );
     }
 
     if (content && content.trim()) {
-      const ts = typeof m.timestamp === "number" ? m.timestamp : Date.now();
+      const ts =
+        typeof m.timestamp === "number" ? m.timestamp : fallbackTimestamp;
       result.push({
-        id: (typeof m.id === "string" && m.id) ? m.id : generateMessageId(),
+        id: typeof m.id === "string" && m.id ? m.id : generateMessageId(),
         role: role as "user" | "assistant",
         content: content.trim(),
         timestamp: ts,

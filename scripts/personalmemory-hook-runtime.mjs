@@ -261,7 +261,9 @@ export class HookGatewayClient {
       (!Number.isInteger(body.authorization_revision) ||
         body.authorization_revision < 0)
     )
-      throw new Error("Gateway returned invalid retention authorization revision");
+      throw new Error(
+        "Gateway returned invalid retention authorization revision",
+      );
     if (run !== undefined) {
       for (const key of [
         "plannedL0",
@@ -280,12 +282,8 @@ export class HookGatewayClient {
     return {
       status: body.status,
       ...(body.skipped === true ? { skipped: true } : {}),
-      ...(body.authorization
-        ? { authorization: body.authorization }
-        : {}),
-      ...(body.policy_revision
-        ? { policyRevision: body.policy_revision }
-        : {}),
+      ...(body.authorization ? { authorization: body.authorization } : {}),
+      ...(body.policy_revision ? { policyRevision: body.policy_revision } : {}),
       ...(body.authorization_revision !== undefined
         ? { authorizationRevision: body.authorization_revision }
         : {}),
@@ -309,8 +307,7 @@ export class HookGatewayClient {
             ...(typeof run.startedAt === "string"
               ? { lastStartedAt: run.startedAt }
               : {}),
-            ...(run.completedAt === null ||
-            typeof run.completedAt === "string"
+            ...(run.completedAt === null || typeof run.completedAt === "string"
               ? { lastCompletedAt: run.completedAt }
               : {}),
           }

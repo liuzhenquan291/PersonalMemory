@@ -213,6 +213,15 @@ async function validateTemporaryRoot(temporaryRoot) {
   }
 }
 
+function isManagedRunDirectory(directory, temporaryRoot, prefix) {
+  if (typeof directory !== "string") return false;
+  const resolvedDirectory = path.resolve(directory);
+  return (
+    path.dirname(resolvedDirectory) === path.resolve(temporaryRoot) &&
+    path.basename(resolvedDirectory).startsWith(prefix)
+  );
+}
+
 export async function createDevRuntime(options = {}) {
   const root = options.root ?? projectRootFromModule();
   const host = "127.0.0.1";
@@ -225,16 +234,42 @@ export async function createDevRuntime(options = {}) {
   const temporaryRoot =
     options.temporaryRoot ?? path.join(root, ".personalmemory-dev");
   await validateTemporaryRoot(temporaryRoot);
-  const dataDirectory = await mkdtemp(
-    path.join(temporaryRoot, "personalmemory-dev-"),
-  );
-  const dataStat = await lstat(dataDirectory);
-  if (
-    !dataStat.isDirectory() ||
-    dataStat.isSymbolicLink() ||
-    (dataStat.mode & 0o777) !== 0o700
-  ) {
-    throw new Error("Development data directory must be a real 0700 directory");
+  const mkdtempImpl = options.mkdtempImpl ?? mkdtemp;
+  let dataDirectory;
+  let stateDirectory;
+  try {
+    dataDirectory = await mkdtempImpl(
+      path.join(temporaryRoot, "personalmemory-dev-data-"),
+    );
+    stateDirectory = await mkdtempImpl(
+      path.join(temporaryRoot, "personalmemory-dev-state-"),
+    );
+    const dataStat = await lstat(dataDirectory);
+    const stateStat = await lstat(stateDirectory);
+    if (
+      !dataStat.isDirectory() ||
+      dataStat.isSymbolicLink() ||
+      (dataStat.mode & 0o777) !== 0o700 ||
+      !stateStat.isDirectory() ||
+      stateStat.isSymbolicLink() ||
+      (stateStat.mode & 0o777) !== 0o700
+    ) {
+      throw new Error(
+        "Development data and state directories must be real 0700 directories",
+      );
+    }
+  } catch (error) {
+    await Promise.all(
+      [
+        [dataDirectory, "personalmemory-dev-data-"],
+        [stateDirectory, "personalmemory-dev-state-"],
+      ]
+        .filter(([directory, prefix]) =>
+          isManagedRunDirectory(directory, temporaryRoot, prefix),
+        )
+        .map(([directory]) => rm(directory, { recursive: true, force: true })),
+    );
+    throw error;
   }
 
   const children = [];
@@ -263,14 +298,26 @@ export async function createDevRuntime(options = {}) {
       let deletionError;
       try {
         const resolvedData = path.resolve(dataDirectory);
+        const resolvedState = path.resolve(stateDirectory);
         const resolvedTemp = path.resolve(temporaryRoot);
         if (
-          path.dirname(resolvedData) !== resolvedTemp ||
-          !path.basename(resolvedData).startsWith("personalmemory-dev-")
+          !isManagedRunDirectory(
+            resolvedData,
+            resolvedTemp,
+            "personalmemory-dev-data-",
+          ) ||
+          !isManagedRunDirectory(
+            resolvedState,
+            resolvedTemp,
+            "personalmemory-dev-state-",
+          )
         ) {
           throw new Error("Refusing to clean an unexpected development path");
         }
-        await rm(resolvedData, { recursive: true, force: true });
+        await Promise.all([
+          rm(resolvedData, { recursive: true, force: true }),
+          rm(resolvedState, { recursive: true, force: true }),
+        ]);
       } catch (error) {
         deletionError = error;
       }
@@ -363,6 +410,7 @@ export async function createDevRuntime(options = {}) {
             PERSONALMEMORY_HOST: host,
             PERSONALMEMORY_PORT: String(gatewayPort),
             PERSONALMEMORY_DATA_DIR: dataDirectory,
+            PERSONALMEMORY_STATE_DIR: stateDirectory,
             PERSONALMEMORY_UPSTREAM_BASE_URL: `http://${host}:${upstreamPort}`,
             PERSONALMEMORY_HOOK_INSTALLATION_ID:
               "hook-install-00000000000000000000000000000000",
@@ -425,6 +473,7 @@ export async function createDevRuntime(options = {}) {
         gatewayUrl: `http://${host}:${gatewayPort}`,
         webUrl: `http://${host}:${webPort}/memories`,
         dataDirectory,
+        stateDirectory,
       };
     } catch (error) {
       await cleanup();
@@ -432,5 +481,5 @@ export async function createDevRuntime(options = {}) {
     }
   }
 
-  return { start, stop: cleanup, children, dataDirectory };
+  return { start, stop: cleanup, children, dataDirectory, stateDirectory };
 }

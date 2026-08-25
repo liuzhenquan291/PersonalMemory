@@ -291,7 +291,8 @@ export async function upgradePersonalMemory(options = {}) {
       process.env.PERSONALMEMORY_STATE_DIR ??
       defaultStateRoot(),
   );
-  const mutex = options.lifecycleMutex ?? new DataLifecycleMutex(stateDirectory);
+  const mutex =
+    options.lifecycleMutex ?? new DataLifecycleMutex(stateDirectory);
   const lease = mutex.acquire({ operation: "upgrade" });
   if (!lease) throw new Error("Another data lifecycle operation is active");
   try {

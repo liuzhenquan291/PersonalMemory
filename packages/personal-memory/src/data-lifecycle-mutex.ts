@@ -33,8 +33,14 @@ export class DataLifecycleMutex {
   constructor(stateDirectory: string) {
     const resolved = path.resolve(stateDirectory);
     const info = lstatSync(resolved);
-    if (!info.isDirectory() || info.isSymbolicLink() || (info.mode & 0o077) !== 0)
-      throw new Error("Data lifecycle state directory must be private and real");
+    if (
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      (info.mode & 0o077) !== 0
+    )
+      throw new Error(
+        "Data lifecycle state directory must be private and real",
+      );
     this.lockPath = path.join(resolved, "data-lifecycle.lock");
     this.guardPath = path.join(resolved, "data-lifecycle.guard");
   }
@@ -122,7 +128,11 @@ export class DataLifecycleMutex {
     }
   }
 
-  private lease(token: string, hash: string, reentrant: boolean): DataLifecycleLease {
+  private lease(
+    token: string,
+    hash: string,
+    reentrant: boolean,
+  ): DataLifecycleLease {
     let released = false;
     return {
       token,
