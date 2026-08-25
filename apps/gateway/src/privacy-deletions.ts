@@ -31,12 +31,15 @@ const l1Schema = z.object({
       id: z.string(),
       content: z.string(),
       source_message_ids: z.array(z.string()).optional(),
+      updated_at: z.string().optional(),
     }),
   ),
   total: z.number().int().nonnegative().optional(),
 });
 const l0Schema = z.object({
-  messages: z.array(z.object({ id: z.string() })),
+  messages: z.array(
+    z.object({ id: z.string(), timestamp: z.string().optional() }),
+  ),
   total: z.number().int().nonnegative().optional(),
 });
 const scenariosSchema = z.object({
@@ -108,6 +111,28 @@ export interface PrivacyDeletionResult {
     tombstone_present: boolean;
   };
   errors: Array<{ step: PrivacyDeletionStep; code: string }>;
+}
+
+export interface RetentionDeletionResult {
+  candidate_digest: string;
+  status: "draining" | "drained" | "partial";
+  planned_l0: number;
+  planned_l1: number;
+  deleted_l0: number;
+  deleted_l1: number;
+  remaining_l0: number;
+  remaining_l1: number;
+  deleted_artifacts: number;
+  anomaly_count: number;
+  error_code?: "RETENTION_DELETE_FAILED" | "RETENTION_VERIFY_FAILED";
+}
+
+interface RetentionCandidatePlan {
+  l0: string[];
+  l1: Array<{ id: string; content: string }>;
+  eligibleL0: number;
+  eligibleL1: number;
+  anomalyCount: number;
 }
 
 interface DerivedCopy {
@@ -517,6 +542,67 @@ export class PrivacyDeletionService {
     };
   }
 
+  async executeRetentionBatch(
+    input: { cutoffL0: string | null; cutoffL1: string | null },
+    requestId: string,
+  ): Promise<RetentionDeletionResult> {
+    const plan = await this.planRetention(input, requestId);
+    const result: RetentionDeletionResult = {
+      candidate_digest: sha256(
+        JSON.stringify({
+          l0: [...plan.l0].sort(),
+          l1: plan.l1.map(({ id }) => id).sort(),
+        }),
+      ),
+      status: "draining",
+      planned_l0: plan.l0.length,
+      planned_l1: plan.l1.length,
+      deleted_l0: 0,
+      deleted_l1: 0,
+      remaining_l0: plan.eligibleL0,
+      remaining_l1: plan.eligibleL1,
+      deleted_artifacts: 0,
+      anomaly_count: plan.anomalyCount,
+    };
+    try {
+      for (const candidate of plan.l1) {
+        result.deleted_artifacts += await this.deleteRetentionL1(
+          candidate,
+          requestId,
+        );
+        result.deleted_l1 += 1;
+      }
+      if (plan.l0.length > 0) {
+        result.deleted_artifacts += await this.deleteRetentionL0(
+          plan.l0,
+          requestId,
+        );
+        result.deleted_l0 = plan.l0.length;
+      }
+    } catch {
+      result.remaining_l0 = Math.max(0, plan.eligibleL0 - result.deleted_l0);
+      result.remaining_l1 = Math.max(0, plan.eligibleL1 - result.deleted_l1);
+      result.status = "partial";
+      result.error_code = "RETENTION_DELETE_FAILED";
+      return result;
+    }
+
+    try {
+      const verification = await this.planRetention(input, requestId);
+      result.remaining_l0 = verification.eligibleL0;
+      result.remaining_l1 = verification.eligibleL1;
+      result.status =
+        verification.eligibleL0 === 0 && verification.eligibleL1 === 0
+          ? "drained"
+          : "draining";
+      return result;
+    } catch {
+      result.status = "partial";
+      result.error_code = "RETENTION_VERIFY_FAILED";
+      return result;
+    }
+  }
+
   private requirePlan(token: string): DeletionPlan {
     const plan = this.plans.get(token);
     if (!plan) throw new PrivacyDeletionError("PLAN_NOT_FOUND");
@@ -551,6 +637,212 @@ export class PrivacyDeletionService {
       }
     }
     throw new PrivacyDeletionError("UPSTREAM_REJECTED");
+  }
+
+  private async planRetention(
+    input: { cutoffL0: string | null; cutoffL1: string | null },
+    requestId: string,
+  ): Promise<RetentionCandidatePlan> {
+    const now = this.now();
+    const cutoffL0 = input.cutoffL0 ? Date.parse(input.cutoffL0) : null;
+    const cutoffL1 = input.cutoffL1 ? Date.parse(input.cutoffL1) : null;
+    if (
+      (input.cutoffL0 && !Number.isFinite(cutoffL0)) ||
+      (input.cutoffL1 && !Number.isFinite(cutoffL1))
+    )
+      throw new Error("INVALID_RETENTION_CUTOFF");
+    const eligibleL1: Array<{ id: string; content: string }> = [];
+    const eligibleL0: string[] = [];
+    let anomalyCount = 0;
+    if (cutoffL1 !== null) {
+      let complete = false;
+      for (let offset = 0; offset < MAX_UPSTREAM_RECORDS; offset += 100) {
+        const page = l1Schema.parse(
+          await this.call(
+            "/v2/atomic/query",
+            { limit: 100, offset },
+            requestId,
+          ),
+        );
+        if ((page.total ?? page.items.length) > MAX_UPSTREAM_RECORDS)
+          throw new Error("RETENTION_SCAN_LIMIT");
+        for (const item of page.items) {
+          const timestamp = item.updated_at ? Date.parse(item.updated_at) : NaN;
+          if (!Number.isFinite(timestamp) || timestamp > now) anomalyCount += 1;
+          else if (timestamp < cutoffL1)
+            eligibleL1.push({ id: item.id, content: item.content });
+        }
+        if (
+          page.items.length < 100 ||
+          (page.total !== undefined && offset + page.items.length >= page.total)
+        ) {
+          complete = true;
+          break;
+        }
+      }
+      if (!complete) throw new Error("RETENTION_SCAN_LIMIT");
+    }
+    if (cutoffL0 !== null) {
+      let complete = false;
+      for (let offset = 0; offset < MAX_UPSTREAM_RECORDS; offset += 100) {
+        const page = l0Schema.parse(
+          await this.call(
+            "/v2/conversation/query",
+            { limit: 100, offset },
+            requestId,
+          ),
+        );
+        if ((page.total ?? page.messages.length) > MAX_UPSTREAM_RECORDS)
+          throw new Error("RETENTION_SCAN_LIMIT");
+        for (const item of page.messages) {
+          const timestamp = item.timestamp ? Date.parse(item.timestamp) : NaN;
+          if (!Number.isFinite(timestamp) || timestamp > now) anomalyCount += 1;
+          else if (timestamp < cutoffL0) eligibleL0.push(item.id);
+        }
+        if (
+          page.messages.length < 100 ||
+          (page.total !== undefined &&
+            offset + page.messages.length >= page.total)
+        ) {
+          complete = true;
+          break;
+        }
+      }
+      if (!complete) throw new Error("RETENTION_SCAN_LIMIT");
+    }
+    return {
+      l0: eligibleL0.slice(0, 100),
+      l1: eligibleL1.slice(0, 25),
+      eligibleL0: eligibleL0.length,
+      eligibleL1: eligibleL1.length,
+      anomalyCount,
+    };
+  }
+
+  private async deleteRetentionL1(
+    candidate: { id: string; content: string },
+    requestId: string,
+  ): Promise<number> {
+    this.upsertTombstone(candidate.id);
+    const derived = await this.findDerived(candidate.content, requestId);
+    for (const copy of derived.filter(({ level }) => level === "L2")) {
+      await this.call(
+        "/v2/scenario/write",
+        {
+          path: copy.path,
+          content: copy.content.split(candidate.content).join(REDACTION),
+        },
+        requestId,
+      );
+    }
+    const core = derived.find(({ level }) => level === "L3");
+    if (core)
+      await this.call(
+        "/v2/core/write",
+        { content: core.content.split(candidate.content).join(REDACTION) },
+        requestId,
+      );
+    await removeJsonlRows(
+      path.join(this.dataDirectory, "records"),
+      new Set([candidate.id]),
+      this.randomId,
+    );
+    const artifacts = this.artifacts.listActive();
+    const deletedArtifactIds: string[] = [];
+    for (const artifact of artifacts) {
+      await this.deleteManagedArtifact(artifact);
+      deletedArtifactIds.push(artifact.id);
+    }
+    this.cleanupProductMetadata(candidate.id, deletedArtifactIds);
+    if (
+      (await this.findDerived(candidate.content, requestId)).length > 0 ||
+      (await countJsonlRows(
+        path.join(this.dataDirectory, "records"),
+        new Set([candidate.id]),
+      )) > 0 ||
+      this.artifacts.listActive().length > 0 ||
+      !this.hasDeletionTombstone(candidate.id) ||
+      this.productMetadataRemaining(candidate.id) > 0
+    )
+      throw new Error("RETENTION_L1_PRE_INDEX_RESIDUAL");
+    await this.call("/v2/atomic/delete", { ids: [candidate.id] }, requestId);
+    if (await this.findL1(candidate.id, requestId))
+      throw new Error("RETENTION_L1_INDEX_RESIDUAL");
+    return artifacts.length;
+  }
+
+  private async deleteRetentionL0(
+    ids: string[],
+    requestId: string,
+  ): Promise<number> {
+    const idSet = new Set(ids);
+    await removeJsonlRows(
+      path.join(this.dataDirectory, "conversations"),
+      idSet,
+      this.randomId,
+    );
+    const artifacts = this.artifacts.listActive();
+    for (const artifact of artifacts)
+      await this.deleteManagedArtifact(artifact);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      for (const artifact of artifacts) this.artifacts.markDeleted(artifact.id);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+    if (
+      (await countJsonlRows(
+        path.join(this.dataDirectory, "conversations"),
+        idSet,
+      )) > 0 ||
+      this.artifacts.listActive().length > 0
+    )
+      throw new Error("RETENTION_L0_PRE_INDEX_RESIDUAL");
+    await this.call("/v2/conversation/delete", { message_ids: ids }, requestId);
+    if (
+      (await countJsonlRows(
+        path.join(this.dataDirectory, "conversations"),
+        idSet,
+      )) > 0 ||
+      (await this.findL0Remaining(idSet, requestId)) > 0 ||
+      this.artifacts.listActive().length > 0
+    )
+      throw new Error("RETENTION_L0_RESIDUAL");
+    return artifacts.length;
+  }
+
+  private hasDeletionTombstone(memoryId: string): boolean {
+    return (
+      (
+        this.database
+          .prepare(
+            `SELECT status FROM personalmemory_memory_states
+             WHERE level = 'L1' AND memory_id = ?`,
+          )
+          .get(memoryId) as { status?: string } | undefined
+      )?.status === "deleted"
+    );
+  }
+
+  private productMetadataRemaining(memoryId: string): number {
+    const queries = [
+      `SELECT COUNT(*) AS count FROM personalmemory_memory_reviews
+       WHERE level = 'L1' AND memory_id = ?`,
+      `SELECT COUNT(*) AS count FROM personalmemory_memory_validity
+       WHERE level = 'L1' AND memory_id = ?`,
+      `SELECT COUNT(*) AS count FROM personalmemory_memory_relations
+       WHERE level = 'L1' AND (source_memory_id = ? OR target_memory_id = ?)`,
+    ];
+    return queries.reduce((total, query, index) => {
+      const row = this.database
+        .prepare(query)
+        .get(...(index === 2 ? [memoryId, memoryId] : [memoryId])) as {
+        count: number;
+      };
+      return total + row.count;
+    }, 0);
   }
 
   private async findL0Remaining(ids: ReadonlySet<string>, requestId: string) {

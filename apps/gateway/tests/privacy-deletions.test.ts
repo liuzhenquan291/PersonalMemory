@@ -46,9 +46,11 @@ interface KernelFixture {
     }
   >;
   l0: Set<string>;
+  l0Times: Map<string, string>;
   scenarios: Map<string, string>;
   core: string;
   failAtomicDelete: number;
+  ignoreDerivedWrites: boolean;
 }
 
 function kernel(fixture: KernelFixture): UpstreamGatewayClient {
@@ -71,7 +73,10 @@ function kernel(fixture: KernelFixture): UpstreamGatewayClient {
         };
       }
       if (path === "/v2/conversation/query") {
-        const rows = [...fixture.l0].map((id) => ({ id }));
+        const rows = [...fixture.l0].map((id) => ({
+          id,
+          timestamp: fixture.l0Times.get(id),
+        }));
         const offset = Number(input.offset ?? 0);
         const limit = Number(input.limit ?? 100);
         return {
@@ -116,11 +121,12 @@ function kernel(fixture: KernelFixture): UpstreamGatewayClient {
         };
       }
       if (path === "/v2/scenario/write") {
-        fixture.scenarios.set(String(input.path), String(input.content));
+        if (!fixture.ignoreDerivedWrites)
+          fixture.scenarios.set(String(input.path), String(input.content));
         return { status: 200, body: { code: 0, data: {} } };
       }
       if (path === "/v2/core/write") {
-        fixture.core = String(input.content);
+        if (!fixture.ignoreDerivedWrites) fixture.core = String(input.content);
         return { status: 200, body: { code: 0, data: {} } };
       }
       if (path === "/v2/conversation/delete") {
@@ -171,9 +177,11 @@ function testContext(
       ],
     ]),
     l0: new Set(["source-1"]),
+    l0Times: new Map([["source-1", "2026-08-01T00:00:00.000Z"]]),
     scenarios: new Map([["work.md", "情境：需要删除。"]]),
     core: "画像：需要删除。",
     failAtomicDelete: options.failAtomicDelete ?? 0,
+    ignoreDerivedWrites: false,
   };
   const managedPaths: string[] = [];
   if (options.managed) {
@@ -222,6 +230,157 @@ afterEach(() => {
 });
 
 describe("PrivacyDeletionService", () => {
+  it("retention deletes expired L1 without deleting source L0 before its independent cutoff", async () => {
+    const context = testContext({ managed: true });
+    try {
+      const result = await context.service.executeRetentionBatch(
+        {
+          cutoffL0: null,
+          cutoffL1: "2026-08-12T00:00:00.000Z",
+        },
+        "retention-1",
+      );
+      expect(result).toMatchObject({
+        status: "drained",
+        planned_l0: 0,
+        planned_l1: 1,
+        deleted_l0: 0,
+        deleted_l1: 1,
+        remaining_l0: 0,
+        remaining_l1: 0,
+        deleted_artifacts: 2,
+      });
+      expect(context.fixture.l0.has("source-1")).toBe(true);
+      expect(
+        readFileSync(join(context.data, "conversations", "one.jsonl"), "utf8"),
+      ).toContain("source-1");
+      expect(context.fixture.l1.has("memory-1")).toBe(false);
+    } finally {
+      context.database.close();
+    }
+  });
+
+  it("retention deletes independently expired L0 after readable and registered copies", async () => {
+    const context = testContext({ managed: true });
+    try {
+      context.fixture.l1.get("memory-1")!.updated_at =
+        "2026-08-11T00:00:00.000Z";
+      const result = await context.service.executeRetentionBatch(
+        {
+          cutoffL0: "2026-08-02T00:00:00.000Z",
+          cutoffL1: null,
+        },
+        "retention-2",
+      );
+      expect(result).toMatchObject({
+        status: "drained",
+        planned_l0: 1,
+        planned_l1: 0,
+        deleted_l0: 1,
+        deleted_l1: 0,
+        deleted_artifacts: 2,
+      });
+      expect(context.fixture.l0.has("source-1")).toBe(false);
+      expect(context.fixture.l1.has("memory-1")).toBe(true);
+      expect(
+        readFileSync(join(context.data, "conversations", "one.jsonl"), "utf8"),
+      ).toBe("");
+    } finally {
+      context.database.close();
+    }
+  });
+
+  it("retention keeps upstream facts when a registered copy cannot be deleted", async () => {
+    const context = testContext({ managed: true });
+    try {
+      const backupPath = context.managedPaths[1]!;
+      writeFileSync(
+        join(backupPath, "manifest.json"),
+        `${JSON.stringify({ format: "unexpected" })}\n`,
+      );
+      const result = await context.service.executeRetentionBatch(
+        {
+          cutoffL0: "2026-08-02T00:00:00.000Z",
+          cutoffL1: "2026-08-12T00:00:00.000Z",
+        },
+        "retention-partial",
+      );
+      expect(result).toMatchObject({
+        status: "partial",
+        deleted_l0: 0,
+        deleted_l1: 0,
+        error_code: "RETENTION_DELETE_FAILED",
+      });
+      expect(context.fixture.l1.has("memory-1")).toBe(true);
+      expect(context.fixture.l0.has("source-1")).toBe(true);
+    } finally {
+      context.database.close();
+    }
+  });
+
+  it("retention keeps the L1 index when a derived rewrite reports success without taking effect", async () => {
+    const context = testContext();
+    try {
+      context.fixture.ignoreDerivedWrites = true;
+      const result = await context.service.executeRetentionBatch(
+        { cutoffL0: null, cutoffL1: "2026-08-12T00:00:00.000Z" },
+        "retention-noop-write",
+      );
+      expect(result).toMatchObject({
+        status: "partial",
+        deleted_l1: 0,
+        error_code: "RETENTION_DELETE_FAILED",
+      });
+      expect(context.fixture.l1.has("memory-1")).toBe(true);
+    } finally {
+      context.database.close();
+    }
+  });
+
+  it("retention limits one batch to 25 L1 and 100 L0 candidates", async () => {
+    const context = testContext();
+    try {
+      context.fixture.l1.clear();
+      context.fixture.l0.clear();
+      context.fixture.l0Times.clear();
+      context.fixture.scenarios.clear();
+      context.fixture.core = "";
+      for (let index = 0; index < 26; index += 1) {
+        const id = `memory-${index}`;
+        context.fixture.l1.set(id, {
+          id,
+          type: "fact",
+          content: `content-${index}`,
+          updated_at: "2026-08-01T00:00:00.000Z",
+          source_message_ids: [],
+        });
+      }
+      for (let index = 0; index < 101; index += 1) {
+        const id = `source-${index}`;
+        context.fixture.l0.add(id);
+        context.fixture.l0Times.set(id, "2026-08-01T00:00:00.000Z");
+      }
+      const result = await context.service.executeRetentionBatch(
+        {
+          cutoffL0: "2026-08-02T00:00:00.000Z",
+          cutoffL1: "2026-08-02T00:00:00.000Z",
+        },
+        "retention-bounded",
+      );
+      expect(result).toMatchObject({
+        status: "draining",
+        planned_l0: 100,
+        planned_l1: 25,
+        deleted_l0: 100,
+        deleted_l1: 25,
+        remaining_l0: 1,
+        remaining_l1: 1,
+      });
+    } finally {
+      context.database.close();
+    }
+  });
+
   it("previews and verifies a complete cascade across controlled copies", async () => {
     const context = testContext({ managed: true });
     try {

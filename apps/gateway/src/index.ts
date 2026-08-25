@@ -1,6 +1,7 @@
 import { PERSONAL_MEMORY_SCHEMA_VERSION } from "@personalmemory/core";
 
 export { createGatewayApp } from "./app.js";
+export type { RetentionDeletionResult } from "./privacy-deletions.js";
 export {
   PrivacyDeletionError,
   PrivacyDeletionService,
