@@ -49,12 +49,23 @@ function required(name: string): string {
 
 function usage(): never {
   process.stderr.write(`Usage:
-  npm run data:export -- --format <json|markdown> --output <file>
-  npm run data:backup -- --output <directory>
+  npm run data:export -- --format <json|markdown> --output <personalmemory-export-YYYYMMDD.file>
+  npm run data:backup -- --output <personalmemory-backup-YYYYMMDD>
   npm run data:verify -- --input <backup-directory>
   npm run data:restore -- --input <backup-directory> --confirm "RESTORE <absolute-data-directory>"
 `);
   process.exit(2);
+}
+
+function artifactNameWarning(
+  destination: string,
+  kind: "export" | "backup",
+): string | undefined {
+  if (path.basename(destination).toLowerCase().includes("personalmemory"))
+    return undefined;
+  return kind === "export"
+    ? "建议使用 personalmemory-export-YYYYMMDD.* 命名；移动、复制或改名后的副本无法被产品继续追踪。"
+    : "建议使用 personalmemory-backup-YYYYMMDD 命名；移动、复制或改名后的副本无法被产品继续追踪。";
 }
 
 async function main(): Promise<void> {
@@ -72,22 +83,19 @@ async function main(): Promise<void> {
     await assertUpstreamOffline(config.server.upstreamBaseUrl);
     const format = required("--format");
     if (format !== "json" && format !== "markdown") usage();
-    const result = await createReadableExport(
-      dataDirectory,
-      required("--output"),
-      format,
+    const output = required("--output");
+    const result = await createReadableExport(dataDirectory, output, format);
+    process.stdout.write(
+      `${JSON.stringify({ ...result, warning: artifactNameWarning(output, "export") })}\n`,
     );
-    process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
   if (command === "backup") {
     await assertUpstreamOffline(config.server.upstreamBaseUrl);
-    const manifest = await createPortableBackup(
-      dataDirectory,
-      required("--output"),
-    );
+    const output = required("--output");
+    const manifest = await createPortableBackup(dataDirectory, output);
     process.stdout.write(
-      `${JSON.stringify({ assets: manifest.assets.length, createdAt: manifest.created_at })}\n`,
+      `${JSON.stringify({ assets: manifest.assets.length, createdAt: manifest.created_at, warning: artifactNameWarning(output, "backup") })}\n`,
     );
     return;
   }

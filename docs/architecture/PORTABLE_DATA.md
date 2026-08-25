@@ -8,6 +8,8 @@ PersonalMemory Gateway 启动时写入只含 PID 的 `.personalmemory-running`�
 
 所有源、目标和清单路径拒绝符号链接及越界路径。导出和备份目标必须位于数据根之外且不能预先存在；文件以 `0600`、目录以 `0700` 创建。备份恢复应选择与数据根相同文件系统的目标父目录，以保证 rename 原子切换。
 
+命令行推荐可识别名称 `personalmemory-export-YYYYMMDD.*` 和 `personalmemory-backup-YYYYMMDD`。名称不含 `personalmemory` 时操作仍可完成，但结果会提醒：用户后续在文件管理器中移动、复制或改名形成的副本无法由产品发现、拦截或继续追踪。
+
 ## 可读导出
 
 `data:export` 支持 JSON 和 Markdown，包含：

@@ -68,8 +68,10 @@ test("data CLI exports, backs up, verifies and restores an offline data root", (
       run(data, "export", "--format", "json", "--output", output),
     );
     assert.match(exported.sha256, /^[a-f0-9]{64}$/u);
+    assert.match(exported.warning, /personalmemory-export/u);
     const backedUp = JSON.parse(run(data, "backup", "--output", backup));
     assert.ok(backedUp.assets >= 3);
+    assert.match(backedUp.warning, /personalmemory-backup/u);
     assert.deepEqual(JSON.parse(run(data, "verify", "--input", backup)), {
       valid: true,
       assets: backedUp.assets,
