@@ -10,6 +10,8 @@ import {
   MemoryStateLedger,
   MemoryReviewLedger,
   PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,
+  RetentionAuthorizationLedger,
+  RetentionRunLedger,
   defaultMigrations,
   loadConfig,
   migrateDatabase,
@@ -96,6 +98,11 @@ function createHarness(options: {
     database,
     () => "2026-08-24T00:00:00.000Z",
   );
+  const retentionAuthorizations = new RetentionAuthorizationLedger(
+    database,
+    () => "2026-08-24T02:00:00.000Z",
+  );
+  const retentionRuns = new RetentionRunLedger(database);
   const app = createGatewayApp({
     config: options.config ?? createConfig(),
     upstream,
@@ -109,6 +116,8 @@ function createHarness(options: {
     hookAuthorizations,
     capturePolicies,
     modelAuthorizations,
+    retentionAuthorizations,
+    retentionRuns,
     hookPolicy: options.hookPolicy,
     hookCaptureSink: options.hookCaptureSink,
     now: options.now,
@@ -162,6 +171,52 @@ interface ImportJobResponse {
 }
 
 describe("PersonalMemory Gateway app", () => {
+  it("keeps retention execution disabled until separately authorized and makes policy changes stale", async () => {
+    const { app } = createHarness({});
+    const initial = await app.request("/api/v1/retention/status", {
+      headers: authHeaders,
+    });
+    expect(await initial.json()).toMatchObject({
+      status: "not_applicable",
+      authorization: { status: "disabled", revision: 0 },
+    });
+
+    const authorized = await app.request("/api/v1/retention/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ expected_authorization_revision: 0 }),
+    });
+    expect(await authorized.json()).toMatchObject({
+      authorization: { status: "authorized", revision: 1 },
+    });
+
+    await app.request("/api/v1/capture-policy", {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({
+        expected_policy_revision: 1,
+        capture_enabled: true,
+        excluded_clients: [],
+        excluded_working_directories: [],
+        excluded_sources: [],
+        sensitive_categories: ["credentials", "financial", "identity"],
+        l0_retention_days: 30,
+        l1_retention_days: 365,
+      }),
+    });
+    const stale = await app.request("/api/v1/retention/status", {
+      headers: authHeaders,
+    });
+    expect(await stale.json()).toMatchObject({
+      status: "disabled",
+      authorization: {
+        status: "stale",
+        revision: 1,
+        binding: { policyRevision: 1 },
+      },
+      policy_revision: 2,
+    });
+  });
   it("independently authorizes and revokes automatic recall and local capture", async () => {
     const { app } = createHarness({});
 
@@ -487,7 +542,7 @@ describe("PersonalMemory Gateway app", () => {
     const version = await app.request("/version");
     expect(await version.json()).toMatchObject({
       apiVersion: "v1",
-      schemaVersion: 11,
+      schemaVersion: 12,
     });
   });
 

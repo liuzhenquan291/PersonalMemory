@@ -121,3 +121,17 @@ export {
   type CapturePolicyStatus,
   type SensitiveCategory,
 } from "./capture-policy-ledger.js";
+export {
+  RETENTION_DISCLOSURE_VERSION,
+  RETENTION_MANAGED_ARTIFACT_HANDLING,
+  RetentionAuthorizationConflictError,
+  RetentionAuthorizationLedger,
+  RetentionRunLedger,
+  getRetentionDisclosure,
+  type RetentionAuthorizationBinding,
+  type RetentionAuthorizationStatus,
+  type RetentionDisclosure,
+  type RetentionRunCounts,
+  type RetentionRunStatus,
+  type RetentionRunView,
+} from "./retention-execution-ledger.js";

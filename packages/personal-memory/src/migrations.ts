@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Migration } from "./migration-runner.js";
 
-export const PERSONAL_MEMORY_SCHEMA_VERSION = 11;
+export const PERSONAL_MEMORY_SCHEMA_VERSION = 12;
 
 const INITIAL_SCHEMA_SQL = `
 CREATE TABLE personalmemory_metadata (
@@ -214,6 +214,53 @@ CREATE TABLE personalmemory_capture_policies (
 ) STRICT
 `;
 
+const RETENTION_AUTHORIZATIONS_SQL = `
+CREATE TABLE personalmemory_retention_authorizations (
+  revision INTEGER PRIMARY KEY NOT NULL CHECK (revision > 0),
+  disclosure_version INTEGER NOT NULL CHECK (disclosure_version > 0),
+  disclosure_hash TEXT NOT NULL CHECK (length(disclosure_hash) = 64),
+  policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),
+  l0_retention_days INTEGER CHECK (l0_retention_days IS NULL OR l0_retention_days BETWEEN 1 AND 3650),
+  l1_retention_days INTEGER CHECK (l1_retention_days IS NULL OR l1_retention_days BETWEEN 1 AND 3650),
+  managed_artifact_handling TEXT NOT NULL CHECK (managed_artifact_handling = 'delete-whole-active-artifacts'),
+  status TEXT NOT NULL CHECK (status IN ('authorized', 'revoked')),
+  changed_at TEXT NOT NULL
+) STRICT
+`;
+
+const RETENTION_RUNS_SQL = `
+CREATE TABLE personalmemory_retention_runs (
+  run_id TEXT PRIMARY KEY NOT NULL,
+  policy_revision INTEGER NOT NULL CHECK (policy_revision > 0),
+  authorization_revision INTEGER NOT NULL CHECK (authorization_revision > 0),
+  cutoff_l0 TEXT,
+  cutoff_l1 TEXT,
+  candidate_digest TEXT NOT NULL CHECK (length(candidate_digest) = 64),
+  status TEXT NOT NULL CHECK (status IN ('draining', 'drained', 'partial')),
+  planned_l0 INTEGER NOT NULL DEFAULT 0 CHECK (planned_l0 BETWEEN 0 AND 100),
+  planned_l1 INTEGER NOT NULL DEFAULT 0 CHECK (planned_l1 BETWEEN 0 AND 25),
+  deleted_l0 INTEGER NOT NULL DEFAULT 0 CHECK (deleted_l0 >= 0),
+  deleted_l1 INTEGER NOT NULL DEFAULT 0 CHECK (deleted_l1 >= 0),
+  remaining_l0 INTEGER NOT NULL DEFAULT 0 CHECK (remaining_l0 >= 0),
+  remaining_l1 INTEGER NOT NULL DEFAULT 0 CHECK (remaining_l1 >= 0),
+  deleted_artifacts INTEGER NOT NULL DEFAULT 0 CHECK (deleted_artifacts >= 0),
+  anomaly_count INTEGER NOT NULL DEFAULT 0 CHECK (anomaly_count >= 0),
+  error_code TEXT,
+  lease_owner_digest TEXT NOT NULL CHECK (length(lease_owner_digest) = 64),
+  lease_expires_at TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  completed_at TEXT,
+  updated_at TEXT NOT NULL,
+  CHECK ((status = 'draining' AND completed_at IS NULL) OR (status <> 'draining' AND completed_at IS NOT NULL)),
+  CHECK (status <> 'drained' OR (remaining_l0 = 0 AND remaining_l1 = 0))
+) STRICT
+`;
+
+const RETENTION_RUNS_INDEX_SQL = `
+CREATE INDEX personalmemory_retention_runs_started
+ON personalmemory_retention_runs(started_at DESC)
+`;
+
 function checksum(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
 }
@@ -297,5 +344,17 @@ export const defaultMigrations: readonly Migration[] = Object.freeze([
     name: "add_capture_policy_and_retention",
     checksum: checksum(CAPTURE_POLICIES_SQL),
     statements: [CAPTURE_POLICIES_SQL],
+  },
+  {
+    version: 12,
+    name: "add_retention_execution_control",
+    checksum: checksum(
+      `${RETENTION_AUTHORIZATIONS_SQL}\n${RETENTION_RUNS_SQL}\n${RETENTION_RUNS_INDEX_SQL}`,
+    ),
+    statements: [
+      RETENTION_AUTHORIZATIONS_SQL,
+      RETENTION_RUNS_SQL,
+      RETENTION_RUNS_INDEX_SQL,
+    ],
   },
 ]);

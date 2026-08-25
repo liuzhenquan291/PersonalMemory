@@ -8,6 +8,8 @@ import type {
   MemoryReviewLedger,
   MemoryStateLedger,
   PersonalMemoryConfig,
+  RetentionAuthorizationLedger,
+  RetentionRunLedger,
 } from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
 import type { PrivacyDeletionService } from "./privacy-deletions.js";
@@ -66,6 +68,8 @@ export interface GatewayAppOptions {
   hookAuthorizations?: HookAuthorizationLedger;
   capturePolicies?: CapturePolicyLedger;
   modelAuthorizations?: ModelAuthorizationLedger;
+  retentionAuthorizations?: RetentionAuthorizationLedger;
+  retentionRuns?: RetentionRunLedger;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;
   logger?: GatewayLogger;

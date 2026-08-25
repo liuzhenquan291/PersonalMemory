@@ -9,6 +9,8 @@ import {
   hookRecallRequestSchema,
   hookRecallResponseSchema,
   PERSONAL_MEMORY_SCHEMA_VERSION,
+  RetentionAuthorizationConflictError,
+  getRetentionDisclosure,
 } from "@personalmemory/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
@@ -205,6 +207,10 @@ const capturePolicyHistoryQuerySchema = z
     before_revision: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })
+  .strict();
+
+const retentionAuthorizationTransitionSchema = z
+  .object({ expected_authorization_revision: z.number().int().min(0) })
   .strict();
 
 function capturePolicyResponse(
@@ -580,6 +586,10 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "GET /api/v1/capture-policy",
       "GET /api/v1/capture-policy/history",
       "PUT /api/v1/capture-policy",
+      "GET /api/v1/retention/authorization",
+      "POST /api/v1/retention/authorization",
+      "DELETE /api/v1/retention/authorization",
+      "GET /api/v1/retention/status",
       "GET /api/v1/memories",
       "GET /api/v1/memory",
       "GET /api/v1/audit",
@@ -997,6 +1007,111 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       }
       throw error;
     }
+  });
+
+  const requireRetentionAuthorizations = () => {
+    if (!options.retentionAuthorizations)
+      throw new GatewayHttpError(
+        503,
+        "RETENTION_AUTHORIZATION_UNAVAILABLE",
+        "Retention authorization storage is unavailable",
+      );
+    return options.retentionAuthorizations;
+  };
+
+  const retentionStatus = () => {
+    const policy = requireCapturePolicies().status();
+    const authorization = requireRetentionAuthorizations().status(policy);
+    const latestRun = options.retentionRuns?.latest();
+    const cutoff = (days: number | null): string | null => {
+      if (days === null) return null;
+      const date = new Date(now());
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (days - 1));
+      return date.toISOString();
+    };
+    const run =
+      authorization.status === "authorized" &&
+      latestRun?.authorizationRevision === authorization.revision &&
+      latestRun.policyRevision === policy.revision &&
+      latestRun.cutoffL0 === cutoff(policy.l0RetentionDays) &&
+      latestRun.cutoffL1 === cutoff(policy.l1RetentionDays)
+        ? latestRun
+        : undefined;
+    const executionStatus =
+      policy.l0RetentionDays === null && policy.l1RetentionDays === null
+        ? "not_applicable"
+        : authorization.status === "authorized"
+          ? (run?.status ?? "draining")
+          : "disabled";
+    return { policy, authorization, run, executionStatus };
+  };
+
+  app.get("/api/v1/retention/authorization", (context) => {
+    authenticateMemoryRequest(context, false);
+    const status = retentionStatus();
+    return context.json({
+      disclosure: getRetentionDisclosure(),
+      authorization: status.authorization,
+    });
+  });
+
+  const transitionRetentionAuthorization = async (
+    context: Context<GatewayEnv>,
+    target: "authorized" | "revoked",
+  ) => {
+    authenticateMemoryRequest(context);
+    const parsed = retentionAuthorizationTransitionSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success)
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the retention authorization contract",
+      );
+    const policy = requireCapturePolicies().status();
+    try {
+      const ledger = requireRetentionAuthorizations();
+      const authorization =
+        target === "authorized"
+          ? ledger.authorize(
+              policy,
+              parsed.data.expected_authorization_revision,
+            )
+          : ledger.revoke(policy, parsed.data.expected_authorization_revision);
+      return context.json({ authorization });
+    } catch (error) {
+      if (error instanceof RetentionAuthorizationConflictError)
+        throw new GatewayHttpError(
+          409,
+          "RETENTION_AUTHORIZATION_CHANGED",
+          error.message,
+        );
+      throw error;
+    }
+  };
+
+  app.post("/api/v1/retention/authorization", (context) =>
+    transitionRetentionAuthorization(context, "authorized"),
+  );
+  app.delete("/api/v1/retention/authorization", (context) =>
+    transitionRetentionAuthorization(context, "revoked"),
+  );
+  app.get("/api/v1/retention/status", (context) => {
+    authenticateMemoryRequest(context, false);
+    const status = retentionStatus();
+    return context.json({
+      status: status.executionStatus,
+      authorization: status.authorization,
+      policy_revision: status.policy.revision,
+      l0_retention_days: status.policy.l0RetentionDays,
+      l1_retention_days: status.policy.l1RetentionDays,
+      latest_run: status.run,
+    });
   });
 
   const requireBearer = (authorization: string | undefined): void => {
