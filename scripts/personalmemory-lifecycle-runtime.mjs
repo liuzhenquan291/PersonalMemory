@@ -4,12 +4,40 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
+import { DataLifecycleMutex } from "@personalmemory/core";
+
 import { installPersonalMemory } from "./personalmemory-install-runtime.mjs";
 import {
   readManagedHookStatus,
   uninstallManagedHooks,
 } from "./personalmemory-hook-install.mjs";
-import { readHookDoctorStatus } from "./personalmemory-hook-managed.mjs";
+import {
+  createManagedHookRuntime,
+  readHookDoctorStatus,
+} from "./personalmemory-hook-managed.mjs";
+
+async function drainRetentionBeforeBackup(stateDirectory, lifecycleToken) {
+  const { gateway } = await createManagedHookRuntime({ stateDirectory });
+  let frozen;
+  for (let batch = 0; batch < 10_000; batch += 1) {
+    const result = await gateway.retentionMaintenance({ lifecycleToken });
+    if (result.status === "disabled" || result.status === "not_applicable")
+      return result;
+    const binding = JSON.stringify({
+      authorizationRevision: result.authorizationRevision,
+      policyRevision: result.policyRevision,
+      cutoffL0: result.cutoffL0,
+      cutoffL1: result.cutoffL1,
+    });
+    if (frozen === undefined) frozen = binding;
+    else if (binding !== frozen)
+      throw new Error("Retention policy changed during backup preflight");
+    if (result.status === "drained") return result;
+    if (result.status !== "draining")
+      throw new Error("Retention maintenance did not complete before backup");
+  }
+  throw new Error("Retention maintenance exceeded the backup safety bound");
+}
 
 async function defaultRun(command, args, options) {
   const child = spawn(command, args, options);
@@ -114,6 +142,7 @@ export async function managePersonalMemory(command, options = {}) {
     options.installImpl ??
     ((installOptions) => installPersonalMemory(installOptions));
   const root = options.root ?? path.resolve(import.meta.dirname, "..");
+  let lifecycleLease;
 
   if (
     command === "uninstall" &&
@@ -164,14 +193,39 @@ export async function managePersonalMemory(command, options = {}) {
       throw new Error("Managed Hook installation is incomplete");
   }
 
-  await Promise.all([
-    stopImpl(receipt.webPid),
-    stopImpl(receipt.gatewayPid),
-    ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
-    ...(receipt.version === 3
-      ? [stopImpl(receipt.upstreamPid), stopImpl(receipt.hookWorkerPid)]
-      : []),
-  ]);
+  if (command === "backup" || command === "restore") {
+    const mutex =
+      options.lifecycleMutex ?? new DataLifecycleMutex(stateDirectory);
+    lifecycleLease = mutex.acquire({ operation: command });
+    if (!lifecycleLease)
+      throw new Error("Another data lifecycle operation is active");
+  }
+  if (command === "backup") {
+    try {
+      if (receipt.version === 3 || options.retentionPreflightImpl)
+        await (options.retentionPreflightImpl ?? drainRetentionBeforeBackup)(
+          stateDirectory,
+          lifecycleLease.token,
+        );
+    } catch (error) {
+      lifecycleLease.release();
+      throw error;
+    }
+  }
+
+  try {
+    await Promise.all([
+      stopImpl(receipt.webPid),
+      stopImpl(receipt.gatewayPid),
+      ...(receipt.version === 2 ? [stopImpl(receipt.upstreamPid)] : []),
+      ...(receipt.version === 3
+        ? [stopImpl(receipt.upstreamPid), stopImpl(receipt.hookWorkerPid)]
+        : []),
+    ]);
+  } catch (error) {
+    lifecycleLease?.release();
+    throw error;
+  }
   if (command === "stop") {
     await removeImpl(path.join(stateDirectory, "install.json"));
     return { stopped: true, dataDirectory, stateDirectory };
@@ -207,12 +261,16 @@ export async function managePersonalMemory(command, options = {}) {
       );
       return { backedUp: true, output: path.resolve(options.output) };
     } finally {
-      await installImpl({
-        root,
-        dataDirectory,
-        stateDirectory,
-        home: options.home,
-      });
+      try {
+        await installImpl({
+          root,
+          dataDirectory,
+          stateDirectory,
+          home: options.home,
+        });
+      } finally {
+        lifecycleLease?.release();
+      }
     }
   }
 
@@ -243,12 +301,16 @@ export async function managePersonalMemory(command, options = {}) {
       );
       return { restored: true, input: path.resolve(options.input) };
     } finally {
-      await installImpl({
-        root,
-        dataDirectory,
-        stateDirectory,
-        home: options.home,
-      });
+      try {
+        await installImpl({
+          root,
+          dataDirectory,
+          stateDirectory,
+          home: options.home,
+        });
+      } finally {
+        lifecycleLease?.release();
+      }
     }
   }
 

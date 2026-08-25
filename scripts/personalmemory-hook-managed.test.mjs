@@ -156,6 +156,7 @@ test("loads credentials indirectly and records only redacted worker status", asy
         workerGeneration: "test-worker",
         lastMaintenanceAt: 1234,
         backlog: { queued: 0, failed: 0, total: 0 },
+        retention: { status: "disabled" },
         authorization: {
           recall: "disabled",
           capture: "disabled",
@@ -164,6 +165,51 @@ test("loads credentials indirectly and records only redacted worker status", asy
         },
       },
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("records bounded retention maintenance statistics for doctor", async () => {
+  const root = await stateFixture();
+  try {
+    const result = await runHookMaintenance({
+      stateDirectory: root,
+      retentionExecutionEnabled: true,
+      gateway: {
+        retentionMaintenance: async () => ({
+          status: "draining",
+          plannedL0: 100,
+          plannedL1: 25,
+          deletedL0: 100,
+          deletedL1: 25,
+          remainingL0: 1,
+          remainingL1: 1,
+          deletedArtifacts: 2,
+          anomalyCount: 0,
+          errorCode: null,
+        }),
+      },
+      runtime: { maintain: async () => undefined },
+      turns: { maintain: async () => undefined },
+      outbox: {
+        status: async () => ({ queued: 0, failed: 0, total: 0 }),
+      },
+      now: () => 2234,
+    });
+    assert.equal(result.worker, "healthy");
+    assert.deepEqual(result.retention, {
+      status: "draining",
+      plannedL0: 100,
+      plannedL1: 25,
+      deletedL0: 100,
+      deletedL1: 25,
+      remainingL0: 1,
+      remainingL1: 1,
+      deletedArtifacts: 2,
+      anomalyCount: 0,
+      errorCode: null,
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

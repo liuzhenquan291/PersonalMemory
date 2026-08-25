@@ -43,6 +43,9 @@ function fixture(overrides = {}) {
         gatewayPid: 3001,
         webPid: 3002,
       }),
+      lifecycleMutex: {
+        acquire: () => ({ token: "fixture-upgrade-token", release: () => {} }),
+      },
       ...overrides,
     },
   };
@@ -108,6 +111,17 @@ test("rejects insufficient space before build or service stop", async () => {
   await assert.rejects(
     upgradePersonalMemory(item.options),
     /Insufficient disk space/,
+  );
+  assert.deepEqual(item.calls, []);
+});
+
+test("does not inspect or stop an installation while a lifecycle operation is active", async () => {
+  const item = fixture({
+    lifecycleMutex: { acquire: () => undefined },
+  });
+  await assert.rejects(
+    upgradePersonalMemory(item.options),
+    /lifecycle operation is active/u,
   );
   assert.deepEqual(item.calls, []);
 });

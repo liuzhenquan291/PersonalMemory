@@ -40,6 +40,10 @@ export {
 } from "./config.js";
 export { initializeDataDirectory } from "./data-directory.js";
 export {
+  DataLifecycleMutex,
+  type DataLifecycleLease,
+} from "./data-lifecycle-mutex.js";
+export {
   DeletedMemoryCannotBeRestoredError,
   MemoryStateConflictError,
   MemoryStateLedger,

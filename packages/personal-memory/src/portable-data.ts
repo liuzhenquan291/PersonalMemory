@@ -563,6 +563,9 @@ function verifySqliteDatabase(file: string): void {
 export async function restorePortableBackup(
   backupDirectoryInput: string,
   dataDirectoryInput: string,
+  options: {
+    prepareStaging?: (stagingDirectory: string) => Promise<void>;
+  } = {},
 ): Promise<{ restored: true; rollbackDirectory?: string }> {
   const backupDirectory = resolved(backupDirectoryInput);
   const dataDirectory = resolved(dataDirectoryInput);
@@ -598,6 +601,11 @@ export async function restorePortableBackup(
       await copyFile(path.join(backupDirectory, "data", relative), destination);
       await chmod(destination, 0o600);
     }
+    verifySqliteDatabase(path.join(staging, "personalmemory.sqlite"));
+    if (manifest.assets.some((asset) => asset.path === "vectors.db")) {
+      verifySqliteDatabase(path.join(staging, "vectors.db"));
+    }
+    await options.prepareStaging?.(staging);
     verifySqliteDatabase(path.join(staging, "personalmemory.sqlite"));
     if (manifest.assets.some((asset) => asset.path === "vectors.db")) {
       verifySqliteDatabase(path.join(staging, "vectors.db"));

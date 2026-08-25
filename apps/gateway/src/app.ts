@@ -213,6 +213,10 @@ const retentionAuthorizationTransitionSchema = z
   .object({ expected_authorization_revision: z.number().int().min(0) })
   .strict();
 
+const retentionMaintenanceSchema = z
+  .object({ lifecycle_token: z.string().min(32).max(256).optional() })
+  .strict();
+
 function capturePolicyResponse(
   status: NonNullable<
     GatewayAppOptions["capturePolicies"]
@@ -590,6 +594,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       "POST /api/v1/retention/authorization",
       "DELETE /api/v1/retention/authorization",
       "GET /api/v1/retention/status",
+      "POST /api/v1/retention/maintenance",
       "GET /api/v1/memories",
       "GET /api/v1/memory",
       "GET /api/v1/audit",
@@ -1112,6 +1117,153 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
       l1_retention_days: status.policy.l1RetentionDays,
       latest_run: status.run,
     });
+  });
+
+  app.post("/api/v1/retention/maintenance", async (context) => {
+    authenticateMemoryRequest(context);
+    if (!options.privacyDeletions || !options.retentionRuns)
+      throw new GatewayHttpError(
+        503,
+        "RETENTION_MAINTENANCE_UNAVAILABLE",
+        "Retention maintenance is unavailable",
+      );
+    const parsed = retentionMaintenanceSchema.safeParse(
+      await readLimitedJson(
+        context.req.raw,
+        options.config.server.requestBodyLimitBytes,
+      ),
+    );
+    if (!parsed.success)
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Retention maintenance request is invalid",
+      );
+    const lifecycleLease = options.lifecycleMutex?.acquire({
+      operation: "retention-maintenance",
+      ...(parsed.data.lifecycle_token
+        ? { token: parsed.data.lifecycle_token }
+        : {}),
+    });
+    if (options.lifecycleMutex && !lifecycleLease)
+      return context.json({ status: "partial", skipped: true });
+    let policy;
+    let authorization;
+    try {
+      policy = requireCapturePolicies().status();
+      authorization = requireRetentionAuthorizations().status(policy);
+    } catch (error) {
+      lifecycleLease?.release();
+      throw error;
+    }
+    if (policy.l0RetentionDays === null && policy.l1RetentionDays === null) {
+      lifecycleLease?.release();
+      return context.json({
+        status: "not_applicable",
+        authorization: authorization.status,
+        authorization_revision: authorization.revision,
+        policy_revision: policy.revision,
+      });
+    }
+    if (authorization.status !== "authorized") {
+      lifecycleLease?.release();
+      return context.json({
+        status: "disabled",
+        authorization: authorization.status,
+        authorization_revision: authorization.revision,
+        policy_revision: policy.revision,
+      });
+    }
+    const cutoff = (days: number | null): string | null => {
+      if (days === null) return null;
+      const date = new Date(now());
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (days - 1));
+      return date.toISOString();
+    };
+    const cutoffL0 = cutoff(policy.l0RetentionDays);
+    const cutoffL1 = cutoff(policy.l1RetentionDays);
+    const leaseOwner = randomId();
+    let runId: string | undefined;
+    let heartbeat: ReturnType<typeof setInterval> | undefined;
+    let result;
+    try {
+      result = await options.privacyDeletions.executeRetentionBatch(
+        { cutoffL0, cutoffL1 },
+        context.get("requestId"),
+        (plan) => {
+          const currentPolicy = requireCapturePolicies().status();
+          const currentAuthorization =
+            requireRetentionAuthorizations().status(currentPolicy);
+          if (
+            currentPolicy.revision !== policy.revision ||
+            currentAuthorization.status !== "authorized" ||
+            currentAuthorization.revision !== authorization.revision
+          )
+            return false;
+          const acquired = options.retentionRuns!.acquire({
+            policyRevision: policy.revision,
+            authorizationRevision: authorization.revision,
+            cutoffL0,
+            cutoffL1,
+            candidateDigest: plan.candidateDigest,
+            leaseOwner,
+            leaseMilliseconds: 60_000,
+            plannedL0: plan.plannedL0,
+            plannedL1: plan.plannedL1,
+            anomalyCount: plan.anomalyCount,
+          });
+          runId = acquired?.runId;
+          if (runId)
+            heartbeat = setInterval(() => {
+              try {
+                options.retentionRuns?.renew(runId!, leaseOwner, 60_000);
+              } catch {
+                // The request completion path will fail closed on a lost lease.
+              }
+            }, 20_000);
+          return runId !== undefined;
+        },
+      );
+    } catch (error) {
+      lifecycleLease?.release();
+      throw error;
+    } finally {
+      if (heartbeat) clearInterval(heartbeat);
+    }
+    if (!runId) {
+      lifecycleLease?.release();
+      return context.json({ status: result.status, skipped: true });
+    }
+    const counts = {
+      plannedL0: result.planned_l0,
+      plannedL1: result.planned_l1,
+      deletedL0: result.deleted_l0,
+      deletedL1: result.deleted_l1,
+      remainingL0: result.remaining_l0,
+      remainingL1: result.remaining_l1,
+      deletedArtifacts: result.deleted_artifacts,
+      anomalyCount: result.anomaly_count,
+    };
+    try {
+      const recorded =
+        result.status === "draining"
+          ? options.retentionRuns.checkpoint(runId, leaseOwner, counts)
+          : options.retentionRuns.complete(runId, leaseOwner, {
+              ...counts,
+              status: result.status,
+              ...(result.error_code ? { errorCode: result.error_code } : {}),
+            });
+      return context.json({
+        status: recorded.status,
+        authorization: authorization.status,
+        authorization_revision: authorization.revision,
+        policy_revision: policy.revision,
+        run: recorded,
+      });
+    } finally {
+      lifecycleLease?.release();
+    }
   });
 
   const requireBearer = (authorization: string | undefined): void => {
@@ -2328,6 +2480,15 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         "Privacy deletion confirmation is invalid",
       );
     }
+    const lifecycleLease = options.lifecycleMutex?.acquire({
+      operation: "privacy-deletion",
+    });
+    if (options.lifecycleMutex && !lifecycleLease)
+      throw new GatewayHttpError(
+        409,
+        "DATA_LIFECYCLE_BUSY",
+        "Another data lifecycle operation is active",
+      );
     try {
       const result = await requirePrivacyDeletions().execute(
         token,
@@ -2355,6 +2516,8 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         details: { scope: "cascade", status: "failed" },
       });
       throw error;
+    } finally {
+      lifecycleLease?.release();
     }
   });
 

@@ -160,6 +160,8 @@ export async function runHookMaintenance(options = {}) {
   const now = options.now ?? Date.now;
   let outcome = "healthy";
   let recentError;
+  let retention = { status: "disabled" };
+  let hookMaintenanceReady = false;
   try {
     managed =
       options.runtime && options.turns && options.outbox
@@ -189,9 +191,27 @@ export async function runHookMaintenance(options = {}) {
     await managed.runtime.maintain("managed-worker", {
       maxEntries: options.maxEntries ?? 16,
     });
+    hookMaintenanceReady = true;
   } catch {
     outcome = "degraded";
     recentError = "maintenance_failed";
+  }
+  if (
+    options.retentionExecutionEnabled === true &&
+    hookMaintenanceReady &&
+    managed.gateway?.retentionMaintenance
+  ) {
+    try {
+      retention = await managed.gateway.retentionMaintenance();
+      if (retention.status === "partial") {
+        outcome = "degraded";
+        recentError = "retention_maintenance_failed";
+      }
+    } catch {
+      outcome = "degraded";
+      recentError = "retention_maintenance_failed";
+      retention = { status: "partial" };
+    }
   }
   let backlog;
   try {
@@ -211,9 +231,10 @@ export async function runHookMaintenance(options = {}) {
     workerGeneration: options.workerGeneration ?? "test-worker",
     lastMaintenanceAt: now(),
     backlog,
+    retention,
     ...(recentError ? { recentError } : {}),
   });
-  return { backlog, statusPath, worker: outcome };
+  return { backlog, retention, statusPath, worker: outcome };
 }
 
 export async function readHookDoctorStatus(options = {}) {
@@ -249,8 +270,17 @@ export async function readHookDoctorStatus(options = {}) {
         status.backlog[key] <= 64,
     ) ||
     status.backlog.queued + status.backlog.failed !== status.backlog.total ||
+    !new Set([
+      "disabled",
+      "not_applicable",
+      "draining",
+      "drained",
+      "partial",
+    ]).has(status.retention?.status) ||
     (status.recentError !== undefined &&
-      status.recentError !== "maintenance_failed")
+      !new Set(["maintenance_failed", "retention_maintenance_failed"]).has(
+        status.recentError,
+      ))
   )
     throw new Error("Hook worker status is invalid");
   return {
@@ -264,6 +294,7 @@ export async function readHookDoctorStatus(options = {}) {
     workerGeneration: status.workerGeneration,
     lastMaintenanceAt: status.lastMaintenanceAt,
     backlog: status.backlog,
+    retention: status.retention,
     authorization: {
       recall: settings.recallEnabled === true ? "enabled" : "disabled",
       capture: settings.captureEnabled === true ? "enabled" : "disabled",

@@ -13,6 +13,8 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 
+import { DataLifecycleMutex } from "@personalmemory/core";
+
 import {
   defaultStateRoot,
   installPersonalMemory,
@@ -137,7 +139,7 @@ async function assertDiskSpace(dataDirectory, requiredBytes, statfsImpl) {
   }
 }
 
-export async function upgradePersonalMemory(options = {}) {
+async function upgradePersonalMemoryUnderLock(options = {}) {
   const root = options.root ?? path.resolve(import.meta.dirname, "..");
   const dataDirectory = path.resolve(options.dataDirectory);
   const stateDirectory = path.resolve(
@@ -280,6 +282,22 @@ export async function upgradePersonalMemory(options = {}) {
       "Upgrade failed; the verified backup was restored and services remain stopped. Run npm run install:product after resolving the reported cause",
       { cause: upgradeError },
     );
+  }
+}
+
+export async function upgradePersonalMemory(options = {}) {
+  const stateDirectory = path.resolve(
+    options.stateDirectory ??
+      process.env.PERSONALMEMORY_STATE_DIR ??
+      defaultStateRoot(),
+  );
+  const mutex = options.lifecycleMutex ?? new DataLifecycleMutex(stateDirectory);
+  const lease = mutex.acquire({ operation: "upgrade" });
+  if (!lease) throw new Error("Another data lifecycle operation is active");
+  try {
+    return await upgradePersonalMemoryUnderLock(options);
+  } finally {
+    lease.release();
   }
 }
 

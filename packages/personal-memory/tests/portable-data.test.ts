@@ -239,6 +239,38 @@ describe("portable PersonalMemory data", () => {
     expect(readFileSync(join(data, "persona.md"), "utf8")).toBe("current");
   });
 
+  it("prepares and revalidates staging before replacing current data", async () => {
+    const root = sandbox();
+    const data = fixture(root);
+    const backup = join(root, "backup");
+    await createPortableBackup(data, backup);
+    writeFileSync(join(data, "persona.md"), "current");
+
+    await restorePortableBackup(backup, data, {
+      prepareStaging: async (staging) => {
+        writeFileSync(join(staging, "persona.md"), "prepared");
+      },
+    });
+    expect(readFileSync(join(data, "persona.md"), "utf8")).toBe("prepared");
+  });
+
+  it("keeps current data when staging preparation fails", async () => {
+    const root = sandbox();
+    const data = fixture(root);
+    const backup = join(root, "backup");
+    await createPortableBackup(data, backup);
+    writeFileSync(join(data, "persona.md"), "current");
+
+    await expect(
+      restorePortableBackup(backup, data, {
+        prepareStaging: async () => {
+          throw new Error("staging retention failed");
+        },
+      }),
+    ).rejects.toThrow(/staging retention failed/u);
+    expect(readFileSync(join(data, "persona.md"), "utf8")).toBe("current");
+  });
+
   it("rejects newer backup versions and unsafe destinations", async () => {
     const root = sandbox();
     const data = fixture(root);

@@ -9,6 +9,9 @@ import {
   ModelAuthorizationLedger,
   MemoryReviewLedger,
   MemoryStateLedger,
+  RetentionAuthorizationLedger,
+  RetentionRunLedger,
+  DataLifecycleMutex,
   acquireRuntimeMarker,
   initializeDataDirectory,
   loadConfig,
@@ -38,6 +41,8 @@ let privacyDeletions: PrivacyDeletionService | undefined;
 let hookCaptures: HookCaptureLedger | undefined;
 let hookAuthorizations: HookAuthorizationLedger | undefined;
 let modelAuthorizations: ModelAuthorizationLedger | undefined;
+let retentionAuthorizations: RetentionAuthorizationLedger | undefined;
+let retentionRuns: RetentionRunLedger | undefined;
 let releaseRuntimeMarker: (() => void) | undefined;
 
 async function stop(signal: string): Promise<void> {
@@ -55,6 +60,8 @@ async function stop(signal: string): Promise<void> {
     hookCaptures = undefined;
     hookAuthorizations = undefined;
     modelAuthorizations = undefined;
+    retentionAuthorizations = undefined;
+    retentionRuns = undefined;
     hookCaptureDatabase?.close();
     hookCaptureDatabase = undefined;
     database?.close();
@@ -111,6 +118,12 @@ async function main(): Promise<void> {
     );
     const capturePolicies = new CapturePolicyLedger(database);
     modelAuthorizations = new ModelAuthorizationLedger(database);
+    retentionAuthorizations = new RetentionAuthorizationLedger(database);
+    retentionRuns = new RetentionRunLedger(database);
+    const stateDirectory = process.env.PERSONALMEMORY_STATE_DIR;
+    if (!stateDirectory)
+      throw new Error("PERSONALMEMORY_STATE_DIR is required");
+    const lifecycleMutex = new DataLifecycleMutex(stateDirectory);
     const app = createGatewayApp({
       config,
       upstream,
@@ -125,6 +138,9 @@ async function main(): Promise<void> {
       capturePolicies,
       hookCaptureSink: productionHookCapture.sink,
       modelAuthorizations,
+      retentionAuthorizations,
+      retentionRuns,
+      lifecycleMutex,
       hookPolicy: {
         authorization: () => hookAuthorizations!.status(),
         allowsSource: ({ operation, client, workingDirectory }) =>

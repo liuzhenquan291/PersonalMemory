@@ -69,10 +69,11 @@ describe("retention execution ledgers", () => {
 
   it("persists only digests and bounded redacted run statistics", () => {
     const digest = createHash("sha256").update("candidate-set").digest("hex");
+    let runSequence = 0;
     const ledger = new RetentionRunLedger(
       database,
       () => new Date("2026-08-24T02:00:00.000Z"),
-      () => "run-1",
+      () => `run-${++runSequence}`,
     );
     const run = ledger.acquire({
       policyRevision: 2,
@@ -144,6 +145,30 @@ describe("retention execution ledgers", () => {
         anomalyCount: 2,
       }),
     ).toMatchObject({ status: "drained", remainingL0: 0, remainingL1: 0 });
+    ledger.acquire({
+      policyRevision: 2,
+      authorizationRevision: 1,
+      cutoffL0: null,
+      cutoffL1: null,
+      candidateDigest: digest,
+      leaseOwner: "private-worker-instance",
+      leaseMilliseconds: 60_000,
+      plannedL0: 1,
+      plannedL1: 1,
+      anomalyCount: 0,
+    });
+    expect(
+      ledger.checkpoint("run-2", "private-worker-instance", {
+        plannedL0: 1,
+        plannedL1: 1,
+        deletedL0: 1,
+        deletedL1: 1,
+        remainingL0: 1,
+        remainingL1: 1,
+        deletedArtifacts: 0,
+        anomalyCount: 0,
+      }),
+    ).toMatchObject({ status: "draining", remainingL0: 1, remainingL1: 1 });
     const stored = JSON.stringify(
       database.prepare("SELECT * FROM personalmemory_retention_runs").get(),
     );

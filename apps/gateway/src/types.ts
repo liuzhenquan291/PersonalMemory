@@ -10,6 +10,7 @@ import type {
   PersonalMemoryConfig,
   RetentionAuthorizationLedger,
   RetentionRunLedger,
+  DataLifecycleMutex,
 } from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
 import type { PrivacyDeletionService } from "./privacy-deletions.js";
@@ -70,6 +71,7 @@ export interface GatewayAppOptions {
   modelAuthorizations?: ModelAuthorizationLedger;
   retentionAuthorizations?: RetentionAuthorizationLedger;
   retentionRuns?: RetentionRunLedger;
+  lifecycleMutex?: DataLifecycleMutex;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;
   logger?: GatewayLogger;

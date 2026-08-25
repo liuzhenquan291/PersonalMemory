@@ -31,6 +31,14 @@ function fixture() {
       runImpl: async (command, args) => calls.push([command, args]),
       removeImpl: async (...args) => calls.push(["remove", ...args]),
       installImpl: async () => calls.push(["install"]),
+      lifecycleMutex: {
+        acquire: () => ({
+          token: "fixture-lifecycle-token",
+          release: () => calls.push(["release"]),
+        }),
+      },
+      retentionPreflightImpl: async (_stateDirectory, token) =>
+        calls.push(["retention", token]),
     },
   };
 }
@@ -76,7 +84,21 @@ test("creates and verifies a backup then restarts", async () => {
   assert.equal(result.backedUp, true);
   assert(item.calls.some((call) => call[1]?.includes?.("data:backup")));
   assert(item.calls.some((call) => call[1]?.includes?.("data:verify")));
-  assert.deepEqual(item.calls.at(-1), ["install"]);
+  assert.deepEqual(item.calls[0], ["retention", "fixture-lifecycle-token"]);
+  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+});
+
+test("does not stop services when backup cannot acquire the lifecycle lock", async () => {
+  const item = fixture();
+  await assert.rejects(
+    managePersonalMemory("backup", {
+      ...item.options,
+      output: "/safe/backup",
+      lifecycleMutex: { acquire: () => undefined },
+    }),
+    /lifecycle operation is active/u,
+  );
+  assert.deepEqual(item.calls, []);
 });
 
 test("restarts even when backup fails", async () => {
@@ -88,7 +110,7 @@ test("restarts even when backup fails", async () => {
     managePersonalMemory("backup", { ...item.options, output: "/safe/backup" }),
     /backup failed/,
   );
-  assert.deepEqual(item.calls.at(-1), ["install"]);
+  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
 });
 
 test("restores only after verification and restarts", async () => {
@@ -101,7 +123,7 @@ test("restores only after verification and restarts", async () => {
     .filter((call) => call[0] === "npm")
     .map((call) => call[1][1]);
   assert.deepEqual(commands, ["data:verify", "data:restore"]);
-  assert.deepEqual(item.calls.at(-1), ["install"]);
+  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
 });
 
 test("restarts the existing data when restore verification fails", async () => {
@@ -116,7 +138,20 @@ test("restarts the existing data when restore verification fails", async () => {
     }),
     /invalid backup/,
   );
-  assert.deepEqual(item.calls.at(-1), ["install"]);
+  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+});
+
+test("does not stop services when restore cannot acquire the lifecycle lock", async () => {
+  const item = fixture();
+  await assert.rejects(
+    managePersonalMemory("restore", {
+      ...item.options,
+      input: "/safe/backup",
+      lifecycleMutex: { acquire: () => undefined },
+    }),
+    /lifecycle operation is active/u,
+  );
+  assert.deepEqual(item.calls, []);
 });
 
 test("uninstalls while preserving data by default", async () => {

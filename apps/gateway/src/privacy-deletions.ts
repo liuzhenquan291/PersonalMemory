@@ -124,7 +124,10 @@ export interface RetentionDeletionResult {
   remaining_l1: number;
   deleted_artifacts: number;
   anomaly_count: number;
-  error_code?: "RETENTION_DELETE_FAILED" | "RETENTION_VERIFY_FAILED";
+  error_code?:
+    | "RETENTION_DELETE_FAILED"
+    | "RETENTION_VERIFY_FAILED"
+    | "RETENTION_LEASE_UNAVAILABLE";
 }
 
 interface RetentionCandidatePlan {
@@ -545,6 +548,12 @@ export class PrivacyDeletionService {
   async executeRetentionBatch(
     input: { cutoffL0: string | null; cutoffL1: string | null },
     requestId: string,
+    beforeExecute?: (plan: {
+      candidateDigest: string;
+      plannedL0: number;
+      plannedL1: number;
+      anomalyCount: number;
+    }) => boolean,
   ): Promise<RetentionDeletionResult> {
     const plan = await this.planRetention(input, requestId);
     const result: RetentionDeletionResult = {
@@ -564,6 +573,19 @@ export class PrivacyDeletionService {
       deleted_artifacts: 0,
       anomaly_count: plan.anomalyCount,
     };
+    if (
+      beforeExecute &&
+      !beforeExecute({
+        candidateDigest: result.candidate_digest,
+        plannedL0: result.planned_l0,
+        plannedL1: result.planned_l1,
+        anomalyCount: result.anomaly_count,
+      })
+    ) {
+      result.status = "partial";
+      result.error_code = "RETENTION_LEASE_UNAVAILABLE";
+      return result;
+    }
     try {
       for (const candidate of plan.l1) {
         result.deleted_artifacts += await this.deleteRetentionL1(

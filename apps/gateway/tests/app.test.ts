@@ -171,6 +171,76 @@ interface ImportJobResponse {
 }
 
 describe("PersonalMemory Gateway app", () => {
+  it("runs authorized retention maintenance under a persisted lease and records drained proof", async () => {
+    const executeRetentionBatch = vi.fn(
+      async (_input, _requestId, beforeExecute) => {
+        expect(
+          beforeExecute({
+            candidateDigest: "a".repeat(64),
+            plannedL0: 1,
+            plannedL1: 1,
+            anomalyCount: 0,
+          }),
+        ).toBe(true);
+        return {
+          candidate_digest: "a".repeat(64),
+          status: "drained" as const,
+          planned_l0: 1,
+          planned_l1: 1,
+          deleted_l0: 1,
+          deleted_l1: 1,
+          remaining_l0: 0,
+          remaining_l1: 0,
+          deleted_artifacts: 2,
+          anomaly_count: 0,
+        };
+      },
+    );
+    const { app } = createHarness({
+      now: () => Date.parse("2026-08-25T12:00:00.000Z"),
+      privacyDeletions: {
+        executeRetentionBatch,
+      } as unknown as PrivacyDeletionService,
+    });
+    await app.request("/api/v1/capture-policy", {
+      method: "PUT",
+      headers: authHeaders,
+      body: JSON.stringify({
+        expected_policy_revision: 1,
+        capture_enabled: true,
+        excluded_clients: [],
+        excluded_working_directories: [],
+        excluded_sources: [],
+        sensitive_categories: ["credentials", "financial", "identity"],
+        l0_retention_days: 30,
+        l1_retention_days: 365,
+      }),
+    });
+    await app.request("/api/v1/retention/authorization", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ expected_authorization_revision: 0 }),
+    });
+    const maintenance = await app.request("/api/v1/retention/maintenance", {
+      method: "POST",
+      headers: authHeaders,
+      body: "{}",
+    });
+    expect(await maintenance.json()).toMatchObject({
+      status: "drained",
+      run: {
+        policyRevision: 2,
+        authorizationRevision: 1,
+        remainingL0: 0,
+        remainingL1: 0,
+      },
+    });
+    expect(executeRetentionBatch).toHaveBeenCalledOnce();
+    const status = await app.request("/api/v1/retention/status", {
+      headers: authHeaders,
+    });
+    expect(await status.json()).toMatchObject({ status: "drained" });
+  });
   it("keeps retention execution disabled until separately authorized and makes policy changes stale", async () => {
     const { app } = createHarness({});
     const initial = await app.request("/api/v1/retention/status", {

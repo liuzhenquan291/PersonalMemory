@@ -38,6 +38,7 @@ const RETRY_DELAYS_MS = [1000, 5000, 30_000, 60_000];
 const MAX_RECALL_RESPONSE_BYTES = 16 * 1024;
 const MAX_CAPTURE_RESPONSE_BYTES = 4 * 1024;
 const MAX_AUTHORIZATION_RESPONSE_BYTES = 4 * 1024;
+const MAX_RETENTION_RESPONSE_BYTES = 8 * 1024;
 
 function canonicalizeFuturePath(target) {
   let existing = target;
@@ -209,6 +210,112 @@ export class HookGatewayClient {
     )
       throw new Error("Hook Gateway returned invalid authorization status");
     return value;
+  }
+
+  async retentionMaintenance(options = {}) {
+    const response = await this.fetch(
+      `${this.baseUrl}/api/v1/retention/maintenance`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          ...(options.lifecycleToken
+            ? { lifecycle_token: options.lifecycleToken }
+            : {}),
+        }),
+        redirect: "manual",
+        signal: globalThis.AbortSignal.timeout(55_000),
+      },
+    );
+    if (!response.ok)
+      throw new Error(`Retention maintenance failed with ${response.status}`);
+    const body = await readJsonLimited(response, MAX_RETENTION_RESPONSE_BYTES);
+    if (
+      !new Set([
+        "disabled",
+        "not_applicable",
+        "draining",
+        "drained",
+        "partial",
+      ]).has(body?.status)
+    )
+      throw new Error("Gateway returned invalid retention maintenance status");
+    const run = body.run;
+    if (
+      body.authorization !== undefined &&
+      !new Set(["authorized", "disabled", "revoked", "stale"]).has(
+        body.authorization,
+      )
+    )
+      throw new Error("Gateway returned invalid retention authorization");
+    if (
+      body.policy_revision !== undefined &&
+      (!Number.isInteger(body.policy_revision) || body.policy_revision < 1)
+    )
+      throw new Error("Gateway returned invalid retention policy revision");
+    if (
+      body.authorization_revision !== undefined &&
+      (!Number.isInteger(body.authorization_revision) ||
+        body.authorization_revision < 0)
+    )
+      throw new Error("Gateway returned invalid retention authorization revision");
+    if (run !== undefined) {
+      for (const key of [
+        "plannedL0",
+        "plannedL1",
+        "deletedL0",
+        "deletedL1",
+        "remainingL0",
+        "remainingL1",
+        "deletedArtifacts",
+        "anomalyCount",
+      ]) {
+        if (!Number.isInteger(run[key]) || run[key] < 0)
+          throw new Error("Gateway returned invalid retention statistics");
+      }
+    }
+    return {
+      status: body.status,
+      ...(body.skipped === true ? { skipped: true } : {}),
+      ...(body.authorization
+        ? { authorization: body.authorization }
+        : {}),
+      ...(body.policy_revision
+        ? { policyRevision: body.policy_revision }
+        : {}),
+      ...(body.authorization_revision !== undefined
+        ? { authorizationRevision: body.authorization_revision }
+        : {}),
+      ...(run
+        ? {
+            plannedL0: run.plannedL0,
+            plannedL1: run.plannedL1,
+            deletedL0: run.deletedL0,
+            deletedL1: run.deletedL1,
+            remainingL0: run.remainingL0,
+            remainingL1: run.remainingL1,
+            deletedArtifacts: run.deletedArtifacts,
+            anomalyCount: run.anomalyCount,
+            errorCode: run.errorCode ?? null,
+            ...(run.cutoffL0 === null || typeof run.cutoffL0 === "string"
+              ? { cutoffL0: run.cutoffL0 }
+              : {}),
+            ...(run.cutoffL1 === null || typeof run.cutoffL1 === "string"
+              ? { cutoffL1: run.cutoffL1 }
+              : {}),
+            ...(typeof run.startedAt === "string"
+              ? { lastStartedAt: run.startedAt }
+              : {}),
+            ...(run.completedAt === null ||
+            typeof run.completedAt === "string"
+              ? { lastCompletedAt: run.completedAt }
+              : {}),
+          }
+        : {}),
+    };
   }
 
   async recall(request, options = {}) {

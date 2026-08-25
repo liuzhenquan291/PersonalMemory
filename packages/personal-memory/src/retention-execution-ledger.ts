@@ -410,4 +410,67 @@ export class RetentionRunLedger {
       .get(runId) as unknown as RunRow;
     return toRunView(row);
   }
+
+  checkpoint(
+    runId: string,
+    leaseOwner: string,
+    input: RetentionRunCounts,
+  ): RetentionRunView {
+    const timestamp = this.now().toISOString();
+    const result = this.database
+      .prepare(
+        `UPDATE personalmemory_retention_runs
+         SET deleted_l0 = ?, deleted_l1 = ?, remaining_l0 = ?,
+             remaining_l1 = ?, deleted_artifacts = ?, anomaly_count = ?,
+             lease_expires_at = ?, updated_at = ?
+         WHERE run_id = ? AND status = 'draining'
+           AND lease_owner_digest = ? AND lease_expires_at > ?`,
+      )
+      .run(
+        input.deletedL0,
+        input.deletedL1,
+        input.remainingL0,
+        input.remainingL1,
+        input.deletedArtifacts,
+        input.anomalyCount,
+        timestamp,
+        timestamp,
+        runId,
+        sha256(leaseOwner),
+        timestamp,
+      );
+    if (result.changes !== 1) throw new Error("Retention run is not active");
+    const row = this.database
+      .prepare("SELECT * FROM personalmemory_retention_runs WHERE run_id = ?")
+      .get(runId) as unknown as RunRow;
+    return toRunView(row);
+  }
+
+  renew(
+    runId: string,
+    leaseOwner: string,
+    leaseMilliseconds: number,
+  ): RetentionRunView {
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + leaseMilliseconds).toISOString();
+    const result = this.database
+      .prepare(
+        `UPDATE personalmemory_retention_runs
+         SET lease_expires_at = ?, updated_at = ?
+         WHERE run_id = ? AND status = 'draining'
+           AND lease_owner_digest = ? AND lease_expires_at > ?`,
+      )
+      .run(
+        expiresAt,
+        now.toISOString(),
+        runId,
+        sha256(leaseOwner),
+        now.toISOString(),
+      );
+    if (result.changes !== 1) throw new Error("Retention run is not active");
+    const row = this.database
+      .prepare("SELECT * FROM personalmemory_retention_runs WHERE run_id = ?")
+      .get(runId) as unknown as RunRow;
+    return toRunView(row);
+  }
 }

@@ -194,6 +194,54 @@ test("queues only retryable capture availability failures", async () => {
   await assert.rejects(invalid.capture(captureRequest), /rejected/u);
 });
 
+test("triggers authenticated retention maintenance and keeps only bounded statistics", async () => {
+  const calls = [];
+  const gateway = new HookGatewayClient({
+    baseUrl: "http://127.0.0.1:19876",
+    token: "fixture-token",
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      return new Response(
+        JSON.stringify({
+          status: "drained",
+          run: {
+            plannedL0: 1,
+            plannedL1: 1,
+            deletedL0: 1,
+            deletedL1: 1,
+            remainingL0: 0,
+            remainingL1: 0,
+            deletedArtifacts: 2,
+            anomalyCount: 0,
+            errorCode: null,
+            ignoredPath: "/private/export.json",
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    },
+  });
+  assert.deepEqual(await gateway.retentionMaintenance(), {
+    status: "drained",
+    plannedL0: 1,
+    plannedL1: 1,
+    deletedL0: 1,
+    deletedL1: 1,
+    remainingL0: 0,
+    remainingL1: 0,
+    deletedArtifacts: 2,
+    anomalyCount: 0,
+    errorCode: null,
+  });
+  assert.equal(
+    calls[0].url,
+    "http://127.0.0.1:19876/api/v1/retention/maintenance",
+  );
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.headers.authorization, "Bearer fixture-token");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {});
+});
+
 test("rejects HTTP redirects as terminal instead of queueing them", async () => {
   const server = createServer((_request, response) => {
     response.writeHead(302, { location: "/redirected" });
