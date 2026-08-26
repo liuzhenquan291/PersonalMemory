@@ -17,7 +17,7 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 ## 当前状态
 
-M0–M5 已完成个人记忆核心闭环、可信治理、Codex/Claude Code MCP 互操作、一条命令服务安装、安全升级、备份恢复和卸载基线。复盘后确认当前 Agent 接入仍是“可调用 MCP 工具”，尚未安装自动召回/自动捕获 Hook；隐私采集策略、模型授权和部分来源追溯承诺也仍需收口。因此项目当前不是完整 MVP 或发布候选，正在补做 M4.5–M5.5，且尚未合并到 `main`、推送或对外发布。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
+M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命周期、M4.6 模型/隐私门禁和 M4.7 现有承诺收口均已完成。Codex 与 Claude Code 的受管 Hook、自动召回/本地捕获、版本化授权、采集策略、保留期执行和恢复防复活已有自动化证据。项目仍不是发布候选：下一步必须完成 M5.5 真实分发物与双客户端重新发布验证，之后才评估移动 `main`、推送或对外发布。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
 
 ## 产品安装
 
@@ -27,7 +27,7 @@ macOS 或 Linux 安装 Node.js 22.19.0 以上版本后，校验并解压版本�
 ./install-personalmemory.sh
 ```
 
-命令会检查环境，缺少依赖时按锁文件获取，随后完成构建、私有数据目录初始化、核心 Gateway、PersonalMemory Gateway 与 Web 后台启动，并验证三个健康入口和非降级 L0/L1 召回。模型访问和遥测保持关闭。重复执行只验证已有受管进程和召回状态，不替换记忆数据；失败不会删除既有数据。发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
+命令会检查环境，缺少依赖时按锁文件获取，随后完成构建、私有数据目录初始化、核心 Gateway、PersonalMemory Gateway、Web 后台、维护 worker 以及 Codex/Claude Code 受管 Hook 配置，并验证健康入口和非降级 L0/L1 召回。模型访问、自动召回和自动本地捕获默认关闭；在 Web 设置页解锁本地会话后可分别授权后两项。Codex 初装或 Hook 定义升级后，仍须在客户端用 `/hooks` 核对并信任精确定义。重复执行只验证已有受管进程和召回状态，不替换记忆数据；失败不会删除既有数据。发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
 
 已安装版本可在同一源码仓库中执行安全升级：
 
@@ -50,14 +50,14 @@ npm run lifecycle:product -- uninstall
 
 备份和恢复会安全停止服务、验证备份并重新启动。默认卸载只移除受管运行状态，完整保留记忆数据，可再次运行安装命令继续使用。只有增加 `--purge-data --confirm "DELETE <绝对数据目录>"` 且确认文本精确匹配时才清除数据；执行前命令会列出并严格校验实际目标。
 
-Gateway 已启动且认证环境变量可用时，可为 Codex 安装或卸载 MCP 配置：
+安装器已配置 Codex 与 Claude Code 自动 Hook。Gateway 已启动且认证环境变量可用时，还可按需为 Codex 安装或卸载五个手动 MCP 工具：
 
 ```bash
 npm run codex:mcp:install
 npm run codex:mcp:uninstall
 ```
 
-安装只转发 `PERSONALMEMORY_AUTH_TOKEN` 等变量名，不把密钥值写入 Codex 配置。当前命令只安装 MCP 工具，不安装 PersonalMemory Hook；捕获、反馈和遗忘交接默认由客户端提示确认。自动召回/自动捕获和 Claude Code 正式安装器属于重新开放后的 M4.5，完成前请勿把当前接入描述为自动记忆维护。
+MCP 安装只转发 `PERSONALMEMORY_AUTH_TOKEN` 等变量名，不把密钥值写入 Codex 配置。手动 MCP 捕获、反馈和遗忘交接仍由客户端逐次提示确认，与 Web 中持久化的自动 Hook 授权相互独立。
 
 本地 Gateway 停止后，可使用以下命令管理统一 SQLite 数据根：
 
@@ -68,7 +68,16 @@ npm run data:verify -- --input /安全路径/memory-backup
 npm run data:restore -- --input /安全路径/memory-backup --confirm "RESTORE /绝对路径/PersonalMemory"
 ```
 
-导出和备份包含个人记忆正文，移动或共享前请确认目标路径权限。完整格式、排除项和恢复边界见[可移植数据说明](docs/architecture/PORTABLE_DATA.md)。
+导出和备份包含个人记忆正文，移动或共享前请确认目标路径权限。可读 JSON/Markdown 导出用于阅读和校验，当前不能导入或重建索引；跨安装迁移与灾难恢复请使用已验证完整备份。完整格式、排除项和恢复边界见[可移植数据说明](docs/architecture/PORTABLE_DATA.md)。
+
+## 首版使用边界
+
+- Web：浏览/搜索 L0–L3、L1 审核、纠错与失效、冲突/替代治理、审计、强确认删除，以及自动召回/本地捕获授权。
+- 受管 CLI：安装、状态与 Agent Hook 信任检查、升级、导出、完整备份/校验/恢复、重启、停止和安全卸载。
+- 来源：L0 与带真实引用的新 L1 可核对来源；旧 L1 和当前 L2/L3 明确显示“来源未记录”。MVP 不伪造完整 L3→L2→L1→L0 链。
+- 不要求用户直接操作 SQLite 或拼接原始 Gateway API；首版也不宣称所有系统管理动作都有 Web 按钮。
+
+完整决定见 [MVP 用户边界](docs/architecture/MVP_USER_BOUNDARIES.md)。
 
 - [项目执行规则](docs/PROJECT_RULES.md)
 - [开发计划](docs/DEVELOPMENT_PLAN.md)

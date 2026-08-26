@@ -563,6 +563,156 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByText("已配置")).toBeVisible();
     expect(screen.getByText("模型连接")).toBeVisible();
     expect(screen.getByText("关闭")).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Agent 接入" })).toBeVisible();
+    expect(
+      screen.getByText(/npm run lifecycle:product -- status/u),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", {
+        name: "日常管理用 Web，系统操作用受管命令",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/当前不能导入或重建索引/u)).toBeVisible();
+  });
+
+  it("updates automatic recall without granting automatic capture", async () => {
+    sessionStorage.setItem("personalmemory.csrf", "csrf-local");
+    const authorization = {
+      installation_id: "install-1",
+      authorization_revision: 1,
+      policy_revision: 1,
+      recall_enabled: false,
+      capture_enabled: false,
+      changed_at: "2026-08-26T00:00:00.000Z",
+    };
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        if (String(input) === "/api/v1/config/status")
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                authenticationConfigured: true,
+                modelConfigured: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        if (init?.method === "POST") {
+          Object.assign(authorization, {
+            authorization_revision: 2,
+            recall_enabled: true,
+          });
+          return Promise.resolve(
+            new Response(JSON.stringify({ authorization }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              authorization,
+              disclosure: {
+                version: 1,
+                recall: {
+                  data: "approved L1 memory text",
+                  timing: "before the model request",
+                  purpose: "provide relevant memory for the current response",
+                  destination: "the current agent model input",
+                  budget: "up to 5 items and 1000 ms",
+                  failure: "the prompt continues without memory",
+                  revocation: "the Gateway rejects recall immediately",
+                },
+                capture: {
+                  data: "raw user and assistant text",
+                  timing: "after a successful main-agent response",
+                  purpose: "build local memory",
+                  destination: "local L0 memory and a private retry outbox",
+                  budget: "one pair and a bounded 24-hour outbox",
+                  failure: "the agent response is never blocked",
+                  revocation:
+                    "queued entries cannot flush under the old revision",
+                },
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      });
+    renderRoute("/settings");
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "授权自动召回" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/hooks/authorization",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          disclosure_version: 1,
+          expected_authorization_revision: 1,
+          recall_enabled: true,
+          capture_enabled: false,
+        }),
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+      }),
+    );
+    expect(screen.getByText("the current agent model input")).toBeVisible();
+    expect(screen.getByText(/bounded 24-hour outbox/u)).toBeVisible();
+    expect(screen.getByText(/queued entries cannot flush/u)).toBeVisible();
+    expect(
+      await screen.findByText(/授权已更新。worker 会在下一次同步后应用/u),
+    ).toBeVisible();
+  });
+
+  it("fails closed when the Hook authorization disclosure is incomplete", async () => {
+    sessionStorage.setItem("personalmemory.csrf", "csrf-local");
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (String(input) === "/api/v1/config/status")
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              authenticationConfigured: true,
+              modelConfigured: false,
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            authorization: {
+              installation_id: "install-1",
+              authorization_revision: 1,
+              policy_revision: 1,
+              recall_enabled: false,
+              capture_enabled: false,
+              changed_at: "2026-08-26T00:00:00.000Z",
+            },
+            disclosure: {
+              version: 1,
+              recall: {},
+              capture: {},
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
+    });
+
+    renderRoute("/settings");
+
+    expect(
+      await screen.findByText("授权状态读取失败，请重新解锁或稍后重试。"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "授权自动召回" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "授权自动捕获" }),
+    ).not.toBeInTheDocument();
   });
 
   it("exchanges the local token for a browser session without storing it", async () => {

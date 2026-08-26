@@ -3,7 +3,82 @@ export interface GatewayStatus {
   readonly modelConfigured: boolean;
 }
 
+export interface HookAuthorization {
+  readonly installation_id: string;
+  readonly authorization_revision: number;
+  readonly policy_revision: number;
+  readonly recall_enabled: boolean;
+  readonly capture_enabled: boolean;
+  readonly changed_at: string;
+}
+
+export interface HookAuthorizationStatus {
+  readonly authorization: HookAuthorization;
+  readonly disclosure: {
+    readonly version: 1;
+    readonly recall: HookAuthorizationDisclosureItem;
+    readonly capture: HookAuthorizationDisclosureItem;
+  };
+}
+
+interface HookAuthorizationDisclosureItem {
+  readonly data: string;
+  readonly timing: string;
+  readonly purpose: string;
+  readonly destination: string;
+  readonly budget: string;
+  readonly failure: string;
+  readonly revocation: string;
+}
+
+function isHookAuthorization(value: unknown): value is HookAuthorization {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof Reflect.get(value, "installation_id") === "string" &&
+    Number.isInteger(Reflect.get(value, "authorization_revision")) &&
+    Number.isInteger(Reflect.get(value, "policy_revision")) &&
+    typeof Reflect.get(value, "recall_enabled") === "boolean" &&
+    typeof Reflect.get(value, "capture_enabled") === "boolean" &&
+    typeof Reflect.get(value, "changed_at") === "string"
+  );
+}
+
+function isHookAuthorizationDisclosureItem(
+  value: unknown,
+): value is HookAuthorizationDisclosureItem {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    [
+      "data",
+      "timing",
+      "purpose",
+      "destination",
+      "budget",
+      "failure",
+      "revocation",
+    ].every((field) => typeof Reflect.get(value, field) === "string")
+  );
+}
+
+function isHookAuthorizationDisclosure(
+  value: unknown,
+): value is HookAuthorizationStatus["disclosure"] {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    Reflect.get(value, "version") === 1 &&
+    isHookAuthorizationDisclosureItem(Reflect.get(value, "recall")) &&
+    isHookAuthorizationDisclosureItem(Reflect.get(value, "capture"))
+  );
+}
+
 const CSRF_STORAGE_KEY = "personalmemory.csrf";
+
+export function hasBrowserSession(): boolean {
+  return Boolean(sessionStorage.getItem(CSRF_STORAGE_KEY));
+}
 
 export async function createBrowserSession(token: string): Promise<void> {
   const response = await fetch("/api/v1/session", {
@@ -25,6 +100,67 @@ export async function createBrowserSession(token: string): Promise<void> {
     );
   }
   sessionStorage.setItem(CSRF_STORAGE_KEY, body.csrfToken);
+}
+
+export async function fetchHookAuthorization(
+  signal?: AbortSignal,
+): Promise<HookAuthorizationStatus> {
+  const response = await fetch("/api/v1/hooks/authorization", {
+    headers: { Accept: "application/json" },
+    credentials: "same-origin",
+    ...(signal ? { signal } : {}),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    authorization?: HookAuthorization;
+    disclosure?: HookAuthorizationStatus["disclosure"];
+    error?: { code?: string };
+  };
+  if (!response.ok)
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ?? "HOOK_AUTHORIZATION_FAILED",
+    );
+  if (
+    !isHookAuthorization(body.authorization) ||
+    !isHookAuthorizationDisclosure(body.disclosure)
+  )
+    throw new Error("Gateway 返回了无法识别的 Hook 授权状态");
+  return body as HookAuthorizationStatus;
+}
+
+export async function updateHookAuthorization(input: {
+  current: HookAuthorization;
+  disclosureVersion: 1;
+  recallEnabled: boolean;
+  captureEnabled: boolean;
+}): Promise<HookAuthorization> {
+  const response = await fetch("/api/v1/hooks/authorization", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(sessionStorage.getItem(CSRF_STORAGE_KEY)
+        ? { "X-CSRF-Token": sessionStorage.getItem(CSRF_STORAGE_KEY)! }
+        : {}),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      disclosure_version: input.disclosureVersion,
+      expected_authorization_revision: input.current.authorization_revision,
+      recall_enabled: input.recallEnabled,
+      capture_enabled: input.captureEnabled,
+    }),
+  });
+  const body = (await response.json().catch(() => ({}))) as {
+    authorization?: HookAuthorization;
+    error?: { code?: string };
+  };
+  if (!response.ok || !isHookAuthorization(body.authorization))
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ?? "HOOK_AUTHORIZATION_UPDATE_FAILED",
+    );
+  return body.authorization;
 }
 
 export type MemoryLevel = "L0" | "L1" | "L2" | "L3";
