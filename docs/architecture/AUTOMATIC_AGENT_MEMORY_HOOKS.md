@@ -26,7 +26,7 @@ M4.5.5 把 Runtime 接入正式源码安装：
 - 命令只含 Node、受管入口、客户端名、非敏感绝对状态目录和当前定义标识；凭据与 HMAC 私钥从私有状态目录间接读取。
 - Codex 初装/升级为 installed_untrusted；当前定义产生首事件后才 healthy，升级清除旧回执并要求重新信任。
 - 第四个受管进程每分钟清扫过期 turn、维护 outbox，并向 lifecycle status 提供脱敏 doctor 状态。
-- 隔离 HOME fixture 执行两端受管命令；真实 Codex doctor 解析配置。当前环境无 Claude Code 二进制，真实二进制矩阵在 M5.5 复核。
+- 隔离 HOME fixture 已执行两端受管命令，真实 Codex doctor 已解析配置。M4.5.5 执行环境当时无 Claude Code 二进制；M5.5 必须重新探测并如实区分真实二进制与受管 Hook fixture 证据。
 - 生产 recall/capture 授权与 capture sink 仍关闭，不能从 fixture 推断 M4.6 已完成。
 
 ## 2. 已核验的客户端事件
@@ -90,7 +90,7 @@ Stop Hook 永远返回“允许停止”的有效客户端 JSON，不得因捕�
 
 自动召回与自动本地捕获是两个独立、默认关闭的授权。首次安装或 Web 引导必须分别解释处理阶段、数据范围、预算、失败行为和撤销方式；只有用户明确开启后，Gateway 才签发版本化授权。Hook 配置存在、客户端信任 Hook 或 MCP 已连接都不等同于产品授权。
 
-M4.6.4 以产品 SQLite 账本和认证 `/api/v1/hooks/authorization` 作为权威事实源：GET 对 recall/capture 分别固定披露数据、处理时机、用途、目的地、预算、fail-open 和撤销效果，并返回当前状态；POST 以 expected revision 独立设置 recall/capture，DELETE 原子双关闭。安装身份从私有 Hook secret 单向派生；跨安装恢复时旧授权自动失效。受管 worker 在任何维护和 outbox flush 前同步权威 revision，安装身份不一致或同步失败均 fail closed，不使用旧授权处理正文。本步骤 policy revision 固定为 1，尚未提供 Agent/项目/来源排除、敏感内容和保留期设置。
+M4.6.4 以产品 SQLite 账本和认证 `/api/v1/hooks/authorization` 作为权威事实源：GET 对 recall/capture 分别固定披露数据、处理时机、用途、目的地、预算、fail-open 和撤销效果，并返回当前状态；POST 以 expected revision 独立设置 recall/capture，DELETE 原子双关闭。安装身份从私有 Hook secret 单向派生；跨安装恢复时旧授权自动失效。受管 worker 在任何维护和 outbox flush 前同步权威 revision，安装身份不一致或同步失败均 fail closed，不使用旧授权处理正文。M4.6.4 当时的 policy revision=1 仅代表尚未接入更窄策略；Agent/工作目录/来源排除、敏感内容和保留期随后已由 M4.6.5–M4.6.6.2 完成。
 
 每次请求必须携带安装、授权和策略 revision；Gateway 以服务端当前值为权威。授权撤销、策略更新或安装身份变化后，旧请求必须 `skipped`，不得由 Adapter 猜测迁移。
 
@@ -112,7 +112,7 @@ Claude Code 首版写入用户级 `~/.claude/settings.json` 的受管条目并�
 
 日志和审计只记录客户端、事件、结果码、耗时、条数、预算、backlog 数量和 HMAC/摘要标识；不得记录 prompt、assistant 正文、additional context、cwd 原文、transcript 路径、密钥或 outbox payload。Web/doctor 至少展示：安装状态、客户端信任、两项授权、策略 revision、最近成功时间、最近脱敏错误、backlog 和暂停/排除状态。
 
-M4.5 后续退出测试必须覆盖：自然提示无需“搜索/保存”口令、前置召回、成功捕获、重复 Stop、相同 key 不同载荷、失败/中断、子 Agent、pending 不召回、注入不回写、授权撤销、来源排除、敏感内容、Gateway 超时、outbox 重启恢复、配置保护、重新信任与可逆卸载。所有真实客户端测试必须在隔离 HOME 和本地 Gateway fixture 下运行，不能用测试专用自动批准设置冒充用户安装状态。
+M4.5 退出测试已覆盖：自然提示无需“搜索/保存”口令、前置召回、成功捕获、重复 Stop、相同 key 不同载荷、失败/中断、子 Agent、pending 不召回、注入不回写、授权撤销、来源排除、敏感内容、Gateway 超时、outbox 重启恢复、配置保护、重新信任与可逆卸载。M5.5 从真实分发物复验适用矩阵；所有真实客户端测试必须在隔离 HOME 和本地 Gateway fixture 下运行，不能用测试专用自动批准设置冒充用户安装状态。
 
 ## 9. 官方契约核对
 

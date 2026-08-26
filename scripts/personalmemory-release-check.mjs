@@ -40,6 +40,7 @@ for (const script of [
 const installer = await requireFile("install-personalmemory.sh");
 if (
   !installer.includes("npm ci") ||
+  !installer.includes("npm run build:products") ||
   !installer.includes("npm run install:product")
 ) {
   failures.push("source distribution installer is incomplete");

@@ -27,4 +27,5 @@ for (let index = 0; index < minimum.length; index += 1) {
 if [ ! -d node_modules ]; then
   npm ci
 fi
+npm run build:products
 npm run install:product

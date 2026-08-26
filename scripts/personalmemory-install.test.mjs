@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { DatabaseSync } from "node:sqlite";
-import { mkdtemp, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import process from "node:process";
@@ -106,6 +106,25 @@ test("selects native private data roots", () => {
   );
 });
 
+test("rejects equal or nested data and state directories", async () => {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-overlap-")),
+  );
+  const cases = [
+    [path.join(root, "shared"), path.join(root, "shared")],
+    [path.join(root, "data"), path.join(root, "data", "state")],
+    [path.join(root, "state", "data"), path.join(root, "state")],
+  ];
+
+  for (const [dataDirectory, stateDirectory] of cases) {
+    await assert.rejects(
+      installPersonalMemory({ dataDirectory, stateDirectory }),
+      /must not overlap/u,
+    );
+  }
+  await rm(root, { recursive: true });
+});
+
 test("builds a fail-closed upstream model environment", () => {
   const environment = buildModelDisabledUpstreamEnvironment({
     TDAI_LLM_ENABLED: "true",
@@ -123,8 +142,10 @@ test("builds a fail-closed upstream model environment", () => {
 });
 
 test("maps only a currently authorized private model configuration upstream", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-model-authorized-"),
+  const root = await realpath(
+    await mkdtemp(
+      path.join(os.tmpdir(), "personalmemory-install-model-authorized-"),
+    ),
   );
   const stateDirectory = path.join(root, "state");
   const dataDirectory = path.join(root, "data");
@@ -243,8 +264,8 @@ test("maps only a currently authorized private model configuration upstream", as
 });
 
 test("builds, starts, writes private state, and reports a healthy installation", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-test-"),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-test-")),
   );
   const dataDirectory = path.join(root, "data");
   await mkdir(path.join(root, "node_modules", "vite", "bin"), {
@@ -282,6 +303,10 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.equal(calls[1][2].env.TDAI_LLM_API_KEY, undefined);
   assert.equal(calls[1][2].env.TDAI_LLM_MODEL, undefined);
   assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
+  assert.equal(
+    calls[2][2].env.PERSONALMEMORY_STATE_DIR,
+    path.join(root, "state"),
+  );
   assert.equal((await stat(result.receiptPath)).mode & 0o777, 0o600);
   assert.equal((await stat(result.secretPath)).mode & 0o777, 0o600);
   const secret = await readFile(result.secretPath, "utf8");
@@ -296,8 +321,8 @@ test("builds, starts, writes private state, and reports a healthy installation",
 });
 
 test("does not install dependencies when they are already present", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-offline-"),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-offline-")),
   );
   await mkdir(path.join(root, "node_modules", "vite", "bin"), {
     recursive: true,
@@ -325,8 +350,8 @@ test("does not install dependencies when they are already present", async () => 
 });
 
 test("reuses a valid private credential when restarting without a receipt", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-restart-"),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-restart-")),
   );
   const stateDirectory = path.join(root, "state");
   await mkdir(path.join(root, "node_modules", "vite", "bin"), {
@@ -367,8 +392,8 @@ test("reuses a valid private credential when restarting without a receipt", asyn
 });
 
 test("fails before changing data when a port is occupied", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-port-"),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-port-")),
   );
   await assert.rejects(
     installPersonalMemory({
@@ -387,8 +412,8 @@ test("fails before changing data when a port is occupied", async () => {
 });
 
 test("cleans started services and leaves no receipt after failed health checks", async () => {
-  const root = await mkdtemp(
-    path.join(os.tmpdir(), "personalmemory-install-failure-"),
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-install-failure-")),
   );
   await mkdir(path.join(root, "node_modules", "vite", "bin"), {
     recursive: true,
@@ -420,7 +445,7 @@ test("cleans started services and leaves no receipt after failed health checks",
     }),
     /Timed out waiting/,
   );
-  assert.equal(children.length, 4);
+  assert.equal(children.length, 3);
   assert.equal(hookUninstallCalls, 0);
   await assert.rejects(stat(path.join(root, "state", "install.json")), {
     code: "ENOENT",

@@ -18,6 +18,8 @@ import process from "node:process";
 import { setTimeout } from "node:timers/promises";
 import { URL } from "node:url";
 
+import { initializeDataDirectory } from "@personalmemory/core";
+
 import {
   installManagedHooks,
   readManagedHookStatus,
@@ -397,10 +399,11 @@ export async function installPersonalMemory(options = {}) {
   );
   if (
     runtimeDirectory === dataDirectory ||
-    runtimeDirectory.startsWith(`${dataDirectory}${path.sep}`)
+    runtimeDirectory.startsWith(`${dataDirectory}${path.sep}`) ||
+    dataDirectory.startsWith(`${runtimeDirectory}${path.sep}`)
   ) {
     throw new Error(
-      "PERSONALMEMORY_STATE_DIR must be outside the memory data directory",
+      "PERSONALMEMORY_STATE_DIR and PERSONALMEMORY_DATA_DIR must not overlap",
     );
   }
   const receiptPath = path.join(runtimeDirectory, "install.json");
@@ -502,6 +505,7 @@ export async function installPersonalMemory(options = {}) {
   if (!(await pathExists(path.join(root, "node_modules"))))
     await run("npm", ["ci"], { cwd: root, stdio: "inherit" });
   await run("npm", ["run", "build:products"], { cwd: root, stdio: "inherit" });
+  initializeDataDirectory(dataDirectory);
   await mkdir(runtimeDirectory, { recursive: true, mode: 0o700 });
   const { token, environment: gatewayEnvironment } =
     await loadOrCreateGatewayEnvironment(secretPath);
@@ -564,6 +568,7 @@ export async function installPersonalMemory(options = {}) {
           PERSONALMEMORY_HOST: host,
           PERSONALMEMORY_PORT: String(gatewayPort),
           PERSONALMEMORY_DATA_DIR: dataDirectory,
+          PERSONALMEMORY_STATE_DIR: runtimeDirectory,
           PERSONALMEMORY_AUTH_ENABLED: "true",
           PERSONALMEMORY_AUTH_TOKEN: token,
           PERSONALMEMORY_HOOK_INSTALLATION_ID: installationId,
@@ -592,20 +597,6 @@ export async function installPersonalMemory(options = {}) {
       },
     );
     children.push(web);
-    const hookWorkerGeneration = randomBytes(16).toString("hex");
-    const hookWorker = spawnImpl(
-      process.execPath,
-      [path.join(root, "scripts", "personalmemory-hook-worker.mjs")],
-      {
-        ...common,
-        env: {
-          ...environment,
-          PERSONALMEMORY_STATE_DIR: runtimeDirectory,
-          PERSONALMEMORY_HOOK_WORKER_GENERATION: hookWorkerGeneration,
-        },
-      },
-    );
-    children.push(hookWorker);
     await Promise.all([
       waitForHttp(
         `http://${host}:${upstreamPort}/health`,
@@ -629,6 +620,20 @@ export async function installPersonalMemory(options = {}) {
       fetchImpl,
       startupTimeoutMs,
     );
+    const hookWorkerGeneration = randomBytes(16).toString("hex");
+    const hookWorker = spawnImpl(
+      process.execPath,
+      [path.join(root, "scripts", "personalmemory-hook-worker.mjs")],
+      {
+        ...common,
+        env: {
+          ...environment,
+          PERSONALMEMORY_STATE_DIR: runtimeDirectory,
+          PERSONALMEMORY_HOOK_WORKER_GENERATION: hookWorkerGeneration,
+        },
+      },
+    );
+    children.push(hookWorker);
     await (options.waitForHookWorkerImpl ?? waitForHookWorker)({
       stateDirectory: runtimeDirectory,
       pid: hookWorker.pid,

@@ -76,9 +76,9 @@ describe("CapturePolicyLedger", () => {
     expect(
       ledger.sensitiveCategory("Authorization: Bearer abcdefghijklmnop"),
     ).toBe("credentials");
-    expect(ledger.sensitiveCategory("-----BEGIN PRIVATE KEY-----")).toBe(
-      "credentials",
-    );
+    expect(
+      ledger.sensitiveCategory(["-----BEGIN", "PRIVATE KEY-----"].join(" ")),
+    ).toBe("credentials");
     expect(ledger.history({ limit: 1 })).toHaveLength(1);
     expect(ledger.history({ beforeRevision: 2 })).toMatchObject([
       { revision: 1 },
