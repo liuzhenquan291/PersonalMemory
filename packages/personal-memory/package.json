@@ -1,0 +1,25 @@
+{
+  "name": "@personalmemory/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./hook-contract": {
+      "types": "./dist/hook-contract.d.ts",
+      "import": "./dist/hook-contract.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run -c vitest.config.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,208 @@
+{
+  "name": "@tencentdb-agent-memory/memory-tencentdb",
+  "version": "1.0.1",
+  "description": "Four-layer local memory system plugin for OpenClaw — auto-captures, structures, and profiles conversational knowledge using local LLM + SQLite vector search (L0→L1→L2→L3 pipeline)",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "bin": {
+    "migrate-sqlite-to-tcvdb": "./bin/migrate-sqlite-to-tcvdb.mjs",
+    "export-tencent-vdb": "./bin/export-tencent-vdb.mjs",
+    "read-local-memory": "./bin/read-local-memory.mjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "install:product": "node scripts/personalmemory-install.mjs",
+    "upgrade:product": "node scripts/personalmemory-upgrade.mjs",
+    "lifecycle:product": "node scripts/personalmemory-lifecycle.mjs",
+    "release:check": "node scripts/personalmemory-release-check.mjs",
+    "release:package": "node scripts/personalmemory-package.mjs",
+    "dev": "node scripts/dev.mjs",
+    "data:export": "tsx scripts/personalmemory-data.ts export",
+    "data:backup": "tsx scripts/personalmemory-data.ts backup",
+    "data:verify": "tsx scripts/personalmemory-data.ts verify",
+    "data:restore": "tsx scripts/personalmemory-data.ts restore",
+    "codex:mcp:install": "npm run build -w @personalmemory/core && npm run build -w @personalmemory/mcp-server && node scripts/personalmemory-codex.mjs install",
+    "codex:mcp:uninstall": "node scripts/personalmemory-codex.mjs uninstall",
+    "test:dev": "node --test scripts/dev-runtime.test.mjs",
+    "install:all": "npm ci && npm --prefix sdk/typescript ci",
+    "build": "npm run build:upstream && npm run build:products",
+    "build:upstream": "npm run build:plugin && npm run build:scripts",
+    "build:products": "npm run clean:products && npm run build -w @personalmemory/core && npm run build -w @personalmemory/gateway && npm run build -w @personalmemory/mcp-server && npm run build -w @personalmemory/web",
+    "clean:products": "node scripts/clean-product-builds.mjs",
+    "build:plugin": "tsdown",
+    "build:scripts": "npm run build:migrate-sqlite-to-vdb && npm run build:export-tencent-vdb && npm run build:read-local-memory && npm run build:seed-v2",
+    "prepack": "npm run build:upstream",
+    "build:migrate-sqlite-to-vdb": "tsc -p scripts/migrate-sqlite-to-tcvdb/tsconfig.json --noEmitOnError false",
+    "migrate-sqlite-to-tcvdb": "node ./bin/migrate-sqlite-to-tcvdb.mjs",
+    "build:export-tencent-vdb": "tsc --project scripts/export-tencent-vdb/tsconfig.json",
+    "export-tencent-vdb": "node ./bin/export-tencent-vdb.mjs",
+    "build:read-local-memory": "tsc --project scripts/read-local-memory/tsconfig.json",
+    "read-local-memory": "node ./bin/read-local-memory.mjs",
+    "build:seed-v2": "tsc --project scripts/seed-v2/tsconfig.json",
+    "seed-v2": "node ./bin/seed-v2.mjs",
+    "typecheck": "npm run typecheck:products && npm --prefix sdk/typescript run build",
+    "typecheck:products": "npm run typecheck -w @personalmemory/core && npm run typecheck -w @personalmemory/gateway && npm run typecheck -w @personalmemory/mcp-server && npm run typecheck -w @personalmemory/web",
+    "format:check": "prettier --check 'apps/**/*.{ts,tsx,css,json,html}' 'packages/**/*.{ts,json}' 'scripts/{clean-product-builds,dev*,verify-workspace-boundaries*}.mjs' 'scripts/personalmemory-*.{mjs,ts}' tsconfig.base.json eslint.config.mjs",
+    "lint": "eslint apps packages scripts/clean-product-builds.mjs scripts/dev*.mjs scripts/personalmemory-claude*.mjs scripts/personalmemory-client*.mjs scripts/personalmemory-codex*.mjs scripts/personalmemory-data.ts scripts/personalmemory-data.test.mjs scripts/personalmemory-hook-*.mjs scripts/personalmemory-install*.mjs scripts/personalmemory-lifecycle*.mjs scripts/personalmemory-migrate*.ts scripts/personalmemory-release*.mjs scripts/personalmemory-upgrade*.mjs scripts/verify-workspace-boundaries.mjs scripts/verify-workspace-boundaries.test.mjs eslint.config.mjs",
+    "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
+    "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
+    "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/mcp-server && npm run test -w @personalmemory/web && npm run test:dev && npm run test:install && npm run test:upgrade && npm run test:lifecycle && npm run test:data && npm run test:hook-adapter && npm run test:hook-runtime && npm run test:hook-managed && npm run test:mcp-client-config",
+    "test:install": "node --test scripts/personalmemory-install-options.test.mjs scripts/personalmemory-install.test.mjs",
+    "test:upgrade": "node --test scripts/personalmemory-upgrade.test.mjs",
+    "test:lifecycle": "node --test scripts/personalmemory-lifecycle.test.mjs",
+    "test:data": "node --test scripts/personalmemory-data.test.mjs",
+    "test:hook-adapter": "node --test scripts/personalmemory-hook-adapter.test.mjs",
+    "test:hook-runtime": "npm run build -w @personalmemory/core && node --test scripts/personalmemory-hook-runtime.test.mjs",
+    "test:hook-managed": "npm run build -w @personalmemory/core && node --test scripts/personalmemory-hook-install.test.mjs scripts/personalmemory-hook-managed.test.mjs",
+    "test:codex-config": "node --test scripts/personalmemory-codex.test.mjs",
+    "test:mcp-client-config": "npm run test:codex-config && node --test scripts/personalmemory-client-e2e.test.mjs",
+    "test:codex-e2e": "npm run build:products && PERSONALMEMORY_RUN_REAL_CODEX_E2E=1 node scripts/personalmemory-codex-e2e.mjs",
+    "test:claude-e2e": "npm run build:products && PERSONALMEMORY_RUN_REAL_CLAUDE_E2E=1 node scripts/personalmemory-claude-e2e.mjs",
+    "test:upstream": "vitest run",
+    "test:golden": "vitest run -c vitest.e2e.config.ts tests/standalone-golden.e2e.test.ts",
+    "test:oss": "vitest run -c vitest.oss.config.ts",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "verify:boundaries": "node scripts/verify-workspace-boundaries.mjs",
+    "verify": "npm run format:check && npm run lint && npm run verify:boundaries && npm run build && npm run typecheck && npm test && npm run test:golden && npm --prefix sdk/typescript test",
+    "patch:openclaw": "bash scripts/openclaw-after-tool-call-messages.patch.sh"
+  },
+  "files": [
+    "dist/",
+    "bin/migrate-sqlite-to-tcvdb.mjs",
+    "bin/export-tencent-vdb.mjs",
+    "bin/read-local-memory.mjs",
+    "index.ts",
+    "scripts/migrate-sqlite-to-tcvdb/dist/",
+    "scripts/export-tencent-vdb/dist/",
+    "scripts/read-local-memory/dist/",
+    "scripts/memory-tencentdb-ctl.sh",
+    "scripts/install_hermes_memory_tencentdb.sh",
+    "scripts/install-hermes-plugin-v2.sh",
+    "scripts/install-openclaw-plugin-v2.sh",
+    "scripts/README.memory-tencentdb-ctl.md",
+    "src",
+    "scripts/openclaw-after-tool-call-messages.patch.sh",
+    "scripts/setup-offload.sh",
+    "hermes-plugin/",
+    "openclaw-plugin/",
+    "openclaw.plugin.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "!src/integrations/",
+    "!src/**/*.test.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/__tests__/"
+  ],
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "memory",
+    "ai-memory",
+    "long-term-memory",
+    "vector-search",
+    "sqlite-vec",
+    "llm",
+    "conversation",
+    "persona",
+    "scene-extraction",
+    "embedding"
+  ],
+  "author": "TencentDB Agent Memory Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "4.0.32",
+    "@node-rs/jieba": "^2.0.1",
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/api-logs": "0.221.0",
+    "@opentelemetry/exporter-logs-otlp-http": "0.221.0",
+    "@opentelemetry/exporter-trace-otlp-http": "0.221.0",
+    "@opentelemetry/resources": "2.10.0",
+    "@opentelemetry/sdk-logs": "0.221.0",
+    "@opentelemetry/sdk-node": "0.221.0",
+    "@opentelemetry/sdk-trace-base": "2.10.0",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
+    "@tencentdb-agent-memory/memory-sdk-ts": "^1.0.0",
+    "@tencentdb-agent-memory/tcvdb-text": "^0.1.1",
+    "ai": "7.0.55",
+    "crc-32": "^1.2.2",
+    "dayjs": "^1.11.20",
+    "js-tiktoken": "^1.0.18",
+    "json5": "^2.2.3",
+    "smol-toml": "^1.6.1",
+    "sqlite-vec": "0.1.7-alpha.2",
+    "tsx": "^4.21.0",
+    "undici": "^8.1.0",
+    "yaml": "^2.8.3",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@clickhouse/client": "^1.18.5",
+    "@opentelemetry/context-async-hooks": "2.10.0",
+    "@opentelemetry/exporter-logs-otlp-grpc": "0.221.0",
+    "@opentelemetry/exporter-trace-otlp-grpc": "0.221.0",
+    "cos-nodejs-sdk-v5": "^3.0.0",
+    "ioredis": "^5.10.1",
+    "kafkajs": "^2.2.4"
+  },
+  "overrides": {
+    "nanoid": "3.3.18"
+  },
+  "peerDependencies": {
+    "node-llama-cpp": "^3.16.2",
+    "openclaw": ">=2026.3.7"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    },
+    "node-llama-cpp": {
+      "optional": true
+    }
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "compat": {
+      "pluginApi": ">=2026.3.13",
+      "minGatewayVersion": ">=2026.3.13"
+    },
+    "build": {
+      "openclawVersion": "2026.3.13",
+      "pluginSdkVersion": "2026.3.13"
+    },
+    "bundle": {
+      "stageRuntimeDependencies": true
+    }
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@kubb/cli": "^4.37.7",
+    "@kubb/core": "^4.37.7",
+    "@kubb/plugin-oas": "^4.37.7",
+    "@kubb/plugin-ts": "^4.37.7",
+    "@kubb/plugin-zod": "^4.37.7",
+    "@types/node": "^25.5.2",
+    "@vitest/coverage-v8": "^4.1.2",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "tsdown": "^0.21.10",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "8.66.0",
+    "vitest": "^4.1.2"
+  }
+}

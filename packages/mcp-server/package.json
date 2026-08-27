@@ -1,0 +1,24 @@
+{
+  "name": "@personalmemory/mcp-server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "personalmemory-mcp": "./dist/cli.js"
+  },
+  "scripts": {
+    "start": "node dist/cli.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && vitest run -c vitest.config.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "@personalmemory/core": "0.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "vitest": "^4.1.2"
+  }
+}

@@ -1,0 +1,306 @@
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+
+import {
+  createBrowserSession,
+  fetchGatewayStatus,
+  fetchHookAuthorization,
+  hasBrowserSession,
+  updateHookAuthorization,
+} from "../api/gateway";
+
+export function SettingsPage() {
+  const [token, setToken] = useState("");
+  const [sessionState, setSessionState] = useState<
+    "idle" | "submitting" | "ready" | "error"
+  >(() => (hasBrowserSession() ? "ready" : "idle"));
+  const status = useQuery({
+    queryKey: ["gateway-status"],
+    queryFn: ({ signal }) => fetchGatewayStatus(signal),
+  });
+  const hookAuthorization = useQuery({
+    queryKey: ["hook-authorization"],
+    queryFn: ({ signal }) => fetchHookAuthorization(signal),
+    retry: false,
+    enabled: sessionState === "ready",
+  });
+  const [authorizationMessage, setAuthorizationMessage] = useState("");
+
+  const changeHookAuthorization = (
+    target: "recall" | "capture",
+    enabled: boolean,
+  ) => {
+    const current = hookAuthorization.data?.authorization;
+    const disclosureVersion = hookAuthorization.data?.disclosure.version;
+    if (!current || disclosureVersion !== 1) return;
+    setAuthorizationMessage("正在保存…");
+    void updateHookAuthorization({
+      current,
+      disclosureVersion,
+      recallEnabled: target === "recall" ? enabled : current.recall_enabled,
+      captureEnabled: target === "capture" ? enabled : current.capture_enabled,
+    })
+      .then((authorization) => {
+        hookAuthorization.refetch();
+        setAuthorizationMessage(
+          authorization.recall_enabled || authorization.capture_enabled
+            ? "授权已更新。worker 会在下一次同步后应用。"
+            : "自动召回与自动捕获均已关闭。",
+        );
+      })
+      .catch(() => {
+        setAuthorizationMessage("保存失败，请重新加载状态后再试。");
+      });
+  };
+
+  return (
+    <div className="page page-settings">
+      <header className="page-heading compact">
+        <span className="eyebrow">设置</span>
+        <h1>知道数据会去哪里</h1>
+        <p>所有外部连接默认关闭；启用前会明确显示目标和发送内容。</p>
+      </header>
+
+      <section className="settings-panel" aria-labelledby="connection-title">
+        <div>
+          <span className="section-kicker">运行状态</span>
+          <h2 id="connection-title">本地服务</h2>
+        </div>
+
+        {status.isPending ? (
+          <div className="status-row" role="status">
+            <span className="loading-pulse" aria-hidden="true" />
+            <span>正在确认本地服务…</span>
+          </div>
+        ) : status.isError ? (
+          <div className="status-message is-error" role="alert">
+            <strong>暂时无法连接本地服务</strong>
+            <span>请确认 Gateway 已启动，然后重试。</span>
+            <button type="button" onClick={() => void status.refetch()}>
+              重新检查
+            </button>
+          </div>
+        ) : (
+          <dl className="status-list">
+            <div>
+              <dt>Gateway</dt>
+              <dd>
+                <span className="status-dot" aria-hidden="true" /> 已连接
+              </dd>
+            </div>
+            <div>
+              <dt>记忆访问保护</dt>
+              <dd>
+                {status.data.authenticationConfigured ? "已配置" : "待配置"}
+              </dd>
+            </div>
+            <div>
+              <dt>模型连接</dt>
+              <dd>{status.data.modelConfigured ? "已配置" : "关闭"}</dd>
+            </div>
+          </dl>
+        )}
+      </section>
+
+      {status.data?.authenticationConfigured ? (
+        <section className="settings-panel" aria-labelledby="unlock-title">
+          <div>
+            <span className="section-kicker">浏览器会话</span>
+            <h2 id="unlock-title">解锁记忆管理</h2>
+          </div>
+          <form
+            className="session-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setSessionState("submitting");
+              void createBrowserSession(token)
+                .then(() => {
+                  setToken("");
+                  setSessionState("ready");
+                })
+                .catch(() => setSessionState("error"));
+            }}
+          >
+            <label>
+              <span>本地访问令牌</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!token || sessionState === "submitting"}
+            >
+              {sessionState === "submitting" ? "正在解锁…" : "建立安全会话"}
+            </button>
+            {sessionState === "ready" ? (
+              <p role="status">已解锁。访问令牌未保存在浏览器中。</p>
+            ) : sessionState === "error" ? (
+              <p className="is-error" role="alert">
+                解锁失败，请检查本地访问令牌。
+              </p>
+            ) : (
+              <p>令牌只用于换取本机短期会话，不会写入浏览器存储。</p>
+            )}
+          </form>
+        </section>
+      ) : null}
+
+      <section className="settings-panel" aria-labelledby="agent-title">
+        <div>
+          <span className="section-kicker">连接入口</span>
+          <h2 id="agent-title">Agent 接入</h2>
+        </div>
+        <p>
+          安装器会受管配置 Codex 与 Claude Code 的自动记忆 Hook；Codex
+          初次安装或定义升级后仍需在客户端检查并信任精确定义。
+        </p>
+        <p>
+          Web 不读取 Agent 配置文件。请运行{" "}
+          <code>npm run lifecycle:product -- status</code>
+          查看 Hook 信任、worker、积压和保留期维护状态。
+        </p>
+      </section>
+
+      <section className="settings-panel" aria-labelledby="automation-title">
+        <div>
+          <span className="section-kicker">自动记忆授权</span>
+          <h2 id="automation-title">分别控制召回与本地捕获</h2>
+        </div>
+        {sessionState !== "ready" ? (
+          <p>请先解锁浏览器会话，再读取或修改自动记忆授权。</p>
+        ) : hookAuthorization.isPending ? (
+          <p role="status">正在读取自动记忆授权…</p>
+        ) : hookAuthorization.isError ? (
+          <p>授权状态读取失败，请重新解锁或稍后重试。</p>
+        ) : (
+          <div className="status-list">
+            <div>
+              <strong>自动召回</strong>
+              <dl>
+                <div>
+                  <dt>处理数据</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.data}</dd>
+                </div>
+                <div>
+                  <dt>时机</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.timing}</dd>
+                </div>
+                <div>
+                  <dt>用途</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.purpose}</dd>
+                </div>
+                <div>
+                  <dt>目的地</dt>
+                  <dd>
+                    {hookAuthorization.data.disclosure.recall.destination}
+                  </dd>
+                </div>
+                <div>
+                  <dt>预算</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.budget}</dd>
+                </div>
+                <div>
+                  <dt>失败行为</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.failure}</dd>
+                </div>
+                <div>
+                  <dt>撤销效果</dt>
+                  <dd>{hookAuthorization.data.disclosure.recall.revocation}</dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={() =>
+                  changeHookAuthorization(
+                    "recall",
+                    !hookAuthorization.data.authorization.recall_enabled,
+                  )
+                }
+              >
+                {hookAuthorization.data.authorization.recall_enabled
+                  ? "关闭自动召回"
+                  : "授权自动召回"}
+              </button>
+            </div>
+            <div>
+              <strong>自动本地捕获</strong>
+              <dl>
+                <div>
+                  <dt>处理数据</dt>
+                  <dd>{hookAuthorization.data.disclosure.capture.data}</dd>
+                </div>
+                <div>
+                  <dt>时机</dt>
+                  <dd>{hookAuthorization.data.disclosure.capture.timing}</dd>
+                </div>
+                <div>
+                  <dt>用途</dt>
+                  <dd>{hookAuthorization.data.disclosure.capture.purpose}</dd>
+                </div>
+                <div>
+                  <dt>目的地</dt>
+                  <dd>
+                    {hookAuthorization.data.disclosure.capture.destination}
+                  </dd>
+                </div>
+                <div>
+                  <dt>预算</dt>
+                  <dd>{hookAuthorization.data.disclosure.capture.budget}</dd>
+                </div>
+                <div>
+                  <dt>失败行为</dt>
+                  <dd>{hookAuthorization.data.disclosure.capture.failure}</dd>
+                </div>
+                <div>
+                  <dt>撤销效果</dt>
+                  <dd>
+                    {hookAuthorization.data.disclosure.capture.revocation}
+                  </dd>
+                </div>
+              </dl>
+              <button
+                type="button"
+                onClick={() =>
+                  changeHookAuthorization(
+                    "capture",
+                    !hookAuthorization.data.authorization.capture_enabled,
+                  )
+                }
+              >
+                {hookAuthorization.data.authorization.capture_enabled
+                  ? "关闭自动捕获"
+                  : "授权自动捕获"}
+              </button>
+            </div>
+          </div>
+        )}
+        {authorizationMessage ? (
+          <p role="status">{authorizationMessage}</p>
+        ) : null}
+      </section>
+
+      <section
+        className="settings-panel subdued"
+        aria-labelledby="boundary-title"
+      >
+        <div>
+          <span className="section-kicker">首版使用边界</span>
+          <h2 id="boundary-title">日常管理用 Web，系统操作用受管命令</h2>
+        </div>
+        <p>
+          Web
+          负责浏览、审核、纠错、冲突治理、审计和强确认删除。安装、升级、导出、备份、恢复、停止与卸载由同一套受管命令完成；不需要直接操作数据库或拼接
+          Gateway API。
+        </p>
+        <p>
+          可读 JSON/Markdown
+          导出用于长期阅读和校验，当前不能导入或重建索引；迁移到另一安装请使用已验证的完整备份。
+        </p>
+      </section>
+    </div>
+  );
+}
