@@ -595,7 +595,11 @@ export class PrivateHookOutbox {
     for (const item of await readdir(this.directory, { withFileTypes: true })) {
       const target = path.join(this.directory, item.name);
       if (/^outbox-\d{2}\.[a-z0-9-]+\.tmp$/u.test(item.name)) {
-        const info = await lstat(target);
+        const info = await lstat(target).catch((error) => {
+          if (error?.code === "ENOENT") return undefined;
+          throw error;
+        });
+        if (!info) continue;
         if (info.mtimeMs + OUTBOX_CLAIM_MS <= this.now())
           await unlink(target).catch(() => undefined);
         continue;

@@ -50,7 +50,7 @@
 | M5.2     | completed   | [升级和数据库迁移](M5.2.md)                             |
 | M5.3     | completed   | [备份、恢复和卸载](M5.3.md)                             |
 | M5.4     | completed   | [发布候选验证](M5.4.md)                                 |
-| M5.5     | in progress | [真实分发物重新发布验证](M5.5.md)                       |
+| M5.5     | completed   | [真实分发物重新发布验证](M5.5.md)                       |
 
 M0–M5 完成后的合并前状态和授权边界见 [MVP 合并前审计](MVP_MERGE_READINESS.md)。
 
