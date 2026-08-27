@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   addMemoryRelation,
   cancelPrivacyDeletion,
@@ -284,6 +285,16 @@ export function MemoriesPage() {
       {memories.isPending ? (
         <div className="memory-state" role="status">
           正在读取本地记忆…
+        </div>
+      ) : memories.isError &&
+        memories.error instanceof GatewayRequestError &&
+        memories.error.status === 401 ? (
+        <div className="memory-state is-error" role="alert">
+          <strong>需要先解锁记忆管理</strong>
+          <span>当前浏览器还没有本机访问会话。</span>
+          <Link className="button-link" to="/settings">
+            前往设置解锁
+          </Link>
         </div>
       ) : memories.isError ? (
         <div className="memory-state is-error" role="alert">

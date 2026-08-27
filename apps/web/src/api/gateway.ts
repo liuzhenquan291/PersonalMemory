@@ -494,7 +494,11 @@ export async function fetchMemories(
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    throw new Error(`记忆列表请求失败（${response.status}）`);
+    const body = (await response.json().catch(() => ({}))) as ErrorBody;
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ?? "MEMORY_LIST_FAILED",
+    );
   }
   const body: unknown = await response.json();
   if (

@@ -215,7 +215,21 @@ Codex 安装后还需在客户端使用 `/hooks` 核对 PersonalMemory 的精确
 ## 首次使用
 
 1. 打开安装结果给出的 Web 地址。
-2. 在“设置”页解锁当前浏览器会话。
+2. 在终端读取只保存在本机私有文件中的访问令牌，然后在“设置”页粘贴它以解锁当前浏览器会话。令牌不会写入浏览器存储：
+
+   macOS：
+
+   ```bash
+   sed -n 's/^PERSONALMEMORY_AUTH_TOKEN=//p' "$HOME/Library/Application Support/PersonalMemory Runtime/gateway.env"
+   ```
+
+   Linux：
+
+   ```bash
+   sed -n 's/^PERSONALMEMORY_AUTH_TOKEN=//p' "${XDG_STATE_HOME:-$HOME/.local/state}/personalmemory/gateway.env"
+   ```
+
+   请把该令牌视为本机密码，不要发送给他人或写入项目文件。
 3. 分别决定是否授权“自动召回”和“自动本地捕获”。两项授权互相独立，也不同于模型外联授权。
 4. 在 Codex 或 Claude Code 中开始一次普通对话。无需说“保存这段话”：成功结束的主 Agent 对话会按授权自动捕获；失败、中断和子 Agent 轮次默认不捕获。
 5. 新提炼出的 L1 记忆默认进入“收件箱”等待审核。批准后，它才有资格被后续对话自动召回。

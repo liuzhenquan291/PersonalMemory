@@ -635,6 +635,7 @@ export async function installPersonalMemory(options = {}) {
           ...buildManagedGatewayEnvironment(environment, gatewayEnvironment),
           PERSONALMEMORY_HOST: host,
           PERSONALMEMORY_PORT: String(gatewayPort),
+          PERSONALMEMORY_CORS_ORIGINS: `http://${host}:${webPort}`,
           PERSONALMEMORY_DATA_DIR: dataDirectory,
           PERSONALMEMORY_STATE_DIR: runtimeDirectory,
           PERSONALMEMORY_AUTH_ENABLED: "true",

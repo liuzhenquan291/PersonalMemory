@@ -465,6 +465,10 @@ test("reuses a valid private credential when restarting without a receipt", asyn
         : { ok: true },
   });
   assert.equal(environments[1].PERSONALMEMORY_AUTH_TOKEN, token);
+  assert.equal(
+    environments[1].PERSONALMEMORY_CORS_ORIGINS,
+    "http://127.0.0.1:0",
+  );
   await rm(root, { recursive: true });
 });
 

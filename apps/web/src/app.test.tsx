@@ -516,6 +516,24 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByRole("button", { name: "重新加载" })).toBeEnabled();
   });
 
+  it("guides an unauthenticated browser to unlock memory management", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "UNAUTHORIZED" } }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    renderRoute("/memories");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "需要先解锁记忆管理",
+    );
+    expect(screen.getByRole("link", { name: "前往设置解锁" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+  });
+
   it("supports keyboard navigation to settings", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       () => new Promise(() => undefined),
