@@ -128,7 +128,34 @@ Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说�
 
 ## 安装和首次启动
 
-在解压后的版本目录运行：
+### 一条命令安装
+
+通过 `curl` 获取首发 tag 中的轻量引导脚本，并显式指定 Git 地址、版本、安装目录和 Agent：
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+sh -s -- \
+  --repo https://github.com/liuzhenquan291/PersonalMemory.git \
+  --version personalmemory-v0.1.1 \
+  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.1" \
+  --agent codex \
+  --agent claude-code
+```
+
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。四项都有默认行为：仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`，未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+sh -s -- --help
+```
+
+引导脚本只接受远端确实存在的精确 tag。目标目录不存在时执行浅克隆；已经是同一仓库、同一 tag 且没有本地修改时可安全重复运行；其他已有目录、符号链接、仓库不一致、版本不一致或本地修改都会在正式安装前被拒绝。
+
+### 从已取得的源码安装
+
+在 Git 检出目录或解压后的版本目录运行：
 
 ```sh
 ./install-personalmemory.sh
