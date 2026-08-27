@@ -89,7 +89,7 @@ M0–M5 已完成的核心闭环、治理、MCP、安装、升级、备份恢复
 - 受管安装器已同时配置 Codex 与 Claude Code Hook，并保护、升级和卸载两端定义；Codex MCP 另有独立配置入口，Claude Code 的五工具协议已通过真实客户端 E2E。
 - 已在临时隔离目录安装并锁定 Claude Code 2.1.228；真实五工具 MCP 会话及读取分发物受管配置的自然 `UserPromptSubmit`/`Stop` 均已通过，本地模型替身确认经审批 L1 在请求前实际进入模型上下文。
 - 当前实测发布矩阵是 macOS arm64 和 Linux arm64；x64、Windows 未验证。
-- 首版分发是版本化源码包，需要 Node.js/npm；桌面封装、签名安装包和自动更新尚未实现。
+- 首发版本固定为 `personalmemory-v0.1.1`，可按 Git tag 或版本化源码包安装，需要 Node.js/npm；暂不使用 Docker，桌面封装、签名安装包和自动更新尚未实现。
 - 正式发布前仍需完成名称、域名、商标和发布渠道重名检查。
 
 ## 4. 阻断 MVP 完成的后续任务

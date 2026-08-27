@@ -1,6 +1,6 @@
 # PersonalMemory
 
-> 适用版本：PersonalMemory 0.1.1 源码分发包；已验证平台：macOS arm64、Linux arm64。
+> MVP 首发版本：`personalmemory-v0.1.1`；已验证平台：macOS arm64、Linux arm64。
 
 PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，基于
 [TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
@@ -96,7 +96,21 @@ PersonalMemory 按层组织信息，避免把全部历史对话直接塞回上�
 - Codex、Claude Code 可以按需安装；没有安装的客户端不会影响核心服务运行。
 - 默认端口 `8420`、`8787`、`4173` 未被其他程序占用。
 
-请从可信渠道取得 `PersonalMemory-0.1.1-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
+### 使用 Git 固定版本安装
+
+MVP 首发版使用独立 Git tag `personalmemory-v0.1.1`，不要使用上游基线标签 `v1.0.1`。通过 HTTPS 获取并固定到首发版本：
+
+```sh
+git clone --branch personalmemory-v0.1.1 --depth 1 \
+  https://github.com/liuzhenquan291/PersonalMemory.git
+cd PersonalMemory
+```
+
+`--branch` 在这里会检出该 tag；`--depth 1` 只获取首发版本所需历史。需要审阅完整历史时可去掉 `--depth 1`。
+
+### 使用版本化源码包安装
+
+也可以从可信渠道取得 `PersonalMemory-0.1.1-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
 
 ```sh
 shasum -a 256 -c PersonalMemory-0.1.1-source.tar.gz.sha256
@@ -110,7 +124,7 @@ Linux 可将第一条命令替换为：
 sha256sum -c PersonalMemory-0.1.1-source.tar.gz.sha256
 ```
 
-发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
+Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
 
 ## 安装和首次启动
 
@@ -142,6 +156,8 @@ sha256sum -c PersonalMemory-0.1.1-source.tar.gz.sha256
 支持的值为 `codex`、`claude-code`、`all` 和 `none`。重复的具体 Agent 会自动去重；`all` 或 `none` 不能和其他值组合，未知值会在安装前报错。
 
 首次运行会按锁文件安装依赖、构建产品、创建私有数据目录并启动四个受管进程。重复运行用于检查、恢复安装或调整 Agent 集合，不会删除已有记忆。重新选择 Agent 时，安装器只新增所选的受管 Hook，并精确移除不再选择的 PersonalMemory Hook；不会删除客户端中的其他用户配置或自有 Hook。
+
+当前安装与运行不使用 Docker。四个服务由本机 Node.js 直接作为后台进程启动，只监听 `127.0.0.1`；Docker 不属于 MVP 首发版的安装依赖或运行时。
 
 成功后终端会显示 Web 地址、健康检查地址、Codex/Claude Code Hook 状态、数据目录和日志位置。默认 Web 地址是：
 
@@ -301,7 +317,7 @@ Linux：
 ## 当前能力边界
 
 - 仅验证 macOS arm64 和 Linux arm64；Windows、macOS x64、Linux x64 尚未列入支持平台。
-- 首版是源码包，需要 Node.js/npm；尚无签名桌面安装包和自动更新。
+- 首版通过固定 Git tag 或版本化源码包安装，需要 Node.js/npm；暂不使用 Docker，尚无签名桌面安装包和自动更新。
 - Web 负责日常记忆治理与 Hook 授权；安装、升级、备份恢复和卸载仍通过受管命令完成。
 - L2/L3 首版以查看和来源可用性披露为主。
 - 完整备份可以恢复；JSON/Markdown 可读导出目前不能导入。
