@@ -350,6 +350,10 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.deepEqual(reconfigured.agents, ["codex"]);
   assert.equal(reconfigured.claudeHookStatus, "not_installed");
   assert.equal((await installPersonalMemory(repeatOptions)).changed, false);
+  await assert.rejects(
+    installPersonalMemory({ ...repeatOptions, gatewayPort: 8788 }),
+    /different gateway port/u,
+  );
 
   const hookReceipt = JSON.parse(
     await readFile(path.join(root, "state", "hooks", "install.json"), "utf8"),

@@ -3,8 +3,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  parseInstallArguments,
   parseAgentArguments,
   resolveInstallAgents,
+  resolveInstallOptions,
 } from "./personalmemory-install-options.mjs";
 
 test("parses repeatable Agent arguments and shortcuts", () => {
@@ -42,6 +44,43 @@ test("rejects ambiguous or unsupported Agent arguments", () => {
   );
   assert.throws(() => parseAgentArguments(["--agent"]), /requires a value/u);
   assert.throws(() => parseAgentArguments(["--other"]), /Unknown/u);
+});
+
+test("parses optional service ports with repeatable Agents", async () => {
+  assert.deepEqual(
+    parseInstallArguments([
+      "--gateway-port",
+      "8788",
+      "--agent",
+      "claude-code",
+      "--agent",
+      "codex",
+      "--web-port",
+      "4174",
+    ]),
+    {
+      agents: ["codex", "claude-code"],
+      gatewayPort: 8788,
+      webPort: 4174,
+    },
+  );
+  assert.deepEqual(
+    await resolveInstallOptions(["--agent", "none", "--gateway-port", "8788"]),
+    { agents: [], gatewayPort: 8788 },
+  );
+});
+
+test("rejects invalid, duplicate, or overlapping service ports", () => {
+  for (const args of [
+    ["--gateway-port"],
+    ["--gateway-port", "0"],
+    ["--gateway-port", "65536"],
+    ["--gateway-port", "abc"],
+    ["--gateway-port", "8788", "--gateway-port", "8789"],
+    ["--gateway-port", "8420"],
+  ]) {
+    assert.throws(() => parseInstallArguments(args), /port|repeated|distinct/u);
+  }
 });
 
 test("auto-detects installed Agents only when no explicit selection is given", async () => {

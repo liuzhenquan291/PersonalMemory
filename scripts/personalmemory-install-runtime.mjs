@@ -484,6 +484,16 @@ export async function installPersonalMemory(options = {}) {
     ) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
+    for (const [option, receiptUrl, label] of [
+      [options.upstreamPort, receipt.upstreamHealthUrl, "upstream"],
+      [options.gatewayPort, receipt.gatewayHealthUrl, "gateway"],
+      [options.webPort, receipt.webUrl, "web"],
+    ]) {
+      if (option !== undefined && Number(new URL(receiptUrl).port) !== option)
+        throw new Error(
+          `The running installation uses a different ${label} port; stop it before changing ports`,
+        );
+    }
     if (
       !isAliveImpl(receipt.upstreamPid) ||
       !isAliveImpl(receipt.gatewayPid) ||

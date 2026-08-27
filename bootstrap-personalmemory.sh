@@ -11,6 +11,9 @@ agent_codex=false
 agent_claude=false
 agent_all=false
 agent_none=false
+upstream_port=8420
+gateway_port=8787
+web_port=4173
 
 usage() {
   cat <<'EOF'
@@ -23,6 +26,9 @@ Options:
   --version <tag>        Exact Git tag to install
   --install-dir <path>   Absolute source installation directory
   --agent <name>         Repeatable: codex, claude-code, all, or none
+  --upstream-port <port> Upstream Gateway port (default: 8420)
+  --gateway-port <port>  PersonalMemory Gateway port (default: 8787)
+  --web-port <port>      Web management port (default: 4173)
   -h, --help             Show this help
 
 When --agent is omitted, the product installer auto-detects supported Agents.
@@ -69,6 +75,21 @@ while [ "$#" -gt 0 ]; do
       esac
       shift 2
       ;;
+    --upstream-port)
+      require_value "$1" "${2-}"
+      upstream_port=$2
+      shift 2
+      ;;
+    --gateway-port)
+      require_value "$1" "${2-}"
+      gateway_port=$2
+      shift 2
+      ;;
+    --web-port)
+      require_value "$1" "${2-}"
+      web_port=$2
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -99,6 +120,26 @@ if $agent_all && { $agent_none || $agent_codex || $agent_claude; }; then
 fi
 if $agent_none && { $agent_all || $agent_codex || $agent_claude; }; then
   echo "--agent none cannot be combined with another Agent." >&2
+  exit 2
+fi
+
+for port_specification in \
+  "--upstream-port:$upstream_port" \
+  "--gateway-port:$gateway_port" \
+  "--web-port:$web_port"
+do
+  port_option=${port_specification%%:*}
+  port_value=${port_specification#*:}
+  if ! printf '%s\n' "$port_value" | grep -Eq '^[0-9]+$' ||
+    [ "$port_value" -lt 1 ] || [ "$port_value" -gt 65535 ]; then
+    echo "$port_option must be an integer between 1 and 65535." >&2
+    exit 2
+  fi
+done
+if [ "$upstream_port" = "$gateway_port" ] ||
+  [ "$upstream_port" = "$web_port" ] ||
+  [ "$gateway_port" = "$web_port" ]; then
+  echo "PersonalMemory service ports must be distinct." >&2
   exit 2
 fi
 
@@ -191,6 +232,10 @@ else
   if $agent_codex; then set -- "$@" --agent codex; fi
   if $agent_claude; then set -- "$@" --agent claude-code; fi
 fi
+set -- "$@" \
+  --upstream-port "$upstream_port" \
+  --gateway-port "$gateway_port" \
+  --web-port "$web_port"
 
 echo "Installing PersonalMemory $version from $repository"
 echo "Source: $install_directory"

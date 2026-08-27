@@ -1,11 +1,11 @@
 import process from "node:process";
 
 import { installPersonalMemory } from "./personalmemory-install-runtime.mjs";
-import { resolveInstallAgents } from "./personalmemory-install-options.mjs";
+import { resolveInstallOptions } from "./personalmemory-install-options.mjs";
 
 try {
-  const agents = await resolveInstallAgents(process.argv.slice(2));
-  const result = await installPersonalMemory({ agents });
+  const options = await resolveInstallOptions(process.argv.slice(2));
+  const result = await installPersonalMemory(options);
   process.stdout.write(
     `${result.changed ? "PersonalMemory installed and started" : "PersonalMemory is already installed and running"}\n` +
       `Agents: ${result.agents.length > 0 ? result.agents.join(", ") : "none"}\n` +

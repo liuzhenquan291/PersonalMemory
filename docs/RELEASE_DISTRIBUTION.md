@@ -19,11 +19,12 @@ curl -fsSL \
 sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
   --version personalmemory-v0.1.1 \
+  --gateway-port 8787 \
   --agent codex \
   --agent claude-code
 ```
 
-引导器只接受规范化的 PersonalMemory 版本 tag 和绝对安装目录，验证远端 tag 后浅克隆固定版本，再调用包内正式安装器。它不会使用 Docker，也不会静默覆盖已有目录或有本地修改的检出。
+引导器只接受规范化的 PersonalMemory 版本 tag 和绝对安装目录，验证远端 tag 后浅克隆固定版本，再调用包内正式安装器。`--upstream-port`、`--gateway-port`、`--web-port` 可覆盖默认 `8420`、`8787`、`4173`，三者必须有效且互不相同。它不会使用 Docker，也不会静默覆盖已有目录或有本地修改的检出。
 
 版本化源码压缩包及其独立 SHA-256 文件仍是可离线校验的正式分发物。MVP 不发布根项目现有的上游 npm 插件包。
 

@@ -139,11 +139,12 @@ sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
   --version personalmemory-v0.1.1 \
   --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.1" \
+  --gateway-port 8787 \
   --agent codex \
   --agent claude-code
 ```
 
-`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。四项都有默认行为：仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`，未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `8420`、`8787` 和 `4173`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
 
 ```sh
 curl -fsSL \
@@ -181,6 +182,17 @@ sh -s -- --help
 ```
 
 支持的值为 `codex`、`claude-code`、`all` 和 `none`。重复的具体 Agent 会自动去重；`all` 或 `none` 不能和其他值组合，未知值会在安装前报错。
+
+源码安装入口也支持相同端口参数。例如仅把已占用的 PersonalMemory Gateway 默认端口改为 `8788`：
+
+```sh
+./install-personalmemory.sh \
+  --gateway-port 8788 \
+  --agent codex \
+  --agent claude-code
+```
+
+端口在该次受管安装中固定，并由后续 restart、backup/restore 和 upgrade 沿用。运行中的安装若要更换端口，必须先停止服务，再用新参数重新安装；安装器不会静默忽略端口差异。
 
 首次运行会按锁文件安装依赖、构建产品、创建私有数据目录并启动四个受管进程。重复运行用于检查、恢复安装或调整 Agent 集合，不会删除已有记忆。重新选择 Agent 时，安装器只新增所选的受管 Hook，并精确移除不再选择的 PersonalMemory Hook；不会删除客户端中的其他用户配置或自有 Hook。
 
