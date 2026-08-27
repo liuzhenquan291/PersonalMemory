@@ -25,6 +25,24 @@
 
 </div>
 
+## PersonalMemory 产品版
+
+本仓库正在上游 TencentDB Agent Memory v1.0.1 基础上开发 **PersonalMemory**：一个面向单用户、在本机运行、默认私密且可由用户审阅和纠错的 Chat Memory 产品。
+
+PersonalMemory 当前 MVP 已提供：
+
+- Codex 与 Claude Code 对话的自动记忆捕获和前置召回；
+- L0–L3 分层记忆浏览，以及 L1 收件箱人工审核；
+- 搜索、纠错、失效、冲突/替代治理、来源可用性披露和审计；
+- 强确认级联删除、敏感内容阻断、采集排除和保留期清理；
+- 默认本地回环、模型默认关闭，以及独立的 Hook/模型外联授权；
+- 一条命令安装、状态检查、升级、可读导出、完整备份恢复和安全卸载；
+- macOS arm64 与 Linux arm64 真实分发物验收。
+
+普通用户请从 [PersonalMemory 使用手册](./docs/USER_GUIDE_CN.md) 开始；发布包生成、校验及支持平台说明见 [源码分发说明](./docs/RELEASE_DISTRIBUTION.md)。
+
+> 下文主要是上游 TencentDB Agent Memory 的原始项目介绍、插件和 SDK 文档。PersonalMemory 沿用其记忆内核，但产品入口、隐私授权、Web 治理和发布边界以上述 PersonalMemory 文档为准。
+
 ## ✨ 效果亮点
 
 > **TencentDB Agent Memory = 符号化短期记忆 + 分层式长期记忆。**
