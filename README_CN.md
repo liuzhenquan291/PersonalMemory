@@ -13,7 +13,7 @@
 [![Hermes](https://img.shields.io/badge/Hermes-Gateway-7B61FF)](https://hermes-agent.nousresearch.com/docs/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/kDtHb5RW2)
 
-[效果亮点](#-效果亮点) · [项目简介](#项目简介) · [核心技术](#核心技术拒绝平铺走向分层与符号化) · [方案特点](#-方案特点) · [快速开始](#快速开始)
+[效果亮点](#-效果亮点) · [项目简介](#项目简介) · [核心技术](#核心技术拒绝平铺走向分层与符号化) · [方案特点](#-方案特点) · [快速开始](#快速开始) · [PersonalMemory 使用手册](./docs/USER_GUIDE_CN.md)
 
 <div align="center">
 
