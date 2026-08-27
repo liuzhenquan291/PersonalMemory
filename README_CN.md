@@ -13,7 +13,7 @@
 [![Hermes](https://img.shields.io/badge/Hermes-Gateway-7B61FF)](https://hermes-agent.nousresearch.com/docs/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/kDtHb5RW2)
 
-[效果亮点](#-效果亮点) · [项目简介](#项目简介) · [核心技术](#核心技术拒绝平铺走向分层与符号化) · [方案特点](#-方案特点) · [快速开始](#快速开始) · [PersonalMemory 使用手册](./docs/USER_GUIDE_CN.md)
+[效果亮点](#-效果亮点) · [项目简介](#项目简介) · [核心技术](#核心技术拒绝平铺走向分层与符号化) · [方案特点](#-方案特点) · [快速开始](#快速开始) · [PersonalMemory 产品说明与使用手册](./README.md)
 
 <div align="center">
 
@@ -39,7 +39,7 @@ PersonalMemory 当前 MVP 已提供：
 - 一条命令安装、状态检查、升级、可读导出、完整备份恢复和安全卸载；
 - macOS arm64 与 Linux arm64 真实分发物验收。
 
-普通用户请从 [PersonalMemory 使用手册](./docs/USER_GUIDE_CN.md) 开始；发布包生成、校验及支持平台说明见 [源码分发说明](./docs/RELEASE_DISTRIBUTION.md)。
+普通用户请从 [PersonalMemory 产品说明与完整使用手册](./README.md) 开始；发布包生成、校验及支持平台说明见 [源码分发说明](./docs/RELEASE_DISTRIBUTION.md)。
 
 > 下文主要是上游 TencentDB Agent Memory 的原始项目介绍、插件和 SDK 文档。PersonalMemory 沿用其记忆内核，但产品入口、隐私授权、Web 治理和发布边界以上述 PersonalMemory 文档为准。
 
