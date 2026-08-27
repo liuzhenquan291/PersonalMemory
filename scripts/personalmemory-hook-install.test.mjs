@@ -33,7 +33,7 @@ async function fixture() {
   );
   await writeFile(
     path.join(home, ".claude", "settings.json"),
-    `${JSON.stringify({ theme: "dark", hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "existing" }] }] } })}\n`,
+    `${JSON.stringify({ theme: "dark", hooks: { PreToolUse: [{ hooks: [{ type: "command", command: "existing" }] }], Stop: [{ matcher: "", hooks: [{ type: "command", command: "python3 usage_logger.py" }] }] } })}\n`,
   );
   return { root, home, stateDirectory };
 }
@@ -61,6 +61,11 @@ test("installs private managed Codex and Claude hooks without replacing existing
     assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "existing");
     assert.equal(claude.theme, "dark");
     assert.equal(claude.hooks.PreToolUse[0].hooks[0].command, "existing");
+    assert.equal(
+      claude.hooks.Stop[0].hooks[0].command,
+      "python3 usage_logger.py",
+    );
+    assert.equal(claude.hooks.Stop.length, 2);
     for (const config of [codex, claude]) {
       for (const event of ["UserPromptSubmit", "Stop"]) {
         const managed = config.hooks[event].find((entry) =>
@@ -197,6 +202,11 @@ test("installs a selected Agent set and can change it without touching unrelated
     );
     assert.equal(claude.hooks.UserPromptSubmit, undefined);
     assert.equal(claude.hooks.PreToolUse[0].hooks[0].command, "existing");
+    assert.equal(claude.hooks.Stop.length, 1);
+    assert.equal(
+      claude.hooks.Stop[0].hooks[0].command,
+      "python3 usage_logger.py",
+    );
   } finally {
     await rm(current.root, { recursive: true, force: true });
   }
@@ -357,7 +367,11 @@ test("upgrades only receipt-owned definitions, requires Codex retrust, and rever
     );
     assert.deepEqual(Object.keys(codex.hooks), ["SessionStart"]);
     assert.equal(claude.theme, "dark");
-    assert.deepEqual(Object.keys(claude.hooks), ["PreToolUse"]);
+    assert.deepEqual(Object.keys(claude.hooks), ["PreToolUse", "Stop"]);
+    assert.equal(
+      claude.hooks.Stop[0].hooks[0].command,
+      "python3 usage_logger.py",
+    );
     await assert.rejects(stat(upgraded.receiptPath), { code: "ENOENT" });
   } finally {
     await rm(current.root, { recursive: true, force: true });

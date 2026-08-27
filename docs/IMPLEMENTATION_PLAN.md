@@ -580,3 +580,11 @@ M4.5 自动 Agent 记忆生命周期、M4.6 模型与隐私配置收口、M4.7 �
 - 验证远端 tag 并浅克隆固定版本，不跟随移动分支；
 - 已有目录只允许同仓库、同 tag、干净工作区幂等复用，其他情况安装前拒绝；
 - 引导器调用版本内正式安装器，暂不安装 Node/npm，也不使用 Docker。
+
+### M5.8 同事件 Hook 安全共存
+
+- Claude Code/Codex 同一事件中的用户自有 Hook 与 PersonalMemory 受管 Hook 可以并存；
+- 安装只追加 PersonalMemory 定义，状态检查按回执摘要要求精确存在一项；
+- 升级先精确移除旧受管定义再追加新定义，不遗留旧版本；
+- 切换 Agent 与卸载只移除 PersonalMemory 自身条目，保留其他 Hook 的顺序和内容；
+- 自身定义缺失、修改或重复时继续 fail closed。

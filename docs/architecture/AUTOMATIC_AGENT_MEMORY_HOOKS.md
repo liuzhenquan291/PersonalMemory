@@ -102,7 +102,7 @@ Agent 主动调用 `personalmemory_capture`、反馈和遗忘交接仍按 MCP �
 
 ## 7. 客户端安装与信任
 
-Codex 支持用户级、项目级、插件和托管 Hook。PersonalMemory 首版采用用户级受管文件和回执，不写项目仓库；安装必须保留已有 `hooks.json`/`config.toml`，检测同事件冲突并 fail closed。Codex 非托管 command Hook 按当前定义哈希要求用户在 `/hooks` 中审阅信任；安装成功必须明确报告 `installed_untrusted`，只有客户端可验证的信任状态和首次事件回执同时存在时才能显示 healthy。升级改变命令或定义后必须重新信任，不得使用 `--dangerously-bypass-hook-trust` 作为产品安装策略。
+Codex 支持用户级、项目级、插件和托管 Hook。PersonalMemory 首版采用用户级受管文件和回执，不写项目仓库；安装必须保留已有 `hooks.json`/`config.toml`，允许同事件中的其他用户 Hook 共存，并只通过定义摘要追加、验证、升级和移除 PersonalMemory 自身条目。自身受管条目缺失、修改或重复时必须 fail closed，其他 Hook 不得被当作冲突或纳入回执删除范围。Codex 非托管 command Hook 按当前定义哈希要求用户在 `/hooks` 中审阅信任；安装成功必须明确报告 `installed_untrusted`，只有客户端可验证的信任状态和首次事件回执同时存在时才能显示 healthy。升级改变命令或定义后必须重新信任，不得使用 `--dangerously-bypass-hook-trust` 作为产品安装策略。
 
 Claude Code 首版写入用户级 `~/.claude/settings.json` 的受管条目并保留全部其他设置。正式安装不得复用测试专用 `dontAsk` 或全工具白名单。重复安装、升级和卸载必须通过独立回执验证受管 JSON 内容；用户修改、重复复制或标记损坏时 fail closed，只精确移除未修改的受管条目。
 

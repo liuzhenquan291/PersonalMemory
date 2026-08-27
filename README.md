@@ -192,9 +192,11 @@ sh -s -- --help
 http://127.0.0.1:4173
 ```
 
-### Hook 冲突
+### Hook 共存与冲突保护
 
-安装器不会覆盖所选 Agent 中已有的同名 `UserPromptSubmit`、`Stop` Hook。如果提示 `conflicts with the managed definition`，请先检查对应客户端的 Hook 配置，决定保留哪一套定义，再重新运行安装。未选择的 Agent 不参与冲突检查。不要直接删除不认识的 Hook。
+安装器允许所选 Agent 的 `UserPromptSubmit`、`Stop` 事件中已有其他 Hook。例如 Claude Code 的 usage-tracking `Stop` Hook 会保持原样，PersonalMemory 只追加自己的受管条目。重复安装、升级、切换 Agent 和卸载都通过私有回执中的定义摘要精确识别 PersonalMemory 条目，不会移除或改写其他 Hook。
+
+如果 PersonalMemory 自身的受管条目缺失、被修改或重复，安装器会拒绝继续，避免扩大管理范围。未选择的 Agent 不参与配置检查。不要直接删除不认识的 Hook。
 
 Codex 安装后还需在客户端使用 `/hooks` 核对 PersonalMemory 的精确定义并授予信任；未信任时状态可能显示 `installed_untrusted`，自动 Hook 不会正常生效。
 
