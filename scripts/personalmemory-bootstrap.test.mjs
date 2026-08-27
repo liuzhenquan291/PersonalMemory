@@ -80,6 +80,23 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
     await readFile(capture, "utf8"),
     "--agent\ncodex\n--agent\nclaude-code\n",
   );
+
+  await writeFile(path.join(repository, "release-note.txt"), "replacement\n");
+  await git(repository, "add", "release-note.txt");
+  await git(repository, "commit", "-m", "replacement release");
+  await git(
+    repository,
+    "tag",
+    "-f",
+    "-a",
+    "personalmemory-v0.1.1",
+    "-m",
+    "replacement",
+  );
+  await assert.rejects(
+    execFileAsync("sh", args, { env: environment }),
+    /does not match remote tag/u,
+  );
 });
 
 test("rejects ambiguous Agents and unsafe version or installation inputs", async () => {

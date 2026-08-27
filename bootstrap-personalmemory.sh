@@ -124,7 +124,16 @@ case "$install_directory" in
     ;;
 esac
 
-if ! git ls-remote --exit-code --refs "$repository" "refs/tags/$version" >/dev/null 2>&1; then
+remote_refs=$(git ls-remote --tags "$repository" "refs/tags/$version" "refs/tags/$version^{}" 2>/dev/null) || {
+  echo "Git tag $version was not found in $repository." >&2
+  exit 1
+}
+tag_ref="refs/tags/$version"
+peeled_ref="refs/tags/$version^{}"
+remote_tag_object=$(printf '%s\n' "$remote_refs" | awk -v ref="$tag_ref" '$2 == ref { print $1 }')
+remote_commit=$(printf '%s\n' "$remote_refs" | awk -v ref="$peeled_ref" '$2 == ref { print $1 }')
+if [ -z "$remote_commit" ]; then remote_commit=$remote_tag_object; fi
+if ! printf '%s\n' "$remote_commit" | grep -Eq '^[a-f0-9]{40,64}$'; then
   echo "Git tag $version was not found in $repository." >&2
   exit 1
 fi
@@ -150,8 +159,8 @@ if [ -e "$install_directory" ] || [ -L "$install_directory" ]; then
   fi
   expected_commit=$(git -C "$install_directory" rev-parse "refs/tags/$version^{}")
   current_commit=$(git -C "$install_directory" rev-parse HEAD)
-  if [ "$current_commit" != "$expected_commit" ]; then
-    echo "Existing installation checkout is not at tag $version." >&2
+  if [ "$current_commit" != "$expected_commit" ] || [ "$current_commit" != "$remote_commit" ]; then
+    echo "Existing installation checkout does not match remote tag $version." >&2
     exit 1
   fi
 else
@@ -159,6 +168,12 @@ else
   mkdir -p "$parent_directory"
   git clone --branch "$version" --depth 1 --single-branch -- \
     "$repository" "$install_directory"
+fi
+
+current_commit=$(git -C "$install_directory" rev-parse HEAD)
+if [ "$current_commit" != "$remote_commit" ]; then
+  echo "Cloned checkout does not match remote tag $version." >&2
+  exit 1
 fi
 
 installer="$install_directory/install-personalmemory.sh"
