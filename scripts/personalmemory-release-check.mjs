@@ -46,6 +46,15 @@ if (
   failures.push("source distribution installer is incomplete");
 }
 
+const bootstrapInstaller = await requireFile("bootstrap-personalmemory.sh");
+if (
+  !bootstrapInstaller.includes("git ls-remote") ||
+  !bootstrapInstaller.includes("git clone") ||
+  !bootstrapInstaller.includes("./install-personalmemory.sh")
+) {
+  failures.push("remote bootstrap installer is incomplete");
+}
+
 const packageLock = JSON.parse(await requireFile("package-lock.json"));
 const supportedNativePackages = [
   "@node-rs/jieba-darwin-arm64",

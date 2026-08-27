@@ -11,6 +11,20 @@ cd PersonalMemory
 ./install-personalmemory.sh
 ```
 
+也可以使用首发 tag 内的远程引导器，并显式传入仓库、版本和可重复 Agent 参数：
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+sh -s -- \
+  --repo https://github.com/liuzhenquan291/PersonalMemory.git \
+  --version personalmemory-v0.1.1 \
+  --agent codex \
+  --agent claude-code
+```
+
+引导器只接受规范化的 PersonalMemory 版本 tag 和绝对安装目录，验证远端 tag 后浅克隆固定版本，再调用包内正式安装器。它不会使用 Docker，也不会静默覆盖已有目录或有本地修改的检出。
+
 版本化源码压缩包及其独立 SHA-256 文件仍是可离线校验的正式分发物。MVP 不发布根项目现有的上游 npm 插件包。
 
 ## 生成与校验
