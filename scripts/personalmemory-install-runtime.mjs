@@ -22,7 +22,7 @@ import { initializeDataDirectory } from "@personalmemory/core";
 
 import {
   installManagedHooks,
-  readManagedHookStatus,
+  pruneManagedHookEventReceipts,
   uninstallManagedHooks,
 } from "./personalmemory-hook-install.mjs";
 import {
@@ -129,6 +129,17 @@ export function hookInstallationId(secret) {
 const RECEIPT_VERSION = 3;
 const PRODUCT_VERSION = "0.1.1";
 const SCHEMA_VERSION = 7;
+const SUPPORTED_AGENTS = ["codex", "claude-code"];
+
+function normalizeAgents(agents) {
+  const selected = agents ?? SUPPORTED_AGENTS;
+  if (
+    !Array.isArray(selected) ||
+    selected.some((agent) => !SUPPORTED_AGENTS.includes(agent))
+  )
+    throw new Error("Install agents must be codex and/or claude-code");
+  return SUPPORTED_AGENTS.filter((agent) => selected.includes(agent));
+}
 
 export function assertSupportedEnvironment(options = {}) {
   const platform = options.platform ?? process.platform;
@@ -424,6 +435,13 @@ export async function installPersonalMemory(options = {}) {
     options.installManagedHooksImpl ?? installManagedHooks;
   const uninstallManagedHooksImpl =
     options.uninstallManagedHooksImpl ?? uninstallManagedHooks;
+  const isAliveImpl = options.isAliveImpl ?? isAlive;
+  const readHookDoctorStatusImpl =
+    options.readHookDoctorStatusImpl ?? readHookDoctorStatus;
+  const pruneManagedHookEventReceiptsImpl =
+    options.pruneManagedHookEventReceiptsImpl ?? pruneManagedHookEventReceipts;
+  const writePrivateAtomicImpl =
+    options.writePrivateAtomicImpl ?? writePrivateAtomic;
   const startupTimeoutMs = options.startupTimeoutMs ?? 30_000;
 
   if (await pathExists(receiptPath)) {
@@ -442,6 +460,10 @@ export async function installPersonalMemory(options = {}) {
       !Number.isSafeInteger(receipt.webPid) ||
       !Number.isSafeInteger(receipt.hookWorkerPid) ||
       !/^[a-f0-9]{32}$/u.test(receipt.hookWorkerGeneration ?? "") ||
+      (receipt.agents !== undefined &&
+        (!Array.isArray(receipt.agents) ||
+          receipt.agents.some((agent) => !SUPPORTED_AGENTS.includes(agent)) ||
+          new Set(receipt.agents).size !== receipt.agents.length)) ||
       path.resolve(receipt.secretPath ?? "") !== secretPath ||
       ![
         receipt.upstreamHealthUrl,
@@ -463,10 +485,10 @@ export async function installPersonalMemory(options = {}) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
     if (
-      !isAlive(receipt.upstreamPid) ||
-      !isAlive(receipt.gatewayPid) ||
-      !isAlive(receipt.webPid) ||
-      !isAlive(receipt.hookWorkerPid)
+      !isAliveImpl(receipt.upstreamPid) ||
+      !isAliveImpl(receipt.gatewayPid) ||
+      !isAliveImpl(receipt.webPid) ||
+      !isAliveImpl(receipt.hookWorkerPid)
     ) {
       throw new Error(
         `A stopped or partial installation exists at ${receiptPath}; remove only this stale receipt before retrying`,
@@ -480,15 +502,12 @@ export async function installPersonalMemory(options = {}) {
     const { token } = await loadOrCreateGatewayEnvironment(receipt.secretPath);
     await loadOrCreateHookSecret(hookSecretPath);
     await waitForRecall(receipt.recallUrl, token, fetchImpl, 3_000);
-    const [hookInstall, hookRuntime] = await Promise.all([
-      readManagedHookStatus({
-        home: options.home,
-        stateDirectory: runtimeDirectory,
-      }),
-      readHookDoctorStatus({ stateDirectory: runtimeDirectory }),
-    ]);
+    const previousAgents = normalizeAgents(receipt.agents);
+    const agents = normalizeAgents(options.agents ?? receipt.agents);
+    const hookRuntime = await readHookDoctorStatusImpl({
+      stateDirectory: runtimeDirectory,
+    });
     if (
-      !hookInstall.installed ||
       hookRuntime.worker !== "healthy" ||
       hookRuntime.workerPid !== receipt.hookWorkerPid ||
       hookRuntime.workerGeneration !== receipt.hookWorkerGeneration ||
@@ -496,9 +515,48 @@ export async function installPersonalMemory(options = {}) {
       Date.now() - hookRuntime.lastMaintenanceAt > 120_000
     )
       throw new Error("Managed Hook installation or worker is not healthy");
-    return { ...receipt, changed: false, receiptPath };
+    const hookOptions = {
+      home: options.home,
+      stateDirectory: runtimeDirectory,
+      projectRoot: root,
+      nodePath: process.execPath,
+    };
+    const hookInstall = await installManagedHooksImpl({
+      ...hookOptions,
+      clients: agents,
+    });
+    if (!hookInstall.installed)
+      throw new Error("Managed Hook installation or worker is not healthy");
+    const updatedReceipt = {
+      ...receipt,
+      agents,
+      codexHookStatus: hookInstall.codex,
+      claudeHookStatus: hookInstall.claude,
+    };
+    if (hookInstall.changed || !Array.isArray(receipt.agents)) {
+      try {
+        await writePrivateAtomicImpl(
+          receiptPath,
+          `${JSON.stringify(updatedReceipt, null, 2)}\n`,
+        );
+      } catch (error) {
+        if (hookInstall.changed)
+          await installManagedHooksImpl({
+            ...hookOptions,
+            clients: previousAgents,
+          }).catch(() => undefined);
+        throw error;
+      }
+    }
+    await pruneManagedHookEventReceiptsImpl(hookOptions);
+    return {
+      ...updatedReceipt,
+      changed: hookInstall.changed,
+      receiptPath,
+    };
   }
 
+  const agents = normalizeAgents(options.agents);
   await assertPortAvailableImpl(host, upstreamPort);
   await assertPortAvailableImpl(host, gatewayPort);
   await assertPortAvailableImpl(host, webPort);
@@ -639,14 +697,15 @@ export async function installPersonalMemory(options = {}) {
       pid: hookWorker.pid,
       generation: hookWorkerGeneration,
       timeoutMs: startupTimeoutMs,
-      isAlive,
-      readStatus: options.readHookDoctorStatusImpl ?? readHookDoctorStatus,
+      isAlive: isAliveImpl,
+      readStatus: readHookDoctorStatusImpl,
     });
     const hookInstall = await installManagedHooksImpl({
       home: options.home,
       stateDirectory: runtimeDirectory,
       projectRoot: root,
       nodePath: process.execPath,
+      clients: agents,
     });
     hookInstallCompleted = true;
     const receipt = {
@@ -660,6 +719,7 @@ export async function installPersonalMemory(options = {}) {
       webPid: web.pid,
       hookWorkerPid: hookWorker.pid,
       hookWorkerGeneration,
+      agents,
       codexHookStatus: hookInstall.codex,
       claudeHookStatus: hookInstall.claude,
       upstreamHealthUrl: `http://${host}:${upstreamPort}/health`,
@@ -670,10 +730,16 @@ export async function installPersonalMemory(options = {}) {
       hookReceiptPath: hookInstall.receiptPath,
       logPath,
     };
-    await writePrivateAtomic(
+    await writePrivateAtomicImpl(
       receiptPath,
       `${JSON.stringify(receipt, null, 2)}\n`,
     );
+    await pruneManagedHookEventReceiptsImpl({
+      home: options.home,
+      stateDirectory: runtimeDirectory,
+      projectRoot: root,
+      nodePath: process.execPath,
+    });
     upstream.unref();
     gateway.unref();
     web.unref();

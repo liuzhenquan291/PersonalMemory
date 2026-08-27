@@ -88,7 +88,28 @@ sha256sum -c PersonalMemory-0.1.1-source.tar.gz.sha256
 ./install-personalmemory.sh
 ```
 
-首次运行会按锁文件安装依赖、构建产品、创建私有数据目录并启动四个受管进程。重复运行用于检查和恢复安装，不会删除已有记忆。
+未指定 Agent 时，安装器会检测当前 `PATH` 中可用的 Codex 和 Claude Code，只为检测到的客户端安装自动记忆 Hook。也可以通过可重复的 `--agent` 参数明确选择：
+
+```sh
+# 只接入 Codex
+./install-personalmemory.sh --agent codex
+
+# 只接入 Claude Code
+./install-personalmemory.sh --agent claude-code
+
+# 同时接入 Codex 和 Claude Code
+./install-personalmemory.sh --agent codex --agent claude-code
+
+# 接入当前版本支持的全部 Agent
+./install-personalmemory.sh --agent all
+
+# 只安装核心服务和 Web，不配置任何 Agent Hook
+./install-personalmemory.sh --agent none
+```
+
+支持的值为 `codex`、`claude-code`、`all` 和 `none`。重复的具体 Agent 会自动去重；`all` 或 `none` 不能和其他值组合，未知值会在安装前报错。
+
+首次运行会按锁文件安装依赖、构建产品、创建私有数据目录并启动四个受管进程。重复运行用于检查、恢复安装或调整 Agent 集合，不会删除已有记忆。重新选择 Agent 时，安装器只新增所选的受管 Hook，并精确移除不再选择的 PersonalMemory Hook；不会删除客户端中的其他用户配置或自有 Hook。
 
 成功后终端会显示 Web 地址、健康检查地址、Codex/Claude Code Hook 状态、数据目录和日志位置。默认 Web 地址是：
 
@@ -98,7 +119,7 @@ http://127.0.0.1:4173
 
 ### Hook 冲突
 
-安装器不会覆盖 Codex 或 Claude Code 中已有的同名 `UserPromptSubmit`、`Stop` Hook。如果提示 `conflicts with the managed definition`，请先检查对应客户端的 Hook 配置，决定保留哪一套定义，再重新运行安装。不要直接删除不认识的 Hook。
+安装器不会覆盖所选 Agent 中已有的同名 `UserPromptSubmit`、`Stop` Hook。如果提示 `conflicts with the managed definition`，请先检查对应客户端的 Hook 配置，决定保留哪一套定义，再重新运行安装。未选择的 Agent 不参与冲突检查。不要直接删除不认识的 Hook。
 
 Codex 安装后还需在客户端使用 `/hooks` 核对 PersonalMemory 的精确定义并授予信任；未信任时状态可能显示 `installed_untrusted`，自动 Hook 不会正常生效。
 

@@ -23,7 +23,21 @@ Linux 可使用 `sha256sum -c` 校验同一个文件。发布产物默认写入�
 ./install-personalmemory.sh
 ```
 
-安装入口要求 macOS 或 Linux、Node.js 22.19.0 以上和 npm。首次运行在依赖不存在时通过 `npm ci` 按锁文件安装，随后构建并启动核心 Gateway、PersonalMemory Gateway 和 Web；重复运行只验证受管进程、三个健康入口和非降级 L0/L1 召回，不重复安装依赖。
+安装器支持可重复的 Agent 选择参数。例如只接入 Codex：
+
+```sh
+./install-personalmemory.sh --agent codex
+```
+
+同时接入多个 Agent：
+
+```sh
+./install-personalmemory.sh --agent codex --agent claude-code
+```
+
+还可使用 `--agent all` 安装全部当前支持的 Agent Hook，或使用 `--agent none` 只安装核心服务和 Web。不传 `--agent` 时自动检测当前 `PATH` 中可用的客户端。
+
+安装入口要求 macOS 或 Linux、Node.js 22.19.0 以上和 npm。首次运行在依赖不存在时通过 `npm ci` 按锁文件安装，随后构建并启动核心 Gateway、PersonalMemory Gateway 和 Web；重复运行验证受管进程、三个健康入口和非降级 L0/L1 召回，并可按新参数调整受管 Agent Hook，不重复安装依赖。
 
 ## 包内容边界
 

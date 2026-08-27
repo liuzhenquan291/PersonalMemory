@@ -14,8 +14,26 @@ import path from "node:path";
 import process from "node:process";
 import { parse as parseToml } from "smol-toml";
 
-const RECEIPT_VERSION = 1;
+const RECEIPT_VERSION = 2;
+const LEGACY_RECEIPT_VERSION = 1;
 const EVENTS = ["UserPromptSubmit", "Stop"];
+const CLIENTS = ["codex", "claude-code"];
+
+function selectedClients(options = {}) {
+  const clients = options.clients ?? CLIENTS;
+  if (
+    !Array.isArray(clients) ||
+    clients.some((client) => !CLIENTS.includes(client))
+  )
+    throw new Error("Managed Hook clients must be codex and/or claude-code");
+  return [...new Set(clients)].sort(
+    (left, right) => CLIENTS.indexOf(left) - CLIENTS.indexOf(right),
+  );
+}
+
+function configKey(client) {
+  return client === "codex" ? "codex" : "claude";
+}
 
 function quote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
@@ -193,11 +211,11 @@ function addManaged(config, managed) {
   return { ...config, hooks };
 }
 
-function removeManaged(config, managed) {
+function removeManagedByDigest(config, definitions) {
   const hooks = { ...(config.hooks ?? {}) };
   for (const event of EVENTS) {
     const entries = hooks[event] ?? [];
-    if (entries.length !== 1 || digest(entries[0]) !== digest(managed[event]))
+    if (entries.length !== 1 || digest(entries[0]) !== definitions[event])
       throw new Error(`Managed Hook ${event} was modified`);
     delete hooks[event];
   }
@@ -220,7 +238,7 @@ function locations(options = {}) {
   const claudePath = path.join(home, ".claude", "settings.json");
   const receiptPath = path.join(stateDirectory, "hooks", "install.json");
   const managed = Object.fromEntries(
-    ["codex", "claude-code"].map((client) => [
+    CLIENTS.map((client) => [
       client,
       Object.fromEntries(
         EVENTS.map((event) => [
@@ -247,10 +265,11 @@ function locations(options = {}) {
   };
 }
 
-function receiptFor(paths) {
+function receiptFor(paths, clients) {
   return {
     version: RECEIPT_VERSION,
     installedAt: new Date().toISOString(),
+    clients,
     codexPath: paths.codexPath,
     claudePath: paths.claudePath,
     definitions: {
@@ -265,7 +284,7 @@ function receiptFor(paths) {
       ),
     },
     eventReceiptIds: Object.fromEntries(
-      ["codex", "claude-code"].map((client) => [
+      CLIENTS.map((client) => [
         client,
         Object.fromEntries(
           EVENTS.map((event) => [event, eventReceiptId(client, event, paths)]),
@@ -283,7 +302,8 @@ async function readReceipt(paths) {
     throw new Error("Managed Hook receipt must be a private regular file");
   const receipt = JSON.parse(await readFile(paths.receiptPath, "utf8"));
   if (
-    receipt.version !== RECEIPT_VERSION ||
+    ![LEGACY_RECEIPT_VERSION, RECEIPT_VERSION].includes(receipt.version) ||
+    (receipt.version === RECEIPT_VERSION && !Array.isArray(receipt.clients)) ||
     path.resolve(receipt.codexPath ?? "") !== paths.codexPath ||
     path.resolve(receipt.claudePath ?? "") !== paths.claudePath ||
     !["codex", "claude"].every((client) =>
@@ -298,6 +318,20 @@ async function readReceipt(paths) {
     )
   )
     throw new Error("Managed Hook receipt expands the managed scope");
+  const clients =
+    receipt.version === LEGACY_RECEIPT_VERSION
+      ? [...CLIENTS]
+      : selectedClients({ clients: receipt.clients });
+  if (
+    receipt.version === RECEIPT_VERSION &&
+    JSON.stringify(receipt.clients) !== JSON.stringify(clients)
+  )
+    throw new Error("Managed Hook receipt expands the managed scope");
+  if (receipt.version === LEGACY_RECEIPT_VERSION)
+    Object.defineProperty(receipt, "clients", {
+      value: clients,
+      enumerable: false,
+    });
   return receipt;
 }
 
@@ -313,7 +347,7 @@ function assertReceiptConfig(config, definitions) {
   }
 }
 
-async function clearEventReceipts(paths) {
+async function clearStaleEventReceipts(paths, receipt) {
   const directory = path.join(paths.stateDirectory, "hooks");
   await assertNoSymlinkAncestors(directory);
   let names;
@@ -324,10 +358,15 @@ async function clearEventReceipts(paths) {
     throw error;
   }
   for (const name of names) {
-    if (
-      !/^first-event-(?:codex|claude-code)-(?:UserPromptSubmit|Stop)(?:-[a-f0-9]{64})?\.json$/u.test(
+    const match =
+      /^first-event-(codex|claude-code)-(UserPromptSubmit|Stop)(?:-([a-f0-9]{64}))?\.json$/u.exec(
         name,
-      )
+      );
+    if (!match) continue;
+    const [, client, event, definitionId] = match;
+    if (
+      receipt.clients.includes(client) &&
+      definitionId === receipt.eventReceiptIds[client][event]
     )
       continue;
     const target = path.join(directory, name);
@@ -338,20 +377,47 @@ async function clearEventReceipts(paths) {
   }
 }
 
+export async function pruneManagedHookEventReceipts(options = {}) {
+  const paths = locations(options);
+  const receipt = await readReceipt(paths);
+  await clearStaleEventReceipts(paths, receipt);
+  return { pruned: true };
+}
+
 export async function installManagedHooks(options = {}) {
   const paths = locations(options);
-  await assertCodexHookPolicy(paths.codexConfigPath);
-  const [codex, claude] = await Promise.all([
-    readJsonFile(paths.codexPath),
-    readJsonFile(paths.claudePath),
-  ]);
+  const clients = selectedClients(options);
   const receiptExists = await exists(paths.receiptPath);
   if (receiptExists) {
     const receipt = await readReceipt(paths);
-    assertReceiptConfig(codex, receipt.definitions.codex);
-    assertReceiptConfig(claude, receipt.definitions.claude);
-    const nextReceipt = receiptFor(paths);
+    const relevantClients = CLIENTS.filter(
+      (client) => clients.includes(client) || receipt.clients.includes(client),
+    );
+    const configs = { codex: {}, claude: {} };
+    await Promise.all(
+      relevantClients.map(async (client) => {
+        const key = configKey(client);
+        configs[key] = await readJsonFile(
+          client === "codex" ? paths.codexPath : paths.claudePath,
+        );
+      }),
+    );
+    if (clients.includes("codex"))
+      await assertCodexHookPolicy(paths.codexConfigPath);
+    for (const client of receipt.clients)
+      assertReceiptConfig(
+        configs[configKey(client)],
+        receipt.definitions[configKey(client)],
+      );
+    for (const client of clients) {
+      if (!receipt.clients.includes(client))
+        inspectConfig(configs[configKey(client)], paths.managed[client]);
+    }
+    const nextReceipt = receiptFor(paths, clients);
     if (
+      receipt.version === RECEIPT_VERSION &&
+      clients.length === receipt.clients.length &&
+      clients.every((client) => receipt.clients.includes(client)) &&
       EVENTS.every(
         (event) =>
           nextReceipt.definitions.codex[event] ===
@@ -361,44 +427,47 @@ export async function installManagedHooks(options = {}) {
       )
     )
       return {
+        installed: true,
         changed: false,
-        codex: "installed_untrusted",
-        claude: "installed",
+        codex: clients.includes("codex")
+          ? "installed_untrusted"
+          : "not_installed",
+        claude: clients.includes("claude-code") ? "installed" : "not_installed",
+        clients,
         receiptPath: paths.receiptPath,
       };
-    await clearEventReceipts(paths);
     const writtenReceipt = {
       ...nextReceipt,
       installedAt: receipt.installedAt,
       upgradedAt: new Date().toISOString(),
     };
-    await writeAtomic(
-      paths.codexPath,
-      addManaged(codex, paths.managed.codex),
-      0o600,
-      codex,
-    );
+    const nextConfigs = {};
+    for (const client of CLIENTS) {
+      const key = configKey(client);
+      nextConfigs[key] = clients.includes(client)
+        ? addManaged(configs[key], paths.managed[client])
+        : receipt.clients.includes(client)
+          ? removeManagedByDigest(configs[key], receipt.definitions[key])
+          : configs[key];
+    }
+    const written = [];
     try {
-      await writeAtomic(
-        paths.claudePath,
-        addManaged(claude, paths.managed["claude-code"]),
-        0o600,
-        claude,
-      );
+      for (const client of CLIENTS) {
+        const key = configKey(client);
+        if (digest(nextConfigs[key]) === digest(configs[key])) continue;
+        const target = client === "codex" ? paths.codexPath : paths.claudePath;
+        await writeAtomic(target, nextConfigs[key], 0o600, configs[key]);
+        written.push(client);
+      }
       await writeAtomic(paths.receiptPath, writtenReceipt, 0o600, receipt);
     } catch (error) {
-      await writeAtomic(
-        paths.codexPath,
-        codex,
-        0o600,
-        addManaged(codex, paths.managed.codex),
-      ).catch(() => undefined);
-      await writeAtomic(
-        paths.claudePath,
-        claude,
-        0o600,
-        addManaged(claude, paths.managed["claude-code"]),
-      ).catch(() => undefined);
+      for (const client of written.reverse()) {
+        const key = configKey(client);
+        const target = client === "codex" ? paths.codexPath : paths.claudePath;
+        await writeAtomic(target, configs[key], 0o600, nextConfigs[key]).catch(
+          () => undefined,
+        );
+      }
       await writeAtomic(
         paths.receiptPath,
         receipt,
@@ -408,50 +477,65 @@ export async function installManagedHooks(options = {}) {
       throw error;
     }
     return {
+      installed: true,
       changed: true,
-      codex: "installed_untrusted",
-      claude: "installed",
+      codex: clients.includes("codex")
+        ? "installed_untrusted"
+        : "not_installed",
+      claude: clients.includes("claude-code") ? "installed" : "not_installed",
+      clients,
       receiptPath: paths.receiptPath,
     };
   }
-  await clearEventReceipts(paths);
-  const codexInstalled = inspectConfig(codex, paths.managed.codex);
-  const claudeInstalled = inspectConfig(claude, paths.managed["claude-code"]);
-  if (codexInstalled || claudeInstalled)
-    throw new Error("Managed Hook installation is missing its receipt");
-  await writeAtomic(
-    paths.codexPath,
-    addManaged(codex, paths.managed.codex),
-    0o600,
-    codex,
+  if (clients.includes("codex"))
+    await assertCodexHookPolicy(paths.codexConfigPath);
+  const configs = { codex: {}, claude: {} };
+  await Promise.all(
+    clients.map(async (client) => {
+      const key = configKey(client);
+      configs[key] = await readJsonFile(
+        client === "codex" ? paths.codexPath : paths.claudePath,
+      );
+    }),
   );
+  for (const client of clients) {
+    if (inspectConfig(configs[configKey(client)], paths.managed[client]))
+      throw new Error("Managed Hook installation is missing its receipt");
+  }
+  const written = [];
+  const nextReceipt = receiptFor(paths, clients);
   try {
-    await writeAtomic(
-      paths.claudePath,
-      addManaged(claude, paths.managed["claude-code"]),
-      0o600,
-      claude,
-    );
-    await writeAtomic(paths.receiptPath, receiptFor(paths));
+    for (const client of clients) {
+      const key = configKey(client);
+      const target = client === "codex" ? paths.codexPath : paths.claudePath;
+      await writeAtomic(
+        target,
+        addManaged(configs[key], paths.managed[client]),
+        0o600,
+        configs[key],
+      );
+      written.push(client);
+    }
+    await writeAtomic(paths.receiptPath, nextReceipt);
   } catch (error) {
-    await writeAtomic(
-      paths.codexPath,
-      codex,
-      0o600,
-      addManaged(codex, paths.managed.codex),
-    ).catch(() => undefined);
-    await writeAtomic(
-      paths.claudePath,
-      claude,
-      0o600,
-      addManaged(claude, paths.managed["claude-code"]),
-    ).catch(() => undefined);
+    for (const client of written.reverse()) {
+      const key = configKey(client);
+      const target = client === "codex" ? paths.codexPath : paths.claudePath;
+      await writeAtomic(
+        target,
+        configs[key],
+        0o600,
+        addManaged(configs[key], paths.managed[client]),
+      ).catch(() => undefined);
+    }
     throw error;
   }
   return {
+    installed: true,
     changed: true,
-    codex: "installed_untrusted",
-    claude: "installed",
+    codex: clients.includes("codex") ? "installed_untrusted" : "not_installed",
+    claude: clients.includes("claude-code") ? "installed" : "not_installed",
+    clients,
     receiptPath: paths.receiptPath,
   };
 }
@@ -459,14 +543,23 @@ export async function installManagedHooks(options = {}) {
 export async function readManagedHookStatus(options = {}) {
   const paths = locations(options);
   try {
-    await assertCodexHookPolicy(paths.codexConfigPath);
     const receipt = await readReceipt(paths);
-    const [codex, claude] = await Promise.all([
-      readJsonFile(paths.codexPath),
-      readJsonFile(paths.claudePath),
-    ]);
-    assertReceiptConfig(codex, receipt.definitions.codex);
-    assertReceiptConfig(claude, receipt.definitions.claude);
+    if (receipt.clients.includes("codex"))
+      await assertCodexHookPolicy(paths.codexConfigPath);
+    const configs = { codex: {}, claude: {} };
+    await Promise.all(
+      receipt.clients.map(async (client) => {
+        const key = configKey(client);
+        configs[key] = await readJsonFile(
+          client === "codex" ? paths.codexPath : paths.claudePath,
+        );
+      }),
+    );
+    for (const client of receipt.clients)
+      assertReceiptConfig(
+        configs[configKey(client)],
+        receipt.definitions[configKey(client)],
+      );
     const eventHealthy = async (client, event) => {
       const target = path.join(
         paths.stateDirectory,
@@ -496,15 +589,27 @@ export async function readManagedHookStatus(options = {}) {
           ),
         )
       ).every(Boolean);
-    const [codexEvent, claudeEvent] = await Promise.all([
-      healthy("codex"),
-      healthy("claude-code"),
-    ]);
+    const health = Object.fromEntries(
+      await Promise.all(
+        receipt.clients.map(async (client) => [client, await healthy(client)]),
+      ),
+    );
     return {
       installed: true,
-      codex: codexEvent ? "healthy" : "installed_untrusted",
-      claude: claudeEvent ? "healthy" : "installed",
-      firstEventReceived: codexEvent && claudeEvent,
+      clients: receipt.clients,
+      codex: receipt.clients.includes("codex")
+        ? health.codex
+          ? "healthy"
+          : "installed_untrusted"
+        : "not_installed",
+      claude: receipt.clients.includes("claude-code")
+        ? health["claude-code"]
+          ? "healthy"
+          : "installed"
+        : "not_installed",
+      firstEventReceived:
+        receipt.clients.length > 0 &&
+        receipt.clients.every((client) => health[client]),
     };
   } catch (error) {
     if (error?.code === "ENOENT") return { installed: false };
@@ -514,25 +619,37 @@ export async function readManagedHookStatus(options = {}) {
 
 export async function uninstallManagedHooks(options = {}) {
   const paths = locations(options);
-  await assertCodexHookPolicy(paths.codexConfigPath);
-  await readReceipt(paths);
-  const [codex, claude] = await Promise.all([
-    readJsonFile(paths.codexPath),
-    readJsonFile(paths.claudePath),
-  ]);
-  const nextCodex = removeManaged(codex, paths.managed.codex);
-  const nextClaude = removeManaged(claude, paths.managed["claude-code"]);
-  await writeAtomic(paths.codexPath, nextCodex, 0o600, codex);
+  const receipt = await readReceipt(paths);
+  const configs = { codex: {}, claude: {} };
+  await Promise.all(
+    receipt.clients.map(async (client) => {
+      const key = configKey(client);
+      configs[key] = await readJsonFile(
+        client === "codex" ? paths.codexPath : paths.claudePath,
+      );
+    }),
+  );
+  const written = [];
   try {
-    await writeAtomic(paths.claudePath, nextClaude, 0o600, claude);
+    for (const client of receipt.clients) {
+      const key = configKey(client);
+      const target = client === "codex" ? paths.codexPath : paths.claudePath;
+      const next = removeManagedByDigest(
+        configs[key],
+        receipt.definitions[key],
+      );
+      await writeAtomic(target, next, 0o600, configs[key]);
+      written.push([client, next]);
+    }
     await rm(paths.receiptPath);
   } catch (error) {
-    await writeAtomic(paths.codexPath, codex, 0o600, nextCodex).catch(
-      () => undefined,
-    );
-    await writeAtomic(paths.claudePath, claude, 0o600, nextClaude).catch(
-      () => undefined,
-    );
+    for (const [client, next] of written.reverse()) {
+      const key = configKey(client);
+      const target = client === "codex" ? paths.codexPath : paths.claudePath;
+      await writeAtomic(target, configs[key], 0o600, next).catch(
+        () => undefined,
+      );
+    }
     throw error;
   }
   return { uninstalled: true };

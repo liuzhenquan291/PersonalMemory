@@ -451,6 +451,7 @@ test("executes both installed client definitions in an isolated HOME against a l
     );
     assert.deepEqual(await readManagedHookStatus({ home, stateDirectory }), {
       installed: true,
+      clients: ["codex", "claude-code"],
       codex: "healthy",
       claude: "healthy",
       firstEventReceived: true,

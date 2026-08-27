@@ -118,6 +118,12 @@ function validateReceipt(receipt, dataDirectory, stateDirectory) {
       (!Number.isSafeInteger(receipt.upstreamPid) ||
         !Number.isSafeInteger(receipt.hookWorkerPid) ||
         !/^[a-f0-9]{32}$/u.test(receipt.hookWorkerGeneration ?? "") ||
+        (receipt.agents !== undefined &&
+          (!Array.isArray(receipt.agents) ||
+            receipt.agents.some(
+              (agent) => !["codex", "claude-code"].includes(agent),
+            ) ||
+            new Set(receipt.agents).size !== receipt.agents.length)) ||
         path.resolve(receipt.hookReceiptPath ?? "") !==
           path.join(stateDirectory, "hooks", "install.json"))) ||
     !Number.isSafeInteger(receipt.gatewayPid) ||
@@ -231,6 +237,7 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
       dataDirectory,
       stateDirectory,
       home: options.home,
+      agents: receipt.agents,
     });
     const next = {
       ...started,

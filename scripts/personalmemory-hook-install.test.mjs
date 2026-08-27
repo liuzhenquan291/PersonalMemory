@@ -15,6 +15,7 @@ import test from "node:test";
 
 import {
   installManagedHooks,
+  pruneManagedHookEventReceipts,
   readManagedHookStatus,
   uninstallManagedHooks,
 } from "./personalmemory-hook-install.mjs";
@@ -89,11 +90,148 @@ test("installs private managed Codex and Claude hooks without replacing existing
       }),
       {
         installed: true,
+        clients: ["codex", "claude-code"],
         codex: "installed_untrusted",
         claude: "installed",
         firstEventReceived: false,
       },
     );
+  } finally {
+    await rm(current.root, { recursive: true, force: true });
+  }
+});
+
+test("installs a selected Agent set and can change it without touching unrelated hooks", async () => {
+  const current = await fixture();
+  try {
+    const options = {
+      home: current.home,
+      stateDirectory: current.stateDirectory,
+      projectRoot: "/opt/personalmemory",
+      nodePath: process.execPath,
+    };
+    const codexOnly = await installManagedHooks({
+      ...options,
+      clients: ["codex", "codex"],
+    });
+    assert.deepEqual(codexOnly.clients, ["codex"]);
+    assert.equal(codexOnly.claude, "not_installed");
+    let codex = JSON.parse(
+      await readFile(path.join(current.home, ".codex", "hooks.json"), "utf8"),
+    );
+    let claude = JSON.parse(
+      await readFile(
+        path.join(current.home, ".claude", "settings.json"),
+        "utf8",
+      ),
+    );
+    assert.ok(codex.hooks.UserPromptSubmit);
+    assert.equal(claude.hooks.UserPromptSubmit, undefined);
+
+    const codexReceipt = JSON.parse(
+      await readFile(codexOnly.receiptPath, "utf8"),
+    );
+    const codexEventPaths = [];
+    for (const event of ["UserPromptSubmit", "Stop"]) {
+      const target = path.join(
+        current.stateDirectory,
+        "hooks",
+        `first-event-codex-${event}-${codexReceipt.eventReceiptIds.codex[event]}.json`,
+      );
+      codexEventPaths.push(target);
+      await writeFile(
+        target,
+        `${JSON.stringify({
+          version: 1,
+          client: "codex",
+          event,
+          definitionId: codexReceipt.eventReceiptIds.codex[event],
+        })}\n`,
+        { mode: 0o600 },
+      );
+    }
+    const both = await installManagedHooks({
+      ...options,
+      clients: ["codex", "claude-code"],
+    });
+    assert.deepEqual(both.clients, ["codex", "claude-code"]);
+    for (const target of codexEventPaths)
+      assert.equal((await stat(target)).isFile(), true);
+
+    await writeFile(
+      path.join(current.home, ".codex", "config.toml"),
+      "[features]\nhooks = false\n",
+    );
+
+    const claudeOnly = await installManagedHooks({
+      ...options,
+      clients: ["claude-code"],
+    });
+    assert.deepEqual(claudeOnly.clients, ["claude-code"]);
+    assert.equal(claudeOnly.codex, "not_installed");
+    codex = JSON.parse(
+      await readFile(path.join(current.home, ".codex", "hooks.json"), "utf8"),
+    );
+    claude = JSON.parse(
+      await readFile(
+        path.join(current.home, ".claude", "settings.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(codex.hooks.UserPromptSubmit, undefined);
+    assert.equal(codex.hooks.SessionStart[0].hooks[0].command, "existing");
+    assert.ok(claude.hooks.UserPromptSubmit);
+
+    const coreOnly = await installManagedHooks({ ...options, clients: [] });
+    assert.deepEqual(coreOnly.clients, []);
+    assert.equal(coreOnly.codex, "not_installed");
+    assert.equal(coreOnly.claude, "not_installed");
+    const status = await readManagedHookStatus(options);
+    assert.deepEqual(status.clients, []);
+    assert.equal(status.firstEventReceived, false);
+    claude = JSON.parse(
+      await readFile(
+        path.join(current.home, ".claude", "settings.json"),
+        "utf8",
+      ),
+    );
+    assert.equal(claude.hooks.UserPromptSubmit, undefined);
+    assert.equal(claude.hooks.PreToolUse[0].hooks[0].command, "existing");
+  } finally {
+    await rm(current.root, { recursive: true, force: true });
+  }
+});
+
+test("does not read or validate an unselected Agent configuration", async () => {
+  const current = await fixture();
+  try {
+    const claudePath = path.join(current.home, ".claude", "settings.json");
+    await writeFile(claudePath, "not-json\n");
+    const result = await installManagedHooks({
+      home: current.home,
+      stateDirectory: current.stateDirectory,
+      projectRoot: "/opt/personalmemory",
+      nodePath: process.execPath,
+      clients: ["codex"],
+    });
+    assert.deepEqual(result.clients, ["codex"]);
+    assert.equal(await readFile(claudePath, "utf8"), "not-json\n");
+    assert.deepEqual(
+      (
+        await readManagedHookStatus({
+          home: current.home,
+          stateDirectory: current.stateDirectory,
+        })
+      ).clients,
+      ["codex"],
+    );
+    await uninstallManagedHooks({
+      home: current.home,
+      stateDirectory: current.stateDirectory,
+      projectRoot: "/opt/personalmemory",
+      nodePath: process.execPath,
+    });
+    assert.equal(await readFile(claudePath, "utf8"), "not-json\n");
   } finally {
     await rm(current.root, { recursive: true, force: true });
   }
@@ -116,6 +254,33 @@ test("is idempotent, fails closed on edited managed entries, and uninstalls exac
     await writeFile(codexPath, `${JSON.stringify(codex)}\n`);
     await assert.rejects(uninstallManagedHooks(options), /modified/u);
     assert.equal(await stat(first.receiptPath).then(() => true), true);
+  } finally {
+    await rm(current.root, { recursive: true, force: true });
+  }
+});
+
+test("upgrades a legacy dual-Agent Hook receipt without changing its selection", async () => {
+  const current = await fixture();
+  try {
+    const options = {
+      home: current.home,
+      stateDirectory: current.stateDirectory,
+      projectRoot: "/opt/personalmemory",
+      nodePath: process.execPath,
+    };
+    const installed = await installManagedHooks(options);
+    const legacy = JSON.parse(await readFile(installed.receiptPath, "utf8"));
+    legacy.version = 1;
+    delete legacy.clients;
+    await writeFile(installed.receiptPath, `${JSON.stringify(legacy)}\n`, {
+      mode: 0o600,
+    });
+    const upgraded = await installManagedHooks(options);
+    assert.equal(upgraded.changed, true);
+    assert.deepEqual(upgraded.clients, ["codex", "claude-code"]);
+    const receipt = JSON.parse(await readFile(installed.receiptPath, "utf8"));
+    assert.equal(receipt.version, 2);
+    assert.deepEqual(receipt.clients, ["codex", "claude-code"]);
   } finally {
     await rm(current.root, { recursive: true, force: true });
   }
@@ -147,6 +312,10 @@ test("upgrades only receipt-owned definitions, requires Codex retrust, and rever
         );
     }
     const upgraded = await installManagedHooks({
+      ...initial,
+      projectRoot: "/opt/personalmemory-v2",
+    });
+    await pruneManagedHookEventReceipts({
       ...initial,
       projectRoot: "/opt/personalmemory-v2",
     });

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { DatabaseSync } from "node:sqlite";
-import { mkdtemp, mkdir, readFile, realpath, rm, stat } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import process from "node:process";
@@ -21,6 +29,7 @@ import {
   resolveManagedUpstreamEnvironment,
   waitForHookWorker,
 } from "./personalmemory-install-runtime.mjs";
+import { readManagedHookStatus } from "./personalmemory-hook-install.mjs";
 
 const readyWorker = async ({ pid }) => ({
   worker: "healthy",
@@ -317,6 +326,70 @@ test("builds, starts, writes private state, and reports a healthy installation",
     (await stat(path.join(root, "state", "hooks", "secret"))).mode & 0o777,
     0o600,
   );
+
+  const repeatOptions = {
+    root,
+    home: path.join(root, "home"),
+    dataDirectory,
+    stateDirectory: path.join(root, "state"),
+    agents: ["codex"],
+    isAliveImpl: () => true,
+    readHookDoctorStatusImpl: async () => ({
+      worker: "healthy",
+      workerPid: result.hookWorkerPid,
+      workerGeneration: result.hookWorkerGeneration,
+      lastMaintenanceAt: Date.now(),
+    }),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
+  };
+  const reconfigured = await installPersonalMemory(repeatOptions);
+  assert.equal(reconfigured.changed, true);
+  assert.deepEqual(reconfigured.agents, ["codex"]);
+  assert.equal(reconfigured.claudeHookStatus, "not_installed");
+  assert.equal((await installPersonalMemory(repeatOptions)).changed, false);
+
+  const hookReceipt = JSON.parse(
+    await readFile(path.join(root, "state", "hooks", "install.json"), "utf8"),
+  );
+  const eventReceipt = path.join(
+    root,
+    "state",
+    "hooks",
+    `first-event-codex-UserPromptSubmit-${hookReceipt.eventReceiptIds.codex.UserPromptSubmit}.json`,
+  );
+  await writeFile(
+    eventReceipt,
+    `${JSON.stringify({
+      version: 1,
+      client: "codex",
+      event: "UserPromptSubmit",
+      definitionId: hookReceipt.eventReceiptIds.codex.UserPromptSubmit,
+    })}\n`,
+    { mode: 0o600 },
+  );
+  await assert.rejects(
+    installPersonalMemory({
+      ...repeatOptions,
+      agents: ["codex", "claude-code"],
+      writePrivateAtomicImpl: async () => {
+        throw new Error("receipt write failed");
+      },
+    }),
+    /receipt write failed/u,
+  );
+  assert.deepEqual(
+    (
+      await readManagedHookStatus({
+        home: path.join(root, "home"),
+        stateDirectory: path.join(root, "state"),
+      })
+    ).clients,
+    ["codex"],
+  );
+  assert.equal((await stat(eventReceipt)).isFile(), true);
   await rm(root, { recursive: true });
 });
 

@@ -28,4 +28,4 @@ if [ ! -d node_modules ]; then
   npm ci
 fi
 npm run build:products
-npm run install:product
+npm run install:product -- "$@"

@@ -56,7 +56,7 @@
     "test": "npm run test:upstream && npm run test:boundaries && npm run test:products",
     "test:boundaries": "node --test scripts/verify-workspace-boundaries.test.mjs",
     "test:products": "npm run test -w @personalmemory/core && npm run test -w @personalmemory/gateway && npm run test -w @personalmemory/mcp-server && npm run test -w @personalmemory/web && npm run test:dev && npm run test:install && npm run test:upgrade && npm run test:lifecycle && npm run test:data && npm run test:hook-adapter && npm run test:hook-runtime && npm run test:hook-managed && npm run test:mcp-client-config",
-    "test:install": "node --test scripts/personalmemory-install.test.mjs",
+    "test:install": "node --test scripts/personalmemory-install-options.test.mjs scripts/personalmemory-install.test.mjs",
     "test:upgrade": "node --test scripts/personalmemory-upgrade.test.mjs",
     "test:lifecycle": "node --test scripts/personalmemory-lifecycle.test.mjs",
     "test:data": "node --test scripts/personalmemory-data.test.mjs",
