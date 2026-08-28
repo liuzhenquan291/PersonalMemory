@@ -828,6 +828,18 @@ describe("PersonalMemory Web", () => {
       ),
     ).toBeVisible();
     expect(screen.getByText("API Key 已配置")).toBeVisible();
+    const modelPanel = screen
+      .getByRole("heading", { name: "OpenAI-compatible 模型" })
+      .closest("section");
+    expect(modelPanel).toHaveTextContent(
+      /API Key 仅保存在本机权限为 0600 的 gateway\.env/u,
+    );
+    expect(modelPanel).toHaveTextContent(
+      /撤销模型外联不会删除 API Key、模型配置或既有记忆/u,
+    );
+    expect(modelPanel).toHaveTextContent(
+      /提炼请求和响应属于内部任务，不会再次写入 L0/u,
+    );
     expect(
       screen.queryByDisplayValue("private-model-key"),
     ).not.toBeInTheDocument();
@@ -847,6 +859,24 @@ describe("PersonalMemory Web", () => {
         }),
       }),
     );
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await user.click(
+      screen.getByRole("button", { name: "删除模型配置和 API Key" }),
+    );
+    expect(window.confirm).toHaveBeenCalledWith(
+      "删除本机保存的模型配置和 API Key？这不会删除已有记忆。",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/configuration",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+      }),
+    );
+    expect(
+      await screen.findByText(/模型配置和 API Key 已从本机凭据文件删除/u),
+    ).toBeVisible();
   });
 
   it("fails closed when the Hook authorization disclosure is incomplete", async () => {

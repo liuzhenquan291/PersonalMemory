@@ -79,15 +79,19 @@ L2/L3 由上游管线在更高层继续归纳。MVP 对它们以查看和诚实�
 - API Key；
 - 模型名称。
 
-API Key 只写入本机权限为 `0600` 的受管 `gateway.env`，不会通过状态接口返回，也不会保存在浏览器中。保存配置之后，Web 会显示模型外联的目标 origin 和可能发送的字段；点击“授权模型外联”是独立的明确授权。配置不等于授权，provider、origin 或发送字段变化会让旧授权失效。
+API Key 只写入本机权限为 `0600` 的受管 `gateway.env`，不会进入浏览器、状态接口、授权记录或记忆数据库。macOS 路径是 `~/Library/Application Support/PersonalMemory Runtime/gateway.env`；Linux 路径是 `${XDG_STATE_HOME:-~/.local/state}/personalmemory/gateway.env`。保存配置之后，Web 会显示模型外联的目标 origin 和可能发送的字段；点击“授权模型外联”是独立的明确授权。配置不等于授权，provider、origin 或发送字段变化会让旧授权失效。
+
+授权只允许 PersonalMemory 把当次披露的模型输入、选中记忆上下文和导入会话消息发送到目标模型服务，用于 L0→L1/L2/L3 提炼。撤销授权不会删除 API Key、模型配置、现有 L0 或既有记忆；它会追加一条撤销记录，并在受管重启后停止新的模型外联和需要模型的提炼。若要移除密钥，应在 Web 单独点击“删除模型配置和 API Key”；这会从 `gateway.env` 删除模型配置，但仍不会删除记忆。
 
 配置和授权完成后，在安装目录运行：
 
 ```sh
-npm run lifecycle:product -- restart
+personalmemory restart
 ```
 
 Web 不会自行重启本机进程。未配置、未授权或撤销授权时，自动捕获仍会保存 L0，但 L1–L3 提炼暂停。模型调用可能产生服务商费用，费用和数据处理规则由你选择的模型服务商决定。
+
+提炼任务由 PersonalMemory 管线直接调用模型接口，不经过 Agent 生命周期 Hook。提炼请求和响应不会再次写入 L0；解析后的模型输出只进入 L1–L3 流程，内部 memory pipeline session 也会被捕获入口排除，因此不会形成递归提炼或造成 L0 膨胀。
 
 ## 记忆如何被使用
 

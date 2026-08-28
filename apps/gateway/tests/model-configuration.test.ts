@@ -1,8 +1,14 @@
 import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { loadConfig } from "@personalmemory/core";
+import {
+  ModelAuthorizationLedger,
+  defaultMigrations,
+  loadConfig,
+  migrateDatabase,
+} from "@personalmemory/core";
 
 import { createModelConfigurationManager } from "../src/model-configuration.js";
 
@@ -68,5 +74,28 @@ describe("private model configuration", () => {
       "PERSONALMEMORY_MODEL_ALLOWED_ORIGINS=https://models.example.test",
     );
     expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+
+    const beforeRevocation = await readFile(secretPath, "utf8");
+    const database = new DatabaseSync(":memory:");
+    migrateDatabase(database, defaultMigrations);
+    const authorization = new ModelAuthorizationLedger(database);
+    authorization.authorize(status.disclosure!);
+    authorization.revoke(status.disclosure!);
+    expect(await readFile(secretPath, "utf8")).toBe(beforeRevocation);
+
+    const disabled = await manager.disable();
+    expect(disabled).toEqual({
+      enabled: false,
+      apiKeyConfigured: false,
+      restartRequired: false,
+    });
+    const afterDisable = await readFile(secretPath, "utf8");
+    expect(afterDisable).toContain(
+      `PERSONALMEMORY_AUTH_TOKEN=${"a".repeat(43)}`,
+    );
+    expect(afterDisable).toContain("PERSONALMEMORY_MODEL_ENABLED=false");
+    expect(afterDisable).not.toContain("private-model-key");
+    expect(afterDisable).not.toContain("PERSONALMEMORY_MODEL_BASE_URL");
+    expect(afterDisable).not.toContain("PERSONALMEMORY_MODEL_NAME");
   });
 });

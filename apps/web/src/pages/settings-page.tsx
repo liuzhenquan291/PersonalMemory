@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   createBrowserSession,
   authorizeModel,
+  disableModelConfiguration,
   fetchModelAuthorization,
   fetchModelConfiguration,
   fetchGatewayStatus,
@@ -266,6 +267,16 @@ export function SettingsPage() {
             modelConfiguration.data.configuration.api_key_configured ? (
               <p>API Key 已配置</p>
             ) : null}
+            <p>
+              API Key 仅保存在本机权限为 0600 的 <code>gateway.env</code>
+              ，不会写入浏览器、状态接口或授权记录。macOS 位于
+              <code>
+                ~/Library/Application Support/PersonalMemory Runtime/gateway.env
+              </code>
+              ；Linux 位于
+              <code>$XDG_STATE_HOME/personalmemory</code>（未设置时使用
+              <code>~/.local/state/personalmemory</code>）。
+            </p>
             <label>
               <span>模型名称</span>
               <input
@@ -294,6 +305,14 @@ export function SettingsPage() {
                   {modelAuthorization.data.disclosure.sentFields.join("、")}
                 </p>
                 <p>
+                  授权后，这些内容会发送给上述模型服务，用于把 L0 提炼为
+                  L1–L3；模型服务商可能收费，并按其规则处理数据。
+                </p>
+                <p>
+                  提炼请求和响应属于内部任务，不会再次写入 L0；模型输出只作为
+                  L1–L3 候选进入后续流程。
+                </p>
+                <p>
                   当前状态：
                   {modelAuthorization.data.authorization.status === "authorized"
                     ? "已授权"
@@ -311,7 +330,7 @@ export function SettingsPage() {
                     void action
                       .then(() => {
                         setModelMessage(
-                          "模型外联授权已更新。请运行受管重启命令应用变更。",
+                          "模型外联授权已更新。请运行 personalmemory restart 应用变更。",
                         );
                         void modelAuthorization.refetch();
                       })
@@ -326,6 +345,43 @@ export function SettingsPage() {
                     ? "撤销模型外联"
                     : "授权模型外联"}
                 </button>
+                <p>
+                  撤销模型外联不会删除 API Key、模型配置或既有记忆；运行
+                  <code>personalmemory restart</code> 后才会停止新的模型请求和
+                  L1–L3 提炼。
+                </p>
+                {(modelKeySaved ||
+                  modelConfiguration.data.configuration.api_key_configured) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "删除本机保存的模型配置和 API Key？这不会删除已有记忆。",
+                        )
+                      )
+                        return;
+                      setModelMessage("正在删除模型配置和 API Key…");
+                      void disableModelConfiguration()
+                        .then(() => {
+                          setModelApiKey("");
+                          setModelBaseUrl("");
+                          setModelName("");
+                          setModelKeySaved(false);
+                          setModelMessage(
+                            "模型配置和 API Key 已从本机凭据文件删除。请运行 personalmemory restart 应用变更。",
+                          );
+                          void modelConfiguration.refetch();
+                          void status.refetch();
+                        })
+                        .catch(() =>
+                          setModelMessage("删除失败，请重新加载状态后再试。"),
+                        );
+                    }}
+                  >
+                    删除模型配置和 API Key
+                  </button>
+                )}
               </div>
             ) : null}
           </form>

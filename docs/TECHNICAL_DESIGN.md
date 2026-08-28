@@ -39,27 +39,31 @@ flowchart LR
 
 ## 3. L0-L3
 
-| 层级 | 含义 | 当前生成与使用 |
-| --- | --- | --- |
-| L0 | 原始 user/assistant 对话证据 | Hook 本地捕获；可浏览和追溯；默认不自动注入 Agent |
-| L1 | 单条事实、偏好或约束 | 模型异步提炼；先 pending，批准后才可自动召回 |
-| L2 | 场景化长期记忆 | 由上游管线聚合；MVP 以查看和来源可用性披露为主 |
-| L3 | Persona 与长期倾向 | 由上游管线进一步归纳；MVP 以查看和来源可用性披露为主 |
+| 层级 | 含义                         | 当前生成与使用                                       |
+| ---- | ---------------------------- | ---------------------------------------------------- |
+| L0   | 原始 user/assistant 对话证据 | Hook 本地捕获；可浏览和追溯；默认不自动注入 Agent    |
+| L1   | 单条事实、偏好或约束         | 模型异步提炼；先 pending，批准后才可自动召回         |
+| L2   | 场景化长期记忆               | 由上游管线聚合；MVP 以查看和来源可用性披露为主       |
+| L3   | Persona 与长期倾向           | 由上游管线进一步归纳；MVP 以查看和来源可用性披露为主 |
 
 L0 是证据，不等于已经批准的长期记忆。相似检索结果也不等于来源关系；缺少真实引用时界面必须显示“来源未记录”。
 
 ## 4. 模型配置与外联授权
 
 首版只支持 OpenAI-compatible 接口。Web 设置页保存 provider、Base URL、API Key 和模型名；API Key
-只写入权限为 `0600` 的受管 `gateway.env`，读取接口永不回传密钥。远端地址必须使用 HTTPS，只有回环地址允许 HTTP。
+只写入权限为 `0600` 的受管 `gateway.env`，读取接口永不回传密钥。macOS 使用 `~/Library/Application Support/PersonalMemory Runtime/gateway.env`，Linux 使用 `${XDG_STATE_HOME:-~/.local/state}/personalmemory/gateway.env`。密钥不进入浏览器、授权账本或记忆数据库。远端地址必须使用 HTTPS，只有回环地址允许 HTTP。
 
 保存配置不等于允许联网。Web 会单独展示目标 origin 和可能发送的字段，用户确认后才写入版本化模型外联授权。provider、origin 或发送字段变化会使旧授权失效。配置或授权变化后需执行受管重启：
 
 ```sh
-npm run lifecycle:product -- restart
+personalmemory restart
 ```
 
 未配置、未授权或已撤销时，L0 捕获继续工作，但需要模型的 L1-L3 提炼暂停。模型请求可能包含模型输入、选中的记忆上下文和导入的对话消息；准确集合以 Web 当次披露为准。
+
+撤销授权只在版本化账本追加撤销状态，不删除 `gateway.env` 中的密钥或配置，也不删除任何记忆；受管重启后停止新的外联。删除模型配置是单独操作，会从 `gateway.env` 移除模型字段和 API Key，但不删除记忆。
+
+提炼 runner 直接调用模型接口，不产生 Agent 生命周期 Hook 事件。请求和响应均不得写入 L0；解析结果只进入 L1-L3 管线。兼容上游 session 的入口还必须拒绝内部 memory pipeline session，作为防递归的第二道门禁。
 
 ## 5. 一致性与失败语义
 
