@@ -12,6 +12,10 @@ try {
       `Web: ${result.webUrl}\nHealth: ${result.gatewayHealthUrl}\n` +
       `Codex Hooks: ${result.codexHookStatus}${result.agents.includes("codex") ? " (review the exact definitions with /hooks before trusting)" : ""}\n` +
       `Claude Code Hooks: ${result.claudeHookStatus}\n` +
+      `Command: ${result.commandPath}\n` +
+      (result.commandPathConfigured
+        ? ""
+        : `PATH notice: add ${result.commandPath.replace(/\/personalmemory$/u, "")} to your PATH to run personalmemory directly.\n`) +
       `Data: ${result.dataDirectory}\nLog: ${result.logPath}\n`,
   );
 } catch (error) {

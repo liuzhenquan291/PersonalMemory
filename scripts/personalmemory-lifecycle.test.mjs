@@ -85,14 +85,31 @@ test("cleans private atomic-write temporaries after every failed stage", async (
   }
 });
 
-test("reports managed status without stopping services", async () => {
+test("reports managed service status without stopping services", async () => {
   const item = fixture();
+  item.options.isAliveImpl = () => true;
   const result = await managePersonalMemory("status", item.options);
   assert.equal(result.installed, true);
+  assert.deepEqual(result.services, {
+    state: "running",
+    upstream: true,
+    gateway: true,
+    web: true,
+    hookWorker: undefined,
+  });
   assert.deepEqual(item.calls, []);
 });
 
-test("stops services and removes only the receipt", async () => {
+test("reports stopped managed services from the retained receipt", async () => {
+  const item = fixture();
+  item.options.isAliveImpl = () => false;
+  const result = await managePersonalMemory("status", item.options);
+  assert.equal(result.services.state, "stopped");
+  assert.equal(result.services.gateway, false);
+  assert.equal(result.services.web, false);
+});
+
+test("stops services while retaining restart metadata", async () => {
   const item = fixture();
   const result = await managePersonalMemory("stop", item.options);
   assert.equal(result.stopped, true);
@@ -100,8 +117,9 @@ test("stops services and removes only the receipt", async () => {
     ["stop", 42],
     ["stop", 41],
     ["stop", 40],
-    ["remove", "/safe/state/install.json"],
   ]);
+  await managePersonalMemory("restart", item.options);
+  assert.ok(item.calls.some((call) => call[0] === "install"));
 });
 
 test("restarts managed services so model authorization changes take effect", async () => {
@@ -224,8 +242,22 @@ test("does not stop services when restore cannot acquire the lifecycle lock", as
   assert.deepEqual(item.calls, []);
 });
 
+test("validates the managed command before stopping or removing hooks", async () => {
+  const item = fixture();
+  item.options.validateManagedCommandImpl = async () => {
+    throw new Error("Managed personalmemory command was modified");
+  };
+  await assert.rejects(
+    managePersonalMemory("uninstall", item.options),
+    /command was modified/u,
+  );
+  assert.deepEqual(item.calls, []);
+});
+
 test("uninstalls while preserving data by default", async () => {
   const item = fixture();
+  item.options.uninstallManagedCommandImpl = async (options) =>
+    item.calls.push(["uninstall-command", options]);
   const result = await managePersonalMemory("uninstall", item.options);
   assert.equal(result.dataDeleted, false);
   assert(
@@ -236,6 +268,13 @@ test("uninstalls while preserving data by default", async () => {
   assert.equal(
     item.calls.some((call) => call[1] === "/safe/data"),
     false,
+  );
+  assert.ok(
+    item.calls.some(
+      (call) =>
+        call[0] === "uninstall-command" &&
+        call[1].stateDirectory === "/safe/state",
+    ),
   );
 });
 

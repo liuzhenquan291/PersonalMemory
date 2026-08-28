@@ -36,6 +36,10 @@ const readyWorker = async ({ pid }) => ({
   workerPid: pid,
   lastMaintenanceAt: Date.now(),
 });
+const fakeManagedCommand = async () => ({
+  commandPath: "/test/bin/personalmemory",
+  changed: false,
+});
 
 function fakeChild(pid) {
   const child = new EventEmitter();
@@ -200,6 +204,7 @@ test("maps only a currently authorized private model configuration upstream", as
   const environments = [];
   let nextPid = 2_050_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -283,6 +288,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   const calls = [];
   let nextPid = 2_000_000;
   const result = await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -328,6 +334,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   );
 
   const repeatOptions = {
+    installManagedCommandImpl: fakeManagedCommand,
     root,
     home: path.join(root, "home"),
     dataDirectory,
@@ -407,6 +414,7 @@ test("does not install dependencies when they are already present", async () => 
   const commands = [];
   let nextPid = 2_100_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -446,6 +454,7 @@ test("reuses a valid private credential when restarting without a receipt", asyn
   const environments = [];
   let nextPid = 2_150_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),

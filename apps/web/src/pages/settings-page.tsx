@@ -170,6 +170,15 @@ export function SettingsPage() {
             ) : (
               <p>令牌只用于换取本机短期会话，不会写入浏览器存储。</p>
             )}
+            <p>
+              请在交互式终端运行 <code>personalmemory token show</code>{" "}
+              取得令牌；不要把令牌粘贴到聊天、工单或公开终端记录中。
+            </p>
+            <p>浏览器安全会话默认有效 1 小时，关闭页面不会延长有效期。</p>
+            <p>
+              <code>gateway.env</code>{" "}
+              是受权限保护的底层凭据文件，仅用于排障，不建议日常直接读取。
+            </p>
           </form>
         </section>
       ) : null}
@@ -184,8 +193,7 @@ export function SettingsPage() {
           初次安装或定义升级后仍需在客户端检查并信任精确定义。
         </p>
         <p>
-          Web 不读取 Agent 配置文件。请运行{" "}
-          <code>npm run lifecycle:product -- status</code>
+          Web 不读取 Agent 配置文件。请运行 <code>personalmemory status</code>
           查看 Hook 信任、worker、积压和保留期维护状态。
         </p>
       </section>

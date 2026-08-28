@@ -125,6 +125,7 @@
 63. Rule 51 的同步 L0 sink 边界继续有效：事务内只写 L0 和幂等账本，不调用模型、网络或异步实现。新增提炼调度只能发生在该事务成功提交之后，通过显式注入的小接口把已提交 session 通知给上游 pipeline；通知不得进入 Hook 一秒响应预算，不得使已成功的 L0 捕获回滚或改报失败。模型未配置、未授权、重启未应用、调度或提炼失败时必须保留 L0，不得阻断 Agent 或无限重试；后续增加调度状态或重试时必须有界、脱敏且不能改变上述事务边界。
 64. Hook L0→L1 的产品闭环必须沿用上游已验证的会话调度语义：新会话 warm-up、后续轮次阈值和 idle timer 均由 pipeline 权威处理，产品 Adapter 不复制阈值算法。新 L1 必须保留真实 L0 来源并默认进入 `pending` 收件箱；只有 `approved`、有效且未被治理抑制的 L1 才能在下一轮通过预算召回。自动本地捕获、模型外联/提炼和自动召回是三项独立能力，任何一项授权不得隐式批准其他两项。
 65. 文档事实源按职责分层：`README.md` 是当前版本唯一完整用户手册，只描述用户真实可用能力和明确限制；`docs/TECHNICAL_DESIGN.md` 是当前总体技术方案并链接细分契约；`docs/architecture/*.md` 冻结具体接口与安全不变量；本文件冻结不可违反的产品和工程决策；`docs/implementation-records/` 只保存历史实施证据；根目录 `README_CN.md` 是 TencentDB-Agent-Memory 上游参考，不是 PersonalMemory 使用说明。`CURRENT_ARCHITECTURE.md` 不得与总体技术方案形成双重当前事实源，应收口为上游基线和历史差异入口。
+66. 正式安装必须提供用户级 `personalmemory` 命令入口，默认受管安装到 `~/.local/bin/personalmemory`，但不得擅自修改 `.zshrc`、`.bashrc` 或其他 shell 配置；目录不在 `PATH` 时只输出明确提示。命令至少统一提供 `status`、`open`、`restart`、`stop`、`backup` 和显式 `token show`，并通过当前安装源码复用既有生命周期实现，不复制数据删除或进程管理逻辑。`token show` 只允许交互式终端显式调用，读取前验证私有普通文件和严格令牌格式，不进入状态 JSON、日志或命令回执。安装、重复安装、升级和卸载必须以独立私有回执和内容摘要精确管理该入口；同路径未知文件、用户修改或路径扩张必须 fail closed。
 
 ## 6. 工程与质量
 

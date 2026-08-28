@@ -43,6 +43,7 @@ function fixture(overrides = {}) {
         gatewayPid: 3001,
         webPid: 3002,
       }),
+      installManagedCommandImpl: async () => ({ changed: false }),
       lifecycleMutex: {
         acquire: () => ({ token: "fixture-upgrade-token", release: () => {} }),
       },
@@ -94,6 +95,24 @@ test("is idempotent when product and schema versions are current", async () => {
   item.receipt.schemaVersion = upgradeTarget.schemaVersion;
   assert.equal((await upgradePersonalMemory(item.options)).changed, false);
   assert.deepEqual(item.calls, []);
+});
+
+test("repairs the managed command for an otherwise current installation", async () => {
+  const item = fixture({
+    installManagedCommandImpl: async (options) => {
+      item.calls.push(["install-command", options]);
+      return { changed: true };
+    },
+  });
+  item.receipt.version = 3;
+  item.receipt.upstreamPid = 2000;
+  item.receipt.hookWorkerPid = 2003;
+  item.receipt.hookWorkerGeneration = "a".repeat(32);
+  item.receipt.hookReceiptPath = "/safe/state/hooks/install.json";
+  item.receipt.productVersion = upgradeTarget.productVersion;
+  item.receipt.schemaVersion = upgradeTarget.schemaVersion;
+  assert.equal((await upgradePersonalMemory(item.options)).changed, true);
+  assert.equal(item.calls[0][0], "install-command");
 });
 
 test("upgrades a current v2 receipt to the four-process managed Hook lifecycle", async () => {

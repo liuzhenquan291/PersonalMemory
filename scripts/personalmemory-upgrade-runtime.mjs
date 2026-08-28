@@ -9,6 +9,7 @@ import {
   statfs,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
@@ -19,6 +20,7 @@ import {
   defaultStateRoot,
   installPersonalMemory,
 } from "./personalmemory-install-runtime.mjs";
+import { installManagedCommand } from "./personalmemory-command-install.mjs";
 
 const TARGET_PRODUCT_VERSION = "0.1.1";
 const TARGET_SCHEMA_VERSION = 7;
@@ -169,8 +171,18 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
     receipt.productVersion === TARGET_PRODUCT_VERSION &&
     receipt.schemaVersion === TARGET_SCHEMA_VERSION
   ) {
+    const command = await (
+      options.installManagedCommandImpl ?? installManagedCommand
+    )({
+      sourceRoot: root,
+      stateDirectory,
+      binDirectory: path.resolve(
+        options.commandBinDirectory ??
+          path.join(options.home ?? os.homedir(), ".local", "bin"),
+      ),
+    });
     return {
-      changed: false,
+      changed: command.changed,
       productVersion: TARGET_PRODUCT_VERSION,
       schemaVersion: TARGET_SCHEMA_VERSION,
     };

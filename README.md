@@ -275,6 +275,7 @@ Codex 安装后还需在客户端使用 `/hooks` 核对 PersonalMemory 的精确
    ```
 
    请把该令牌视为本机密码，不要发送给他人或写入项目文件。
+
 3. 分别决定是否授权“自动召回”和“自动本地捕获”。两项授权互相独立，也不同于模型外联授权。
 4. 在 Codex 或 Claude Code 中开始一次普通对话。无需说“保存这段话”：成功结束的主 Agent 对话会按授权自动捕获；失败、中断和子 Agent 轮次默认不捕获。
 5. 新提炼出的 L1 记忆默认进入“收件箱”等待审核。批准后，它才有资格被后续对话自动召回。
@@ -296,31 +297,51 @@ Web 是日常记忆治理入口：
 
 ## 查看状态和管理服务
 
-以下命令都应在当前安装包目录运行。
+正式安装会把用户级命令安装到 `~/.local/bin/personalmemory`。安装器不会修改 shell 配置；如果该目录不在 `PATH`，请按安装结果中的提示自行加入。
+
+查看命令帮助：
+
+```sh
+personalmemory help
+```
 
 查看脱敏状态，包括版本、数据目录及 Hook worker/backlog：
 
 ```sh
-npm run lifecycle:product -- status
+personalmemory status
+```
+
+打开仅监听本机回环地址的 Web 设置页：
+
+```sh
+personalmemory open
 ```
 
 重启全部受管服务：
 
 ```sh
-npm run lifecycle:product -- restart
+personalmemory restart
 ```
 
 停止服务：
 
 ```sh
-npm run lifecycle:product -- stop
+personalmemory stop
 ```
 
-停止会移除当前运行回执。需要再次启动时运行：
+停止会保留经过校验的安装信息，因此之后可以直接运行：
 
 ```sh
-./install-personalmemory.sh
+personalmemory restart
 ```
+
+Web 首次建立安全会话时，可以在交互式终端显式读取本地访问令牌：
+
+```sh
+personalmemory token show
+```
+
+令牌不会进入状态输出、日志或命令安装回执。不要把它粘贴到聊天、工单或公开终端记录中。
 
 ## 手动 MCP 工具
 
@@ -365,7 +386,7 @@ npm run data:export -- --format json --output personalmemory-export-20260827.jso
 完整备份是当前支持的迁移和灾难恢复介质。生命周期命令会安全停止服务、生成并校验备份，然后自动重新启动：
 
 ```sh
-npm run lifecycle:product -- backup --output personalmemory-backup-20260827
+personalmemory backup --output personalmemory-backup-20260827
 ```
 
 可单独复验备份：

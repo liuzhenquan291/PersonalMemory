@@ -9,6 +9,7 @@ import {
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
@@ -27,6 +28,10 @@ import {
   createManagedHookRuntime,
   readHookDoctorStatus,
 } from "./personalmemory-hook-managed.mjs";
+import {
+  uninstallManagedCommand,
+  validateManagedCommand,
+} from "./personalmemory-command-install.mjs";
 
 async function drainRetentionBeforeBackup(stateDirectory, lifecycleToken) {
   const { gateway } = await createManagedHookRuntime({ stateDirectory });
@@ -113,6 +118,16 @@ async function defaultRun(command, args, options) {
         : reject(new Error(`${command} exited with status ${code}`)),
     );
   });
+}
+
+function defaultIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    if (error.code === "ESRCH") return false;
+    throw error;
+  }
 }
 
 async function defaultStop(pid) {
@@ -224,6 +239,22 @@ export async function managePersonalMemory(command, options = {}) {
   }
 
   if (command === "status") {
+    const isAlive = options.isAliveImpl ?? defaultIsAlive;
+    const services = {
+      upstream: receipt.version >= 2 ? isAlive(receipt.upstreamPid) : undefined,
+      gateway: isAlive(receipt.gatewayPid),
+      web: isAlive(receipt.webPid),
+      hookWorker:
+        receipt.version === 3 ? isAlive(receipt.hookWorkerPid) : undefined,
+    };
+    const serviceStates = Object.values(services).filter(
+      (value) => value !== undefined,
+    );
+    const serviceState = serviceStates.every(Boolean)
+      ? "running"
+      : serviceStates.every((value) => !value)
+        ? "stopped"
+        : "degraded";
     const hookInstall =
       receipt.version === 3
         ? await (options.readManagedHookStatusImpl ?? readManagedHookStatus)({
@@ -249,8 +280,22 @@ export async function managePersonalMemory(command, options = {}) {
       schemaVersion: receipt.schemaVersion,
       dataDirectory,
       stateDirectory,
+      services: { state: serviceState, ...services },
       hooks: { ...hookInstall, ...hookRuntime },
     };
+  }
+
+  const managedCommandOptions = {
+    stateDirectory,
+    binDirectory: path.resolve(
+      options.commandBinDirectory ??
+        path.join(options.home ?? os.homedir(), ".local", "bin"),
+    ),
+  };
+  if (command === "uninstall") {
+    await (options.validateManagedCommandImpl ?? validateManagedCommand)(
+      managedCommandOptions,
+    );
   }
 
   if (command === "uninstall" && receipt.version === 3) {
@@ -302,7 +347,6 @@ export async function managePersonalMemory(command, options = {}) {
     throw error;
   }
   if (command === "stop") {
-    await removeImpl(path.join(stateDirectory, "install.json"));
     return { stopped: true, dataDirectory, stateDirectory };
   }
 
@@ -411,6 +455,9 @@ export async function managePersonalMemory(command, options = {}) {
         nodePath: process.execPath,
       });
     }
+    await (options.uninstallManagedCommandImpl ?? uninstallManagedCommand)(
+      managedCommandOptions,
+    );
     await removeImpl(stateDirectory, { recursive: true });
     if (options.purgeData) {
       await removeImpl(dataDirectory, { recursive: true });

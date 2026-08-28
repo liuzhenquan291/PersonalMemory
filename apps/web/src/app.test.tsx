@@ -582,9 +582,7 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByText("模型连接")).toBeVisible();
     expect(screen.getByText("关闭")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Agent 接入" })).toBeVisible();
-    expect(
-      screen.getByText(/npm run lifecycle:product -- status/u),
-    ).toBeVisible();
+    expect(screen.getByText(/personalmemory status/u)).toBeVisible();
     expect(
       screen.getByRole("heading", {
         name: "日常管理用 Web，系统操作用受管命令",
@@ -923,6 +921,9 @@ describe("PersonalMemory Web", () => {
     renderRoute("/settings");
     const user = userEvent.setup();
     const tokenInput = await screen.findByLabelText("本地访问令牌");
+    expect(screen.getByText("personalmemory token show")).toBeVisible();
+    expect(screen.getByText(/浏览器安全会话默认有效 1 小时/u)).toBeVisible();
+    expect(screen.getByText(/gateway\.env/u)).toBeVisible();
     await user.type(tokenInput, "local-secret");
     await user.click(screen.getByRole("button", { name: "建立安全会话" }));
     expect(await screen.findByText(/访问令牌未保存在浏览器/)).toBeVisible();

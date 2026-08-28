@@ -29,6 +29,7 @@ import {
   readHookDoctorStatus,
   writeManagedHookRuntimeConfiguration,
 } from "./personalmemory-hook-managed.mjs";
+import { installManagedCommand } from "./personalmemory-command-install.mjs";
 
 const UPSTREAM_MODEL_ENVIRONMENT_KEYS = [
   "TDAI_LLM_ENABLED",
@@ -421,6 +422,12 @@ export async function installPersonalMemory(options = {}) {
   const secretPath = path.join(runtimeDirectory, "gateway.env");
   const hookSecretPath = path.join(runtimeDirectory, "hooks", "secret");
   const logPath = path.join(runtimeDirectory, "personalmemory.log");
+  const commandBinDirectory = path.resolve(
+    options.commandBinDirectory ??
+      path.join(options.home ?? os.homedir(), ".local", "bin"),
+  );
+  const installManagedCommandImpl =
+    options.installManagedCommandImpl ?? installManagedCommand;
   const host = "127.0.0.1";
   const upstreamPort = options.upstreamPort ?? 8420;
   const gatewayPort = options.gatewayPort ?? 8787;
@@ -537,6 +544,11 @@ export async function installPersonalMemory(options = {}) {
     });
     if (!hookInstall.installed)
       throw new Error("Managed Hook installation or worker is not healthy");
+    const commandInstall = await installManagedCommandImpl({
+      sourceRoot: root,
+      stateDirectory: runtimeDirectory,
+      binDirectory: commandBinDirectory,
+    });
     const updatedReceipt = {
       ...receipt,
       agents,
@@ -561,7 +573,12 @@ export async function installPersonalMemory(options = {}) {
     await pruneManagedHookEventReceiptsImpl(hookOptions);
     return {
       ...updatedReceipt,
-      changed: hookInstall.changed,
+      commandPath: commandInstall.commandPath,
+      commandPathConfigured:
+        (options.environment ?? process.env).PATH?.split(
+          path.delimiter,
+        ).includes(commandBinDirectory) ?? false,
+      changed: hookInstall.changed || commandInstall.changed,
       receiptPath,
     };
   }
@@ -601,6 +618,7 @@ export async function installPersonalMemory(options = {}) {
     path.join(runtimeDirectory, "hooks", "install.json"),
   );
   let hookInstallCompleted = false;
+  let rollbackManagedCommand;
   try {
     const common = {
       cwd: root,
@@ -719,6 +737,12 @@ export async function installPersonalMemory(options = {}) {
       clients: agents,
     });
     hookInstallCompleted = true;
+    const commandInstall = await installManagedCommandImpl({
+      sourceRoot: root,
+      stateDirectory: runtimeDirectory,
+      binDirectory: commandBinDirectory,
+    });
+    rollbackManagedCommand = commandInstall.rollback;
     const receipt = {
       version: RECEIPT_VERSION,
       productVersion: PRODUCT_VERSION,
@@ -755,7 +779,16 @@ export async function installPersonalMemory(options = {}) {
     gateway.unref();
     web.unref();
     hookWorker.unref();
-    return { ...receipt, changed: true, receiptPath };
+    return {
+      ...receipt,
+      commandPath: commandInstall.commandPath,
+      commandPathConfigured:
+        (options.environment ?? process.env).PATH?.split(
+          path.delimiter,
+        ).includes(commandBinDirectory) ?? false,
+      changed: true,
+      receiptPath,
+    };
   } catch (error) {
     await stopStartedImpl(children);
     if (hookInstallCompleted && !hookReceiptExisted)
@@ -765,6 +798,8 @@ export async function installPersonalMemory(options = {}) {
         projectRoot: root,
         nodePath: process.execPath,
       }).catch(() => undefined);
+    if (rollbackManagedCommand)
+      await rollbackManagedCommand().catch(() => undefined);
     await rm(receiptPath, { force: true });
     throw error;
   } finally {
