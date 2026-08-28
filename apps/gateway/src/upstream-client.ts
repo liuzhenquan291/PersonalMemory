@@ -86,6 +86,7 @@ const ALLOWED_UPSTREAM_PATHS = new Set([
   "/v2/core/read",
   "/v2/atomic/update",
   "/v2/atomic/delete",
+  "/v2/pipeline/notify",
   "/v2/scenario/write",
   "/v2/core/write",
 ]);

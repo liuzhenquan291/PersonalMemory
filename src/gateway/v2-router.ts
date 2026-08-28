@@ -217,6 +217,7 @@ type RouteHandler = (
 ) => Promise<ApiResponseEnvelope>;
 
 const routeTable: Record<string, RouteHandler> = {
+  [`${V2_PREFIX}/pipeline/notify`]: handlePipelineNotify,
   [`${V2_PREFIX}/conversation/add`]: handleConversationAdd,
   [`${V2_PREFIX}/conversation/query`]: handleConversationQuery,
   [`${V2_PREFIX}/conversation/search`]: handleConversationSearch,
@@ -233,6 +234,34 @@ const routeTable: Record<string, RouteHandler> = {
   [`${V2_PREFIX}/core/write`]: handleCoreWrite,
   [`${V2_PREFIX}/pipeline/status`]: handlePipelineStatus,
 };
+
+async function handlePipelineNotify(
+  body: unknown,
+  auth: V2AuthContext,
+  requestId: string,
+  deps: V2RouterDeps,
+): Promise<ApiResponseEnvelope> {
+  if (deps.deployMode !== "standalone")
+    return errorEnvelope(404, "Not found", requestId);
+  if (!deps.notifyPipeline)
+    return errorEnvelope(503, "Pipeline not running", requestId);
+  if (!body || typeof body !== "object")
+    return errorEnvelope(400, "Invalid pipeline notification", requestId);
+  const sessionId = Reflect.get(body, "session_id");
+  const rounds = Reflect.get(body, "rounds");
+  if (
+    typeof sessionId !== "string" ||
+    sessionId.length < 1 ||
+    sessionId.length > 512 ||
+    !Number.isInteger(rounds) ||
+    (rounds as number) < 1 ||
+    (rounds as number) > 100
+  ) {
+    return errorEnvelope(400, "Invalid pipeline notification", requestId);
+  }
+  await deps.notifyPipeline(auth.serviceId, sessionId, rounds as number);
+  return successEnvelope({ accepted: true }, requestId);
+}
 
 export async function handleV2Route(
   req: http.IncomingMessage,

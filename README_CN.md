@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> 本文件是上游 **TencentDB-Agent-Memory** 的中文参考文档，不是 PersonalMemory 的安装或使用说明。PersonalMemory 用户请阅读根目录 [README.md](./README.md)；当前产品技术方案见 [docs/TECHNICAL_DESIGN.md](./docs/TECHNICAL_DESIGN.md)。下文的上游插件、SDK、默认配置和能力声明不自动适用于 PersonalMemory。
+
 <div align="center">
 
 <img src="./assets/images/logo.png" alt="TencentDB Agent Memory" width="880" />

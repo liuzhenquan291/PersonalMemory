@@ -124,7 +124,7 @@ export function createLocalL0HookCaptureSink(
       const capturedAt = now();
       const recordedAt = capturedAt.toISOString();
       const timestamp = capturedAt.getTime();
-      const sessionKey = `hook:${request.event.client}:${request.authorization.installation_id}:${request.event.session_id}`;
+      const sessionKey = hookCaptureSessionKey(request);
       const insert = transaction.prepare(`
         INSERT INTO l0_conversations
           (record_id, session_key, session_id, role, message_text, recorded_at, timestamp)
@@ -144,4 +144,8 @@ export function createLocalL0HookCaptureSink(
       return HOOK_CAPTURE_COMMITTED;
     },
   };
+}
+
+export function hookCaptureSessionKey(request: HookCaptureRequest): string {
+  return `hook:${request.event.client}:${request.authorization.installation_id}:${request.event.session_id}`;
 }

@@ -26,7 +26,11 @@ import { PersonalMemoryGatewayServer } from "./server.js";
 import { FetchUpstreamGatewayClient } from "./upstream-client.js";
 import { ConversationImportManager } from "./import-manager.js";
 import { PrivacyDeletionService } from "./privacy-deletions.js";
-import { createProductionHookCapture } from "./local-l0-hook-capture.js";
+import {
+  createProductionHookCapture,
+  hookCaptureSessionKey,
+} from "./local-l0-hook-capture.js";
+import { createModelConfigurationManager } from "./model-configuration.js";
 
 let server: PersonalMemoryGatewayServer | undefined;
 let stopping = false;
@@ -123,6 +127,10 @@ async function main(): Promise<void> {
     const stateDirectory = process.env.PERSONALMEMORY_STATE_DIR;
     if (!stateDirectory)
       throw new Error("PERSONALMEMORY_STATE_DIR is required");
+    const modelConfiguration = await createModelConfigurationManager({
+      secretPath: join(stateDirectory, "gateway.env"),
+      activeConfig: config,
+    });
     const lifecycleMutex = new DataLifecycleMutex(stateDirectory);
     const app = createGatewayApp({
       config,
@@ -137,7 +145,22 @@ async function main(): Promise<void> {
       hookAuthorizations,
       capturePolicies,
       hookCaptureSink: productionHookCapture.sink,
+      hookCaptureCommittedObserver: {
+        notify: async (request, requestId) => {
+          await upstream.request({
+            path: "/v2/pipeline/notify",
+            body: {
+              session_id: hookCaptureSessionKey(request),
+              rounds: request.messages.filter(({ role }) => role === "user")
+                .length,
+            },
+            requestId,
+            timeoutMs: config.server.upstreamTimeoutMs,
+          });
+        },
+      },
       modelAuthorizations,
+      modelConfiguration,
       retentionAuthorizations,
       retentionRuns,
       lifecycleMutex,

@@ -3,9 +3,14 @@ import { useState } from "react";
 
 import {
   createBrowserSession,
+  authorizeModel,
+  fetchModelAuthorization,
+  fetchModelConfiguration,
   fetchGatewayStatus,
   fetchHookAuthorization,
   hasBrowserSession,
+  saveModelConfiguration,
+  revokeModelAuthorization,
   updateHookAuthorization,
 } from "../api/gateway";
 
@@ -25,6 +30,26 @@ export function SettingsPage() {
     enabled: sessionState === "ready",
   });
   const [authorizationMessage, setAuthorizationMessage] = useState("");
+  const [modelBaseUrl, setModelBaseUrl] = useState("");
+  const [modelApiKey, setModelApiKey] = useState("");
+  const [modelName, setModelName] = useState("");
+  const [modelMessage, setModelMessage] = useState("");
+  const [modelKeySaved, setModelKeySaved] = useState(false);
+  const modelConfiguration = useQuery({
+    queryKey: ["model-configuration"],
+    queryFn: ({ signal }) => fetchModelConfiguration(signal),
+    retry: false,
+    enabled: sessionState === "ready",
+  });
+  const modelAuthorization = useQuery({
+    queryKey: ["model-authorization"],
+    queryFn: ({ signal }) => fetchModelAuthorization(signal),
+    retry: false,
+    enabled:
+      sessionState === "ready" &&
+      (modelKeySaved ||
+        modelConfiguration.data?.configuration.enabled === true),
+  });
 
   const changeHookAuthorization = (
     target: "recall" | "capture",
@@ -163,6 +188,140 @@ export function SettingsPage() {
           <code>npm run lifecycle:product -- status</code>
           查看 Hook 信任、worker、积压和保留期维护状态。
         </p>
+      </section>
+
+      <section className="settings-panel" aria-labelledby="model-title">
+        <div>
+          <span className="section-kicker">记忆提炼模型</span>
+          <h2 id="model-title">OpenAI-compatible 模型</h2>
+        </div>
+        {sessionState !== "ready" ? (
+          <p>请先解锁浏览器会话，再配置用于 L0 到 L1 提炼的模型。</p>
+        ) : modelConfiguration.isPending ? (
+          <p role="status">正在读取模型配置…</p>
+        ) : modelConfiguration.isError ? (
+          <p className="is-error" role="alert">
+            模型配置读取失败，请重新解锁后再试。
+          </p>
+        ) : (
+          <form
+            className="session-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setModelMessage("正在保存…");
+              void saveModelConfiguration({
+                baseUrl: modelBaseUrl,
+                apiKey: modelApiKey,
+                modelName,
+              })
+                .then((result) => {
+                  setModelApiKey("");
+                  setModelKeySaved(result.configuration.api_key_configured);
+                  setModelMessage(
+                    result.restart_required
+                      ? "配置已保存。请运行受管重启命令后再授权模型外联。"
+                      : "模型配置已保存。",
+                  );
+                  void modelConfiguration.refetch();
+                  void modelAuthorization.refetch();
+                  void status.refetch();
+                })
+                .catch(() =>
+                  setModelMessage("保存失败，请检查接口地址和配置项。"),
+                );
+            }}
+          >
+            <p>
+              Provider 固定为 <code>openai-compatible</code>。
+            </p>
+            <label>
+              <span>模型接口地址</span>
+              <input
+                type="url"
+                required
+                placeholder={modelConfiguration.data.configuration.base_url}
+                value={modelBaseUrl}
+                onChange={(event) => setModelBaseUrl(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>API Key</span>
+              <input
+                type="password"
+                required
+                autoComplete="new-password"
+                value={modelApiKey}
+                onChange={(event) => setModelApiKey(event.target.value)}
+              />
+            </label>
+            {modelKeySaved ||
+            modelConfiguration.data.configuration.api_key_configured ? (
+              <p>API Key 已配置</p>
+            ) : null}
+            <label>
+              <span>模型名称</span>
+              <input
+                required
+                placeholder={modelConfiguration.data.configuration.model_name}
+                value={modelName}
+                onChange={(event) => setModelName(event.target.value)}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={!modelBaseUrl || !modelApiKey || !modelName}
+            >
+              保存模型配置
+            </button>
+            {modelMessage ? <p role="status">{modelMessage}</p> : null}
+            {modelAuthorization.data ? (
+              <div>
+                <strong>模型外联披露</strong>
+                <p>
+                  目标：
+                  <code>{modelAuthorization.data.disclosure.targetOrigin}</code>
+                </p>
+                <p>
+                  发送内容：
+                  {modelAuthorization.data.disclosure.sentFields.join("、")}
+                </p>
+                <p>
+                  当前状态：
+                  {modelAuthorization.data.authorization.status === "authorized"
+                    ? "已授权"
+                    : "未授权"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const action =
+                      modelAuthorization.data.authorization.status ===
+                      "authorized"
+                        ? revokeModelAuthorization()
+                        : authorizeModel(modelAuthorization.data.disclosure);
+                    setModelMessage("正在更新模型外联授权…");
+                    void action
+                      .then(() => {
+                        setModelMessage(
+                          "模型外联授权已更新。请运行受管重启命令应用变更。",
+                        );
+                        void modelAuthorization.refetch();
+                      })
+                      .catch(() =>
+                        setModelMessage(
+                          "模型外联授权更新失败，请重新加载后再试。",
+                        ),
+                      );
+                  }}
+                >
+                  {modelAuthorization.data.authorization.status === "authorized"
+                    ? "撤销模型外联"
+                    : "授权模型外联"}
+                </button>
+              </div>
+            ) : null}
+          </form>
+        )}
       </section>
 
       <section className="settings-panel" aria-labelledby="automation-title">

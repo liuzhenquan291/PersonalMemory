@@ -685,6 +685,172 @@ describe("PersonalMemory Web", () => {
     ).toBeVisible();
   });
 
+  it("configures an OpenAI-compatible extraction model from settings", async () => {
+    sessionStorage.setItem("personalmemory.csrf", "csrf-local");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        if (String(input) === "/api/v1/config/status") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                authenticationConfigured: true,
+                modelConfigured: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (String(input) === "/api/v1/model/configuration") {
+          const configured = init?.method === "POST";
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                configured
+                  ? {
+                      configuration: {
+                        enabled: true,
+                        provider: "openai-compatible",
+                        base_url: "https://models.example.test/v1",
+                        model_name: "test-model",
+                        api_key_configured: true,
+                      },
+                      disclosure: {
+                        version: 1,
+                        provider: "openai-compatible",
+                        targetOrigin: "https://models.example.test",
+                        sentFields: [
+                          "model input",
+                          "selected memory context",
+                          "imported conversation messages",
+                        ],
+                      },
+                      restart_required: true,
+                    }
+                  : {
+                      configuration: {
+                        enabled: false,
+                        api_key_configured: false,
+                      },
+                      restart_required: false,
+                    },
+              ),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (String(input) === "/api/v1/model/authorization") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                init?.method === "POST"
+                  ? {
+                      authorization: { status: "authorized", revision: 1 },
+                      restart_required: true,
+                    }
+                  : {
+                      disclosure: {
+                        version: 1,
+                        provider: "openai-compatible",
+                        targetOrigin: "https://models.example.test",
+                        sentFields: ["model input", "selected memory context"],
+                      },
+                      authorization: { status: "required", revision: 0 },
+                      restart_required: true,
+                    },
+              ),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              authorization: {
+                installation_id: "install-1",
+                authorization_revision: 1,
+                policy_revision: 1,
+                recall_enabled: false,
+                capture_enabled: false,
+                changed_at: "2026-08-26T00:00:00.000Z",
+              },
+              disclosure: {
+                version: 1,
+                recall: {
+                  data: "approved L1 memory text",
+                  timing: "before the model request",
+                  purpose: "provide relevant memory",
+                  destination: "the current agent model input",
+                  budget: "bounded",
+                  failure: "continue",
+                  revocation: "reject",
+                },
+                capture: {
+                  data: "raw user and assistant text",
+                  timing: "after response",
+                  purpose: "build local memory",
+                  destination: "local L0",
+                  budget: "bounded",
+                  failure: "continue",
+                  revocation: "reject",
+                },
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      });
+    renderRoute("/settings");
+    const user = userEvent.setup();
+
+    await user.type(
+      await screen.findByLabelText("模型接口地址"),
+      "https://models.example.test/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "private-model-key");
+    await user.type(screen.getByLabelText("模型名称"), "test-model");
+    await user.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/configuration",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+        body: JSON.stringify({
+          provider: "openai-compatible",
+          base_url: "https://models.example.test/v1",
+          api_key: "private-model-key",
+          model_name: "test-model",
+        }),
+      }),
+    );
+    expect(
+      await screen.findByText(
+        /配置已保存。请运行受管重启命令后再授权模型外联/u,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("API Key 已配置")).toBeVisible();
+    expect(
+      screen.queryByDisplayValue("private-model-key"),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", { name: "授权模型外联" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/authorization",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+        body: JSON.stringify({
+          version: 1,
+          provider: "openai-compatible",
+          targetOrigin: "https://models.example.test",
+          sentFields: ["model input", "selected memory context"],
+        }),
+      }),
+    );
+  });
+
   it("fails closed when the Hook authorization disclosure is incomplete", async () => {
     sessionStorage.setItem("personalmemory.csrf", "csrf-local");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {

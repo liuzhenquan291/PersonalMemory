@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -271,6 +271,12 @@ export async function createDevRuntime(options = {}) {
     );
     throw error;
   }
+
+  await writeFile(
+    path.join(stateDirectory, "gateway.env"),
+    "PERSONALMEMORY_MODEL_ENABLED=false\n",
+    { mode: 0o600, flag: "wx" },
+  );
 
   const children = [];
   const startupController = new globalThis.AbortController();

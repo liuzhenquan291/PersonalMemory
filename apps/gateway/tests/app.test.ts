@@ -51,6 +51,7 @@ function createHarness(options: {
   privacyDeletions?: PrivacyDeletionService;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;
+  modelConfiguration?: unknown;
 }) {
   const logs: GatewayLogEvent[] = [];
   let sequence = 0;
@@ -120,13 +121,14 @@ function createHarness(options: {
     retentionRuns,
     hookPolicy: options.hookPolicy,
     hookCaptureSink: options.hookCaptureSink,
+    modelConfiguration: options.modelConfiguration,
     now: options.now,
     randomId: () => `test-id-${String(++sequence).padStart(4, "0")}`,
     logger: {
       info: (event) => logs.push(event),
       error: (event) => logs.push(event),
     },
-  });
+  } as Parameters<typeof createGatewayApp>[0]);
   return {
     app,
     upstream,
@@ -1159,6 +1161,118 @@ describe("PersonalMemory Gateway app", () => {
       error: { code: "MODEL_OUTBOUND_CONSENT_REQUIRED" },
     });
     expect(upstream.request).not.toHaveBeenCalled();
+  });
+
+  it("configures a private OpenAI-compatible model without returning its key", async () => {
+    let saved:
+      | {
+          provider: string;
+          baseUrl: string;
+          apiKey: string;
+          modelName: string;
+        }
+      | undefined;
+    const disclosure = {
+      version: 1 as const,
+      provider: "openai-compatible" as const,
+      targetOrigin: "https://models.example.test",
+      sentFields: [
+        "model input",
+        "selected memory context",
+        "imported conversation messages",
+      ],
+    };
+    const modelConfiguration = {
+      status: () => ({
+        enabled: Boolean(saved),
+        provider: saved?.provider,
+        baseUrl: saved?.baseUrl,
+        modelName: saved?.modelName,
+        apiKeyConfigured: Boolean(saved),
+        disclosure: saved ? disclosure : undefined,
+        restartRequired: Boolean(saved),
+      }),
+      configure: async (input: typeof saved) => {
+        saved = input;
+        return modelConfiguration.status();
+      },
+      disable: async () => {
+        saved = undefined;
+        return modelConfiguration.status();
+      },
+    };
+    const { app } = createHarness({ modelConfiguration });
+
+    const configured = await app.request("/api/v1/model/configuration", {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({
+        provider: "openai-compatible",
+        base_url: "https://models.example.test/v1",
+        api_key: "private-model-key",
+        model_name: "test-model",
+      }),
+    });
+
+    expect(configured.status).toBe(200);
+    const configuredBody = await configured.json();
+    expect(configuredBody).toEqual({
+      configuration: {
+        enabled: true,
+        provider: "openai-compatible",
+        base_url: "https://models.example.test/v1",
+        model_name: "test-model",
+        api_key_configured: true,
+      },
+      disclosure,
+      restart_required: true,
+    });
+    expect(saved).toEqual({
+      provider: "openai-compatible",
+      baseUrl: "https://models.example.test/v1",
+      apiKey: "private-model-key",
+      modelName: "test-model",
+    });
+    expect(JSON.stringify(configuredBody).toLowerCase()).not.toContain(
+      "private-model-key",
+    );
+
+    const authorization = await app.request("/api/v1/model/authorization", {
+      headers: authHeaders,
+    });
+    expect(authorization.status).toBe(200);
+    expect(await authorization.json()).toMatchObject({
+      disclosure,
+      authorization: { status: "required", revision: 0 },
+      restart_required: true,
+    });
+
+    const current = await app.request("/api/v1/model/configuration", {
+      headers: authHeaders,
+    });
+    expect(await current.json()).toEqual({
+      configuration: {
+        enabled: true,
+        provider: "openai-compatible",
+        base_url: "https://models.example.test/v1",
+        model_name: "test-model",
+        api_key_configured: true,
+      },
+      disclosure,
+      restart_required: true,
+    });
+
+    const disabled = await app.request("/api/v1/model/configuration", {
+      method: "DELETE",
+      headers: authHeaders,
+    });
+    expect(await disabled.json()).toEqual({
+      configuration: {
+        enabled: false,
+        api_key_configured: false,
+      },
+      restart_required: false,
+    });
   });
 
   it("persists versioned model authorization and rejects stale disclosure", async () => {
