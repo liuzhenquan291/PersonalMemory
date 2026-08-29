@@ -1133,6 +1133,19 @@ a {
   font: inherit;
 }
 
+.secret-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.secret-input .secret-input-toggle {
+  justify-self: stretch;
+  white-space: nowrap;
+  padding-inline: 0.85rem;
+}
+
 .session-form button {
   justify-self: start;
   padding: 0.72rem 0.9rem;

@@ -18,6 +18,7 @@ import {
 export function SettingsPage() {
   const [token, setToken] = useState("");
   const normalizedToken = token.trim();
+  const [tokenVisible, setTokenVisible] = useState(false);
   const [sessionState, setSessionState] = useState<
     "idle" | "submitting" | "ready" | "error"
   >(() => (hasBrowserSession() ? "ready" : "idle"));
@@ -150,12 +151,24 @@ export function SettingsPage() {
           >
             <label>
               <span>本地访问令牌</span>
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-              />
+              <span className="secret-input">
+                <input
+                  type={tokenVisible ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="secret-input-toggle"
+                  aria-label={
+                    tokenVisible ? "隐藏本地访问令牌" : "显示本地访问令牌"
+                  }
+                  onClick={() => setTokenVisible((visible) => !visible)}
+                >
+                  {tokenVisible ? "隐藏" : "显示"}
+                </button>
+              </span>
             </label>
             <button
               type="submit"
