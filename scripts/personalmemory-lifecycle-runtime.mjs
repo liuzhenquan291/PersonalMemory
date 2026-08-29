@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
+import { URL } from "node:url";
 
 import {
   DataLifecycleMutex,
@@ -216,6 +217,28 @@ async function readManagedReceipt(stateDirectoryInput) {
   return { receipt, stateDirectory, dataDirectory };
 }
 
+function portFromReceiptUrl(receipt, key, label) {
+  let port;
+  try {
+    port = Number(new URL(receipt[key]).port);
+  } catch {
+    throw new Error(`Installation receipt is missing the ${label} port`);
+  }
+  if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`Installation receipt is missing the ${label} port`);
+  }
+  return port;
+}
+
+function installOptionsFromReceipt(receipt, baseOptions) {
+  return {
+    ...baseOptions,
+    upstreamPort: portFromReceiptUrl(receipt, "upstreamHealthUrl", "upstream"),
+    gatewayPort: portFromReceiptUrl(receipt, "gatewayHealthUrl", "gateway"),
+    webPort: portFromReceiptUrl(receipt, "webUrl", "web"),
+  };
+}
+
 export async function managePersonalMemory(command, options = {}) {
   const { receipt, stateDirectory, dataDirectory } = await (
     options.readManagedReceiptImpl ?? readManagedReceipt
@@ -352,13 +375,15 @@ export async function managePersonalMemory(command, options = {}) {
 
   if (command === "restart") {
     await removeImpl(path.join(stateDirectory, "install.json"));
-    await installImpl({
-      root,
-      dataDirectory,
-      stateDirectory,
-      home: options.home,
-      agents: receipt.agents,
-    });
+    await installImpl(
+      installOptionsFromReceipt(receipt, {
+        root,
+        dataDirectory,
+        stateDirectory,
+        home: options.home,
+        agents: receipt.agents,
+      }),
+    );
     return { restarted: true, dataDirectory, stateDirectory };
   }
 

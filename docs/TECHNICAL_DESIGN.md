@@ -70,6 +70,7 @@ personalmemory restart
 - L0 与 Hook 幂等记录同事务提交；提炼通知不得进入该事务。
 - 只有新提交触发通知，重复 idempotency key 不重复调度。
 - 通知和模型失败不得把成功的 L0 捕获改成失败。
+- 模型提炼失败不得推进 L1 cursor；失败批次保留在 cursor 之后，等待后续有界重试。
 - 自动召回约束条数、字符、估算 token 和超时，失败时 Agent 继续处理原提示。
 - 新 L1 默认 pending；审核、失效、删除、冲突和替代治理发生在 PersonalMemory Gateway。
 

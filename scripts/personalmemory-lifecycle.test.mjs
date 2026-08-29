@@ -17,6 +17,9 @@ function fixture() {
     upstreamPid: 40,
     gatewayPid: 41,
     webPid: 42,
+    upstreamHealthUrl: "http://127.0.0.1:8420/health",
+    gatewayHealthUrl: "http://127.0.0.1:8788/health",
+    webUrl: "http://127.0.0.1:4173/memories",
   };
   return {
     calls,
@@ -33,7 +36,11 @@ function fixture() {
       stopImpl: async (pid) => calls.push(["stop", pid]),
       runImpl: async (command, args) => calls.push([command, args]),
       removeImpl: async (...args) => calls.push(["remove", ...args]),
-      installImpl: async () => calls.push(["install"]),
+      installImpl: async (installOptions) =>
+        calls.push(["install", installOptions]),
+      validateManagedCommandImpl: async () => calls.push(["validate-command"]),
+      uninstallManagedCommandImpl: async (commandOptions) =>
+        calls.push(["uninstall-command", commandOptions]),
       lifecycleMutex: {
         acquire: () => ({
           token: "fixture-lifecycle-token",
@@ -131,8 +138,11 @@ test("restarts managed services so model authorization changes take effect", asy
     ["stop", 41],
     ["stop", 40],
     ["remove", "/safe/state/install.json"],
-    ["install"],
+    ["install", item.calls.at(-1)[1]],
   ]);
+  assert.equal(item.calls.at(-1)[1].upstreamPort, 8420);
+  assert.equal(item.calls.at(-1)[1].gatewayPort, 8788);
+  assert.equal(item.calls.at(-1)[1].webPort, 4173);
 });
 
 test("creates and verifies a backup then restarts", async () => {
@@ -145,7 +155,10 @@ test("creates and verifies a backup then restarts", async () => {
   assert(item.calls.some((call) => call[1]?.includes?.("data:backup")));
   assert(item.calls.some((call) => call[1]?.includes?.("data:verify")));
   assert.deepEqual(item.calls[0], ["retention", "fixture-lifecycle-token"]);
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.deepEqual(
+    item.calls.slice(-2).map((call) => call[0]),
+    ["install", "release"],
+  );
 });
 
 test("does not stop services when backup cannot acquire the lifecycle lock", async () => {
@@ -170,7 +183,10 @@ test("restarts even when backup fails", async () => {
     managePersonalMemory("backup", { ...item.options, output: "/safe/backup" }),
     /backup failed/,
   );
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.deepEqual(
+    item.calls.slice(-2).map((call) => call[0]),
+    ["install", "release"],
+  );
 });
 
 test("restores only after verification and restarts", async () => {
@@ -203,8 +219,11 @@ test("restores only after verification and restarts", async () => {
       .filter((index) => index >= 0),
   );
   assert.ok(snapshotIndex > finalStopIndex);
-  assert.deepEqual(item.calls.slice(-3), [
-    ["install"],
+  assert.deepEqual(
+    item.calls.slice(-3).map((call) => call[0]),
+    ["install", "remove", "release"],
+  );
+  assert.deepEqual(item.calls.slice(-2), [
     ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
     ["release"],
   ]);
@@ -222,8 +241,11 @@ test("restarts the existing data when restore verification fails", async () => {
     }),
     /invalid backup/,
   );
-  assert.deepEqual(item.calls.slice(-3), [
-    ["install"],
+  assert.deepEqual(
+    item.calls.slice(-3).map((call) => call[0]),
+    ["install", "remove", "release"],
+  );
+  assert.deepEqual(item.calls.slice(-2), [
     ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
     ["release"],
   ]);
@@ -316,6 +338,9 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
     hookWorkerPid: 43,
     hookWorkerGeneration: "a".repeat(32),
     hookReceiptPath: "/safe/state/hooks/install.json",
+    upstreamHealthUrl: "http://127.0.0.1:8420/health",
+    gatewayHealthUrl: "http://127.0.0.1:8788/health",
+    webUrl: "http://127.0.0.1:4173/memories",
   };
   item.options.readManagedReceiptImpl = async () => ({
     receipt,
