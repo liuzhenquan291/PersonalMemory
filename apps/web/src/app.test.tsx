@@ -954,7 +954,7 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByText("personalmemory token show")).toBeVisible();
     expect(screen.getByText(/浏览器安全会话默认有效 1 小时/u)).toBeVisible();
     expect(screen.getByText(/gateway\.env/u)).toBeVisible();
-    await user.type(tokenInput, "local-secret");
+    await user.type(tokenInput, " local-secret ");
     await user.click(screen.getByRole("button", { name: "建立安全会话" }));
     expect(await screen.findByText(/访问令牌未保存在浏览器/)).toBeVisible();
     expect(fetchMock).toHaveBeenNthCalledWith(

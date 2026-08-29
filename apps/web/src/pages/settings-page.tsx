@@ -17,6 +17,7 @@ import {
 
 export function SettingsPage() {
   const [token, setToken] = useState("");
+  const normalizedToken = token.trim();
   const [sessionState, setSessionState] = useState<
     "idle" | "submitting" | "ready" | "error"
   >(() => (hasBrowserSession() ? "ready" : "idle"));
@@ -139,7 +140,7 @@ export function SettingsPage() {
             onSubmit={(event) => {
               event.preventDefault();
               setSessionState("submitting");
-              void createBrowserSession(token)
+              void createBrowserSession(normalizedToken)
                 .then(() => {
                   setToken("");
                   setSessionState("ready");
@@ -158,7 +159,7 @@ export function SettingsPage() {
             </label>
             <button
               type="submit"
-              disabled={!token || sessionState === "submitting"}
+              disabled={!normalizedToken || sessionState === "submitting"}
             >
               {sessionState === "submitting" ? "正在解锁…" : "建立安全会话"}
             </button>
