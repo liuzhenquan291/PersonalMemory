@@ -362,6 +362,32 @@ test("builds, starts, writes private state, and reports a healthy installation",
     /different gateway port/u,
   );
 
+  const migratedCalls = [];
+  const migrated = await installPersonalMemory({
+    ...repeatOptions,
+    upstreamPort: 17173,
+    gatewayPort: 17175,
+    webPort: 17177,
+    isAliveImpl: () => false,
+    waitForHookWorkerImpl: readyWorker,
+    run: async (...args) => migratedCalls.push(args),
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: (...args) => {
+      migratedCalls.push(args);
+      return fakeChild(nextPid++);
+    },
+  });
+  assert.equal(migrated.changed, true);
+  assert.equal(migrated.upstreamHealthUrl, "http://127.0.0.1:17173/health");
+  assert.equal(migrated.gatewayHealthUrl, "http://127.0.0.1:17175/health");
+  assert.equal(migrated.webUrl, "http://127.0.0.1:17177/memories");
+  repeatOptions.readHookDoctorStatusImpl = async () => ({
+    worker: "healthy",
+    workerPid: migrated.hookWorkerPid,
+    workerGeneration: migrated.hookWorkerGeneration,
+    lastMaintenanceAt: Date.now(),
+  });
+
   const hookReceipt = JSON.parse(
     await readFile(path.join(root, "state", "hooks", "install.json"), "utf8"),
   );
@@ -431,6 +457,86 @@ test("does not install dependencies when they are already present", async () => 
         : { ok: true },
   });
   assert.deepEqual(commands, [["npm", ["run", "build:products"]]]);
+  await rm(root, { recursive: true });
+});
+
+test("preserves a stopped receipt and its custom ports when reinstall preflight fails", async () => {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-stopped-reinstall-")),
+  );
+  const dataDirectory = path.join(root, "data");
+  const stateDirectory = path.join(root, "state");
+  await mkdir(path.join(root, "node_modules", "vite", "bin"), {
+    recursive: true,
+  });
+  let nextPid = 3_000_000;
+  const installed = await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
+    waitForHookWorkerImpl: readyWorker,
+    root,
+    home: path.join(root, "home"),
+    dataDirectory,
+    stateDirectory,
+    agents: [],
+    upstreamPort: 18420,
+    gatewayPort: 18787,
+    webPort: 14173,
+    run: async () => undefined,
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: () => fakeChild(nextPid++),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
+  });
+  const originalReceipt = await readFile(installed.receiptPath, "utf8");
+  const checkedPorts = [];
+  await assert.rejects(
+    installPersonalMemory({
+      installManagedCommandImpl: fakeManagedCommand,
+      root,
+      home: path.join(root, "home"),
+      dataDirectory,
+      stateDirectory,
+      agents: [],
+      isAliveImpl: () => false,
+      assertPortAvailableImpl: async (_host, port) => {
+        checkedPorts.push(port);
+        if (port === 14173) throw new Error("replacement port unavailable");
+      },
+    }),
+    /replacement port unavailable/u,
+  );
+  assert.deepEqual(checkedPorts, [18420, 18787, 14173]);
+  assert.equal(await readFile(installed.receiptPath, "utf8"), originalReceipt);
+
+  await assert.rejects(
+    installPersonalMemory({
+      installManagedCommandImpl: fakeManagedCommand,
+      root,
+      home: path.join(root, "home"),
+      dataDirectory,
+      stateDirectory,
+      agents: [],
+      upstreamPort: 17173,
+      gatewayPort: 17175,
+      webPort: 17177,
+      isAliveImpl: () => false,
+      waitForHookWorkerImpl: readyWorker,
+      run: async () => undefined,
+      assertPortAvailableImpl: async () => undefined,
+      spawnImpl: () => fakeChild(nextPid++),
+      fetchImpl: async (_url, options) =>
+        options?.method === "POST"
+          ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+          : { ok: true },
+      pruneManagedHookEventReceiptsImpl: async () => {
+        throw new Error("hook receipt pruning failed");
+      },
+    }),
+    /hook receipt pruning failed/u,
+  );
+  assert.equal(await readFile(installed.receiptPath, "utf8"), originalReceipt);
   await rm(root, { recursive: true });
 });
 

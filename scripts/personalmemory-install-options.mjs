@@ -5,9 +5,9 @@ import process from "node:process";
 
 export const SUPPORTED_AGENTS = ["codex", "claude-code"];
 export const DEFAULT_INSTALL_PORTS = {
-  upstreamPort: 8420,
-  gatewayPort: 8787,
-  webPort: 4173,
+  upstreamPort: 17173,
+  gatewayPort: 17175,
+  webPort: 17177,
 };
 
 function executableName(agent) {

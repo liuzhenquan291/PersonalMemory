@@ -143,7 +143,7 @@ Web 不会自行重启本机进程。未配置、未授权或撤销授权时，�
 - macOS 或 Linux；当前仅正式验证 arm64。
 - Node.js 22.19.0 或更高版本，以及 npm。
 - Codex、Claude Code 可以按需安装；没有安装的客户端不会影响核心服务运行。
-- 默认端口 `8420`、`8787`、`4173` 未被其他程序占用。
+- 默认端口 `17173`、`17175`、`17177` 未被其他程序占用。
 
 ### 使用 Git 固定版本安装
 
@@ -188,12 +188,12 @@ sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
   --version personalmemory-v0.1.1 \
   --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.1" \
-  --gateway-port 8787 \
+  --gateway-port 17175 \
   --agent codex \
   --agent claude-code
 ```
 
-`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `8420`、`8787` 和 `4173`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
 
 ```sh
 curl -fsSL \
@@ -250,7 +250,7 @@ sh -s -- --help
 成功后终端会显示 Web 地址、健康检查地址、Codex/Claude Code Hook 状态、数据目录和日志位置。默认 Web 地址是：
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:17177
 ```
 
 ### Hook 共存与冲突保护

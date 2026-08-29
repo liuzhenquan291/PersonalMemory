@@ -11,9 +11,9 @@ agent_codex=false
 agent_claude=false
 agent_all=false
 agent_none=false
-upstream_port=8420
-gateway_port=8787
-web_port=4173
+upstream_port=17173
+gateway_port=17175
+web_port=17177
 
 usage() {
   cat <<'EOF'
@@ -26,9 +26,9 @@ Options:
   --version <tag>        Exact Git tag to install
   --install-dir <path>   Absolute source installation directory
   --agent <name>         Repeatable: codex, claude-code, all, or none
-  --upstream-port <port> Upstream Gateway port (default: 8420)
-  --gateway-port <port>  PersonalMemory Gateway port (default: 8787)
-  --web-port <port>      Web management port (default: 4173)
+  --upstream-port <port> Upstream Gateway port (default: 17173)
+  --gateway-port <port>  PersonalMemory Gateway port (default: 17175)
+  --web-port <port>      Web management port (default: 17177)
   -h, --help             Show this help
 
 When --agent is omitted, the product installer auto-detects supported Agents.

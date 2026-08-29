@@ -234,7 +234,7 @@ export function loadConfig(
   const file = parsedFile.data;
   const host =
     environment.PERSONALMEMORY_HOST ?? file.server?.host ?? "127.0.0.1";
-  const port = parsePort(environment) ?? file.server?.port ?? 8787;
+  const port = parsePort(environment) ?? file.server?.port ?? 17175;
   const authenticationEnabled =
     parseEnvironmentBoolean(environment, "PERSONALMEMORY_AUTH_ENABLED") ??
     file.server?.authenticationEnabled ??
@@ -251,7 +251,7 @@ export function loadConfig(
   const upstreamBaseUrlValue =
     environment.PERSONALMEMORY_UPSTREAM_BASE_URL ??
     file.server?.upstreamBaseUrl ??
-    "http://127.0.0.1:8420";
+    "http://127.0.0.1:17173";
   let upstreamBaseUrl: URL;
   try {
     upstreamBaseUrl = new URL(upstreamBaseUrlValue);

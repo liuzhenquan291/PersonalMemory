@@ -3,11 +3,20 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  DEFAULT_INSTALL_PORTS,
   parseInstallArguments,
   parseAgentArguments,
   resolveInstallAgents,
   resolveInstallOptions,
 } from "./personalmemory-install-options.mjs";
+
+test("uses the product default service ports", () => {
+  assert.deepEqual(DEFAULT_INSTALL_PORTS, {
+    upstreamPort: 17173,
+    gatewayPort: 17175,
+    webPort: 17177,
+  });
+});
 
 test("parses repeatable Agent arguments and shortcuts", () => {
   assert.deepEqual(
@@ -77,7 +86,7 @@ test("rejects invalid, duplicate, or overlapping service ports", () => {
     ["--gateway-port", "65536"],
     ["--gateway-port", "abc"],
     ["--gateway-port", "8788", "--gateway-port", "8789"],
-    ["--gateway-port", "8420"],
+    ["--gateway-port", "17173"],
   ]) {
     assert.throws(() => parseInstallArguments(args), /port|repeated|distinct/u);
   }

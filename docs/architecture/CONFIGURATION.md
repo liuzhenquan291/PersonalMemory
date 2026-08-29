@@ -4,7 +4,7 @@ M1.2 建立唯一配置入口 `loadConfig()`。优先级固定为：安全默认
 
 ## 安全默认值
 
-- Gateway 默认监听 `127.0.0.1:8787`；非 loopback 地址必须同时启用认证并提供 token。
+- PersonalMemory Gateway 默认监听 `127.0.0.1:17175`，上游核心 Gateway 默认监听 `127.0.0.1:17173`；非 loopback 地址必须同时启用认证并提供 token。
 - 默认关闭模型访问和遥测；无密钥时返回 `model-configuration-required`，允许产品安全启动到配置引导。
 - 远程 `openai-compatible` provider 必须显式启用、配置 API key，并将目标 origin 加入 allowlist；远程地址必须使用 HTTPS，URL 不得内嵌凭据。
 - 本地 provider 只允许 loopback URL。所有请求目标在创建网络请求前必须经过 `assertOutboundAllowed()`；逻辑策略不读取 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`，这些变量不能扩大 allowlist。M1.3 实际网络客户端还必须对 loopback 禁用环境代理并增加传输层集成测试。

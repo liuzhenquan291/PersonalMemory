@@ -30,17 +30,17 @@ async function main() {
     runtime = await createDevRuntime({
       upstreamPort: parseDevPort(
         process.env.PERSONALMEMORY_DEV_UPSTREAM_PORT,
-        8420,
+        17173,
         "PERSONALMEMORY_DEV_UPSTREAM_PORT",
       ),
       gatewayPort: parseDevPort(
         process.env.PERSONALMEMORY_DEV_GATEWAY_PORT,
-        8787,
+        17175,
         "PERSONALMEMORY_DEV_GATEWAY_PORT",
       ),
       webPort: parseDevPort(
         process.env.PERSONALMEMORY_DEV_WEB_PORT,
-        4173,
+        17177,
         "PERSONALMEMORY_DEV_WEB_PORT",
       ),
       onUnexpectedExit() {
