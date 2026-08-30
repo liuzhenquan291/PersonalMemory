@@ -19,7 +19,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const root = path.resolve(import.meta.dirname, "..");
-const productVersion = "0.1.2";
+const productVersion = "0.1.3";
 const archiveDirectory = `PersonalMemory-${productVersion}`;
 const archiveName = `${archiveDirectory}-source.tar.gz`;
 

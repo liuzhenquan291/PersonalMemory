@@ -51,7 +51,13 @@
 | M5.3     | completed   | [备份、恢复和卸载](M5.3.md)                             |
 | M5.4     | completed   | [发布候选验证](M5.4.md)                                 |
 | M5.5     | completed   | [真实分发物重新发布验证](M5.5.md)                       |
+| M5.6     | completed   | [可选多 Agent 安装](M5.6.md)                           |
+| M5.7     | completed   | [版本化远程引导安装](M5.7.md)                         |
+| M5.8     | completed   | [同事件 Hook 安全共存](M5.8.md)                       |
+| M5.9     | completed   | [可配置本地服务端口](M5.9.md)                         |
+| M5.10    | completed   | [MVP 0.1.2 修正版发布收口](M5.10.md)                  |
+| M5.11    | in_progress | [发布文档、名称核查与远端收尾](M5.11.md)              |
 
-M0–M5 完成后的合并前状态和授权边界见 [MVP 合并前审计](MVP_MERGE_READINESS.md)。
+历史合并前快照见 [MVP 合并前审计](MVP_MERGE_READINESS.md)；当前发布状态与本次授权见 [M5.11](M5.11.md)。
 
 步骤提交 SHA 在提交完成后的任务报告或 CI 中记录，不通过 amend 回填到产生该 SHA 的同一提交。

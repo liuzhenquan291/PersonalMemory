@@ -294,8 +294,8 @@ test("builds, starts, writes private state, and reports a healthy installation",
     home: path.join(root, "home"),
     dataDirectory,
     stateDirectory: path.join(root, "state"),
-    gatewayPort: 0,
-    webPort: 0,
+    gatewayPort: 28175,
+    webPort: 28177,
     run: async (...args) => calls.push(args),
     assertPortAvailableImpl: async () => undefined,
     spawnImpl: (...args) => {
@@ -317,7 +317,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.equal(calls[1][2].env.TDAI_LLM_BASE_URL, undefined);
   assert.equal(calls[1][2].env.TDAI_LLM_API_KEY, undefined);
   assert.equal(calls[1][2].env.TDAI_LLM_MODEL, undefined);
-  assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
+  assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "28175");
   assert.equal(
     calls[2][2].env.PERSONALMEMORY_STATE_DIR,
     path.join(root, "state"),

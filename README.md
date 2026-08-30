@@ -1,6 +1,6 @@
 # PersonalMemory
 
-> MVP 当前发布版本：`personalmemory-v0.1.2`；已验证平台：macOS arm64、Linux arm64。
+> MVP 当前发布候选：`personalmemory-v0.1.3`；已验证平台：macOS arm64、Linux arm64。
 
 PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，基于
 [TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
@@ -19,7 +19,7 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 ## 当前状态
 
-M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命周期、M4.6 模型/隐私门禁和 M4.7 现有承诺收口均已完成。M5.5 已在 macOS arm64 与 Linux arm64 真实源码分发物上重新验收双客户端 Hook、首条自动召回/捕获、升级、默认零外联、模型与 Hook 授权变化、敏感采集、故障/outbox 恢复、重复事件、长期运行、备份恢复和卸载；M5.6 已支持自动检测及单个或多个 Agent 安装。项目已恢复完整 MVP / 本地发布候选证据；移动 `main`、推送和对外发布仍需用户明确授权。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
+M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命周期、M4.6 模型/隐私门禁和 M4.7 现有承诺收口均已完成。M5.5 已在 macOS arm64 与 Linux arm64 真实源码分发物上重新验收双客户端 Hook、首条自动召回/捕获、升级、默认零外联、模型与 Hook 授权变化、敏感采集、故障/outbox 恢复、重复事件、长期运行、备份恢复和卸载；M5.6 已支持自动检测及单个或多个 Agent 安装。项目已恢复完整 MVP / 本地发布候选证据；0.1.2 修正版收口已完成，0.1.3 候选进一步修复备份/恢复端口保留。当前发布操作与核验状态见 [发布收尾记录](docs/implementation-records/M5.11.md)。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
 
 ## 使用手册导航
 
@@ -147,10 +147,12 @@ Web 不会自行重启本机进程。未配置、未授权或撤销授权时，�
 
 ### 使用 Git 固定版本安装
 
-MVP 当前版使用独立 Git tag `personalmemory-v0.1.2`，不要使用上游基线标签 `v1.0.1`。`personalmemory-v0.1.1` 保持为不可移动的早期候选。通过 HTTPS 获取并固定到当前版本：
+> 0.1.3 目前仅为本地候选，尚未推送远端标签。以下 0.1.3 远程安装命令暂不可执行，待标签正式公开后使用；当前可下载的 0.1.2 存在备份/恢复和升级端口保留缺陷，不建议据此验证自定义端口生命周期。
+
+MVP 当前候选使用独立 Git tag `personalmemory-v0.1.3`，不要使用上游基线标签 `v1.0.1`。`personalmemory-v0.1.1`、`personalmemory-v0.1.2` 保持不可移动；0.1.3 修复备份/恢复自动重启丢失端口的问题。正式发布状态见发布收尾记录。通过 HTTPS 获取并固定到当前版本：
 
 ```sh
-git clone --branch personalmemory-v0.1.2 --depth 1 \
+git clone --branch personalmemory-v0.1.3 --depth 1 \
   https://github.com/liuzhenquan291/PersonalMemory.git
 cd PersonalMemory
 ```
@@ -159,18 +161,18 @@ cd PersonalMemory
 
 ### 使用版本化源码包安装
 
-也可以从可信渠道取得 `PersonalMemory-0.1.2-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
+也可以从可信渠道取得 `PersonalMemory-0.1.3-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
 
 ```sh
-shasum -a 256 -c PersonalMemory-0.1.2-source.tar.gz.sha256
-tar -xzf PersonalMemory-0.1.2-source.tar.gz
-cd PersonalMemory-0.1.2
+shasum -a 256 -c PersonalMemory-0.1.3-source.tar.gz.sha256
+tar -xzf PersonalMemory-0.1.3-source.tar.gz
+cd PersonalMemory-0.1.3
 ```
 
 Linux 可将第一条命令替换为：
 
 ```sh
-sha256sum -c PersonalMemory-0.1.2-source.tar.gz.sha256
+sha256sum -c PersonalMemory-0.1.3-source.tar.gz.sha256
 ```
 
 Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
@@ -179,25 +181,25 @@ Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说�
 
 ### 一条命令安装
 
-通过 `curl` 获取首发 tag 中的轻量引导脚本，并显式指定 Git 地址、版本、安装目录和 Agent：
+以下命令须等 0.1.3 标签公开后才能执行；当前仅本地候选。通过 `curl` 获取固定 tag 中的轻量引导脚本，并显式指定 Git 地址、版本、安装目录和 Agent：
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.2/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.3/bootstrap-personalmemory.sh |
 sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
-  --version personalmemory-v0.1.2 \
-  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.2" \
+  --version personalmemory-v0.1.3 \
+  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.3" \
   --gateway-port 17175 \
   --agent codex \
   --agent claude-code
 ```
 
-`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.2`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.3`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.2/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.3/bootstrap-personalmemory.sh |
 sh -s -- --help
 ```
 
@@ -488,6 +490,7 @@ Linux：
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
 - [实施计划](docs/IMPLEMENTATION_PLAN.md)
 - [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)
+- [MVP 后续待办](docs/POST_MVP_TODO.md)
 - [实施记录](docs/implementation-records/README.md)
 - [上游 TencentDB-Agent-Memory 中文参考文档（不是 PersonalMemory 使用说明）](README_CN.md)
 

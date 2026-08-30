@@ -1,3 +1,4 @@
+import { URL } from "node:url";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
@@ -122,4 +123,39 @@ export async function resolveInstallOptions(
       parsed.agents ??
       (await resolveInstallAgents([], environment, accessImpl)),
   };
+}
+
+export function readManagedPorts(receipt) {
+  const ports = {};
+  for (const [key, field] of [
+    ["upstreamPort", "upstreamHealthUrl"],
+    ["gatewayPort", "gatewayHealthUrl"],
+    ["webPort", "webUrl"],
+  ]) {
+    if (receipt.version === 1 && receipt[field] === undefined) {
+      ports[key] = DEFAULT_INSTALL_PORTS[key];
+      continue;
+    }
+    let url;
+    try {
+      url = new URL(receipt[field]);
+    } catch {
+      throw new Error(`Invalid managed service URL: ${field}`);
+    }
+    if (
+      url.protocol !== "http:" ||
+      !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) ||
+      url.username ||
+      url.password
+    ) {
+      throw new Error(`Invalid managed service URL: ${field}`);
+    }
+    ports[key] = Number(url.port || "80");
+    if (!Number.isInteger(ports[key]) || ports[key] < 1 || ports[key] > 65535) {
+      throw new Error(`Invalid managed service port: ${field}`);
+    }
+  }
+  if (new Set(Object.values(ports)).size !== 3)
+    throw new Error("Managed service ports must be distinct");
+  return ports;
 }

@@ -30,7 +30,10 @@ import {
   writeManagedHookRuntimeConfiguration,
 } from "./personalmemory-hook-managed.mjs";
 import { installManagedCommand } from "./personalmemory-command-install.mjs";
-import { DEFAULT_INSTALL_PORTS } from "./personalmemory-install-options.mjs";
+import {
+  DEFAULT_INSTALL_PORTS,
+  readManagedPorts,
+} from "./personalmemory-install-options.mjs";
 
 const UPSTREAM_MODEL_ENVIRONMENT_KEYS = [
   "TDAI_LLM_ENABLED",
@@ -129,7 +132,7 @@ export function hookInstallationId(secret) {
 }
 
 const RECEIPT_VERSION = 3;
-const PRODUCT_VERSION = "0.1.2";
+const PRODUCT_VERSION = "0.1.3";
 const SCHEMA_VERSION = 7;
 const REINSTALL_FROM_STOPPED_RECEIPT = Symbol("reinstall-from-stopped-receipt");
 const SUPPORTED_AGENTS = ["codex", "claude-code"];
@@ -497,6 +500,7 @@ export async function installPersonalMemory(options = {}) {
     ) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
+    const receiptPorts = readManagedPorts(receipt);
     const managedProcessStates = [
       receipt.upstreamPid,
       receipt.gatewayPid,
@@ -506,12 +510,9 @@ export async function installPersonalMemory(options = {}) {
     if (managedProcessStates.every((alive) => !alive)) {
       return installPersonalMemory({
         ...options,
-        upstreamPort:
-          options.upstreamPort ??
-          Number(new URL(receipt.upstreamHealthUrl).port),
-        gatewayPort:
-          options.gatewayPort ?? Number(new URL(receipt.gatewayHealthUrl).port),
-        webPort: options.webPort ?? Number(new URL(receipt.webUrl).port),
+        upstreamPort: options.upstreamPort ?? receiptPorts.upstreamPort,
+        gatewayPort: options.gatewayPort ?? receiptPorts.gatewayPort,
+        webPort: options.webPort ?? receiptPorts.webPort,
         [REINSTALL_FROM_STOPPED_RECEIPT]: receiptPath,
       });
     }
@@ -520,12 +521,12 @@ export async function installPersonalMemory(options = {}) {
         `A partial installation exists at ${receiptPath}; stop all managed processes before retrying`,
       );
     }
-    for (const [option, receiptUrl, label] of [
-      [options.upstreamPort, receipt.upstreamHealthUrl, "upstream"],
-      [options.gatewayPort, receipt.gatewayHealthUrl, "gateway"],
-      [options.webPort, receipt.webUrl, "web"],
+    for (const [option, receiptPort, label] of [
+      [options.upstreamPort, receiptPorts.upstreamPort, "upstream"],
+      [options.gatewayPort, receiptPorts.gatewayPort, "gateway"],
+      [options.webPort, receiptPorts.webPort, "web"],
     ]) {
-      if (option !== undefined && Number(new URL(receiptUrl).port) !== option)
+      if (option !== undefined && receiptPort !== option)
         throw new Error(
           `The running installation uses a different ${label} port; stop it before changing ports`,
         );

@@ -17,6 +17,9 @@ function fixture(overrides = {}) {
     dataDirectory,
     gatewayPid: 2001,
     webPid: 2002,
+    upstreamHealthUrl: "http://127.0.0.1:28173/health",
+    gatewayHealthUrl: "http://127.0.0.1:28175/health",
+    webUrl: "http://127.0.0.1:28177/memories",
     secretPath: path.join(stateDirectory, "gateway.env"),
     logPath: path.join(stateDirectory, "personalmemory.log"),
   };
@@ -188,4 +191,42 @@ test("fails closed when the receipt expands the managed path scope", async () =>
     /expands the managed upgrade scope/,
   );
   assert.deepEqual(item.calls, []);
+});
+
+test("upgrade preserves custom ports and checks only its own upstream", async () => {
+  const item = fixture();
+  item.receipt.upstreamHealthUrl = "http://127.0.0.1:80/health";
+  let installation;
+  const environments = [];
+  item.options.installImpl = async (options) => {
+    installation = options;
+    return item.receipt;
+  };
+  item.options.runImpl = async (_command, args, options) => {
+    if (args.includes("data:backup")) environments.push(options.env);
+  };
+  await upgradePersonalMemory(item.options);
+  assert.deepEqual(
+    [installation.upstreamPort, installation.gatewayPort, installation.webPort],
+    [80, 28175, 28177],
+  );
+  assert.equal(
+    environments[0].PERSONALMEMORY_UPSTREAM_BASE_URL,
+    "http://127.0.0.1:80",
+  );
+});
+
+test("upgrade rollback checks the receipt upstream after migration failure", async () => {
+  const item = fixture();
+  let rollbackEnvironment;
+  item.options.runImpl = async (_command, args, options) => {
+    if (args.includes("scripts/personalmemory-migrate.ts"))
+      throw new Error("migration failure");
+    if (args.includes("data:restore")) rollbackEnvironment = options.env;
+  };
+  await assert.rejects(upgradePersonalMemory(item.options), /Upgrade failed/u);
+  assert.equal(
+    rollbackEnvironment.PERSONALMEMORY_UPSTREAM_BASE_URL,
+    "http://127.0.0.1:28173",
+  );
 });

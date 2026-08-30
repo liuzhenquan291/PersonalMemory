@@ -23,6 +23,7 @@ function fixture() {
   };
   return {
     calls,
+    receipt,
     dataDirectory,
     stateDirectory,
     options: {
@@ -368,3 +369,69 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
   assert.ok(item.calls.some((call) => call[0] === "stop" && call[1] === 43));
   assert.ok(item.calls.some((call) => call[0] === "uninstall-hooks"));
 });
+
+for (const operation of ["backup", "restore"]) {
+  for (const fails of [false, true]) {
+    test(`${operation} preserves receipt ports when ${fails ? "data operation fails" : "data operation succeeds"}`, async () => {
+      const item = fixture();
+      if (fails) {
+        item.options.runImpl = async () => {
+          throw new Error("data operation failed");
+        };
+      }
+      const run = managePersonalMemory(operation, {
+        ...item.options,
+        input: "/safe/backup",
+        output: "/safe/backup",
+      });
+      if (fails) await assert.rejects(run, /data operation failed/u);
+      else await run;
+      const installation = item.calls.find((call) => call[0] === "install")[1];
+      assert.deepEqual(
+        [
+          installation.upstreamPort,
+          installation.gatewayPort,
+          installation.webPort,
+        ],
+        [8420, 8788, 4173],
+      );
+    });
+  }
+}
+
+for (const operation of ["restart", "backup", "restore"]) {
+  test(`${operation} preserves HTTP port 80 and targets its own upstream`, async () => {
+    const item = fixture();
+    item.receipt.upstreamHealthUrl = "http://127.0.0.1:80/health";
+    const environments = [];
+    item.options.runImpl = async (_command, args, options) => {
+      if (args.includes("data:backup") || args.includes("data:restore"))
+        environments.push(options.env);
+    };
+    await managePersonalMemory(operation, {
+      ...item.options,
+      input: "/safe/backup",
+      output: "/safe/backup",
+    });
+    assert.equal(
+      item.calls.find((call) => call[0] === "install")[1].upstreamPort,
+      80,
+    );
+    if (operation !== "restart") {
+      assert.equal(environments.length, 1);
+      assert.equal(
+        environments[0].PERSONALMEMORY_UPSTREAM_BASE_URL,
+        "http://127.0.0.1:80",
+      );
+    }
+  });
+  test(`${operation} rejects invalid ports before stopping services`, async () => {
+    const item = fixture();
+    item.receipt.upstreamHealthUrl = "http://127.0.0.1:0/health";
+    await assert.rejects(
+      managePersonalMemory(operation, item.options),
+      /Invalid managed service port/u,
+    );
+    assert.deepEqual(item.calls, []);
+  });
+}

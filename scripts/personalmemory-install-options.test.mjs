@@ -1,3 +1,4 @@
+import { readManagedPorts } from "./personalmemory-install-options.mjs";
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
@@ -110,4 +111,35 @@ test("auto-detects installed Agents only when no explicit selection is given", a
     await resolveInstallAgents(["--agent", "none"], environment, accessImpl),
     [],
   );
+});
+
+test("managed ports preserve HTTP 80 and legacy defaults, rejecting unsafe receipts", () => {
+  const receipt = {
+    version: 3,
+    upstreamHealthUrl: "http://127.0.0.1:80/health",
+    gatewayHealthUrl: "http://127.0.0.1:28175/health",
+    webUrl: "http://127.0.0.1:28177/memories",
+  };
+  assert.deepEqual(readManagedPorts(receipt), {
+    upstreamPort: 80,
+    gatewayPort: 28175,
+    webPort: 28177,
+  });
+  assert.deepEqual(readManagedPorts({ version: 1 }), {
+    upstreamPort: 17173,
+    gatewayPort: 17175,
+    webPort: 17177,
+  });
+  for (const url of [
+    undefined,
+    "http://remote.example:80/health",
+    "http://user@localhost/health",
+    "https://localhost/health",
+    "http://localhost:0/health",
+    "http://localhost:28175/health",
+  ]) {
+    assert.throws(() =>
+      readManagedPorts({ ...receipt, upstreamHealthUrl: url }),
+    );
+  }
 });
