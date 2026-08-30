@@ -5,6 +5,7 @@ import type {
   CapturePolicyLedger,
   MemoryGovernanceLedger,
   ModelAuthorizationLedger,
+  ModelOutboundDisclosure,
   MemoryReviewLedger,
   MemoryStateLedger,
   PersonalMemoryConfig,
@@ -14,7 +15,32 @@ import type {
 } from "@personalmemory/core";
 import type { ConversationImportManager } from "./import-manager.js";
 import type { PrivacyDeletionService } from "./privacy-deletions.js";
-import type { HookCaptureSink, HookLifecyclePolicy } from "./hook-lifecycle.js";
+import type {
+  HookCaptureCommittedObserver,
+  HookCaptureSink,
+  HookLifecyclePolicy,
+} from "./hook-lifecycle.js";
+
+export interface ModelConfigurationStatus {
+  enabled: boolean;
+  provider?: "openai-compatible";
+  baseUrl?: string;
+  modelName?: string;
+  apiKeyConfigured: boolean;
+  disclosure?: ModelOutboundDisclosure & { provider: "openai-compatible" };
+  restartRequired: boolean;
+}
+
+export interface ModelConfigurationManager {
+  status(): ModelConfigurationStatus;
+  configure(input: {
+    provider: "openai-compatible";
+    baseUrl: string;
+    apiKey: string;
+    modelName: string;
+  }): Promise<ModelConfigurationStatus>;
+  disable(): Promise<ModelConfigurationStatus>;
+}
 
 export interface GatewayErrorEnvelope {
   error: {
@@ -69,11 +95,13 @@ export interface GatewayAppOptions {
   hookAuthorizations?: HookAuthorizationLedger;
   capturePolicies?: CapturePolicyLedger;
   modelAuthorizations?: ModelAuthorizationLedger;
+  modelConfiguration?: ModelConfigurationManager;
   retentionAuthorizations?: RetentionAuthorizationLedger;
   retentionRuns?: RetentionRunLedger;
   lifecycleMutex?: DataLifecycleMutex;
   hookPolicy?: HookLifecyclePolicy;
   hookCaptureSink?: HookCaptureSink;
+  hookCaptureCommittedObserver?: HookCaptureCommittedObserver;
   logger?: GatewayLogger;
   now?: () => number;
   randomId?: () => string;

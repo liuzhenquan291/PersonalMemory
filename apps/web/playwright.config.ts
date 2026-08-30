@@ -6,20 +6,20 @@ const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING === "1";
 export default defineConfig({
   testDir: "./tests/e2e",
   use: {
-    baseURL: "http://127.0.0.1:4173",
+    baseURL: "http://127.0.0.1:17177",
     ...(executablePath ? { launchOptions: { executablePath } } : {}),
     trace: "retain-on-failure",
   },
   webServer: [
     {
       command: "node tests/e2e/gateway-stub.mjs",
-      url: "http://127.0.0.1:8787/health",
+      url: "http://127.0.0.1:17175/health",
       reuseExistingServer,
       timeout: 600_000,
     },
     {
       command: "npm run dev",
-      url: "http://127.0.0.1:4173/memories",
+      url: "http://127.0.0.1:17177/memories",
       reuseExistingServer,
       timeout: 600_000,
     },

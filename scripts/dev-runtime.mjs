@@ -1,14 +1,14 @@
 import { spawn } from "node:child_process";
-import { lstat, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { clearTimeout, setTimeout } from "node:timers";
 import { fileURLToPath } from "node:url";
 
-const DEFAULT_GATEWAY_PORT = 8787;
-const DEFAULT_UPSTREAM_PORT = 8420;
-const DEFAULT_WEB_PORT = 4173;
+const DEFAULT_GATEWAY_PORT = 17175;
+const DEFAULT_UPSTREAM_PORT = 17173;
+const DEFAULT_WEB_PORT = 17177;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const FORCE_KILL_TIMEOUT_MS = 1_000;
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -271,6 +271,12 @@ export async function createDevRuntime(options = {}) {
     );
     throw error;
   }
+
+  await writeFile(
+    path.join(stateDirectory, "gateway.env"),
+    "PERSONALMEMORY_MODEL_ENABLED=false\n",
+    { mode: 0o600, flag: "wx" },
+  );
 
   const children = [];
   const startupController = new globalThis.AbortController();

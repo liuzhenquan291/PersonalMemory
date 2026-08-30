@@ -12,14 +12,18 @@ function fixture() {
   const stateDirectory = "/safe/state";
   const receipt = {
     version: 2,
-    productVersion: "0.1.1",
+    productVersion: "0.1.2",
     schemaVersion: 7,
     upstreamPid: 40,
     gatewayPid: 41,
     webPid: 42,
+    upstreamHealthUrl: "http://127.0.0.1:8420/health",
+    gatewayHealthUrl: "http://127.0.0.1:8788/health",
+    webUrl: "http://127.0.0.1:4173/memories",
   };
   return {
     calls,
+    receipt,
     dataDirectory,
     stateDirectory,
     options: {
@@ -33,7 +37,11 @@ function fixture() {
       stopImpl: async (pid) => calls.push(["stop", pid]),
       runImpl: async (command, args) => calls.push([command, args]),
       removeImpl: async (...args) => calls.push(["remove", ...args]),
-      installImpl: async () => calls.push(["install"]),
+      installImpl: async (installOptions) =>
+        calls.push(["install", installOptions]),
+      validateManagedCommandImpl: async () => calls.push(["validate-command"]),
+      uninstallManagedCommandImpl: async (commandOptions) =>
+        calls.push(["uninstall-command", commandOptions]),
       lifecycleMutex: {
         acquire: () => ({
           token: "fixture-lifecycle-token",
@@ -85,14 +93,31 @@ test("cleans private atomic-write temporaries after every failed stage", async (
   }
 });
 
-test("reports managed status without stopping services", async () => {
+test("reports managed service status without stopping services", async () => {
   const item = fixture();
+  item.options.isAliveImpl = () => true;
   const result = await managePersonalMemory("status", item.options);
   assert.equal(result.installed, true);
+  assert.deepEqual(result.services, {
+    state: "running",
+    upstream: true,
+    gateway: true,
+    web: true,
+    hookWorker: undefined,
+  });
   assert.deepEqual(item.calls, []);
 });
 
-test("stops services and removes only the receipt", async () => {
+test("reports stopped managed services from the retained receipt", async () => {
+  const item = fixture();
+  item.options.isAliveImpl = () => false;
+  const result = await managePersonalMemory("status", item.options);
+  assert.equal(result.services.state, "stopped");
+  assert.equal(result.services.gateway, false);
+  assert.equal(result.services.web, false);
+});
+
+test("stops services while retaining restart metadata", async () => {
   const item = fixture();
   const result = await managePersonalMemory("stop", item.options);
   assert.equal(result.stopped, true);
@@ -100,8 +125,9 @@ test("stops services and removes only the receipt", async () => {
     ["stop", 42],
     ["stop", 41],
     ["stop", 40],
-    ["remove", "/safe/state/install.json"],
   ]);
+  await managePersonalMemory("restart", item.options);
+  assert.ok(item.calls.some((call) => call[0] === "install"));
 });
 
 test("restarts managed services so model authorization changes take effect", async () => {
@@ -113,8 +139,11 @@ test("restarts managed services so model authorization changes take effect", asy
     ["stop", 41],
     ["stop", 40],
     ["remove", "/safe/state/install.json"],
-    ["install"],
+    ["install", item.calls.at(-1)[1]],
   ]);
+  assert.equal(item.calls.at(-1)[1].upstreamPort, 8420);
+  assert.equal(item.calls.at(-1)[1].gatewayPort, 8788);
+  assert.equal(item.calls.at(-1)[1].webPort, 4173);
 });
 
 test("creates and verifies a backup then restarts", async () => {
@@ -127,7 +156,10 @@ test("creates and verifies a backup then restarts", async () => {
   assert(item.calls.some((call) => call[1]?.includes?.("data:backup")));
   assert(item.calls.some((call) => call[1]?.includes?.("data:verify")));
   assert.deepEqual(item.calls[0], ["retention", "fixture-lifecycle-token"]);
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.deepEqual(
+    item.calls.slice(-2).map((call) => call[0]),
+    ["install", "release"],
+  );
 });
 
 test("does not stop services when backup cannot acquire the lifecycle lock", async () => {
@@ -152,7 +184,10 @@ test("restarts even when backup fails", async () => {
     managePersonalMemory("backup", { ...item.options, output: "/safe/backup" }),
     /backup failed/,
   );
-  assert.deepEqual(item.calls.slice(-2), [["install"], ["release"]]);
+  assert.deepEqual(
+    item.calls.slice(-2).map((call) => call[0]),
+    ["install", "release"],
+  );
 });
 
 test("restores only after verification and restarts", async () => {
@@ -185,8 +220,11 @@ test("restores only after verification and restarts", async () => {
       .filter((index) => index >= 0),
   );
   assert.ok(snapshotIndex > finalStopIndex);
-  assert.deepEqual(item.calls.slice(-3), [
-    ["install"],
+  assert.deepEqual(
+    item.calls.slice(-3).map((call) => call[0]),
+    ["install", "remove", "release"],
+  );
+  assert.deepEqual(item.calls.slice(-2), [
     ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
     ["release"],
   ]);
@@ -204,8 +242,11 @@ test("restarts the existing data when restore verification fails", async () => {
     }),
     /invalid backup/,
   );
-  assert.deepEqual(item.calls.slice(-3), [
-    ["install"],
+  assert.deepEqual(
+    item.calls.slice(-3).map((call) => call[0]),
+    ["install", "remove", "release"],
+  );
+  assert.deepEqual(item.calls.slice(-2), [
     ["remove", "/safe/state/retention-restore-snapshot.json", { force: true }],
     ["release"],
   ]);
@@ -224,8 +265,22 @@ test("does not stop services when restore cannot acquire the lifecycle lock", as
   assert.deepEqual(item.calls, []);
 });
 
+test("validates the managed command before stopping or removing hooks", async () => {
+  const item = fixture();
+  item.options.validateManagedCommandImpl = async () => {
+    throw new Error("Managed personalmemory command was modified");
+  };
+  await assert.rejects(
+    managePersonalMemory("uninstall", item.options),
+    /command was modified/u,
+  );
+  assert.deepEqual(item.calls, []);
+});
+
 test("uninstalls while preserving data by default", async () => {
   const item = fixture();
+  item.options.uninstallManagedCommandImpl = async (options) =>
+    item.calls.push(["uninstall-command", options]);
   const result = await managePersonalMemory("uninstall", item.options);
   assert.equal(result.dataDeleted, false);
   assert(
@@ -236,6 +291,13 @@ test("uninstalls while preserving data by default", async () => {
   assert.equal(
     item.calls.some((call) => call[1] === "/safe/data"),
     false,
+  );
+  assert.ok(
+    item.calls.some(
+      (call) =>
+        call[0] === "uninstall-command" &&
+        call[1].stateDirectory === "/safe/state",
+    ),
   );
 });
 
@@ -269,7 +331,7 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
   const item = fixture();
   const receipt = {
     version: 3,
-    productVersion: "0.1.1",
+    productVersion: "0.1.2",
     schemaVersion: 7,
     upstreamPid: 40,
     gatewayPid: 41,
@@ -277,6 +339,9 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
     hookWorkerPid: 43,
     hookWorkerGeneration: "a".repeat(32),
     hookReceiptPath: "/safe/state/hooks/install.json",
+    upstreamHealthUrl: "http://127.0.0.1:8420/health",
+    gatewayHealthUrl: "http://127.0.0.1:8788/health",
+    webUrl: "http://127.0.0.1:4173/memories",
   };
   item.options.readManagedReceiptImpl = async () => ({
     receipt,
@@ -304,3 +369,69 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
   assert.ok(item.calls.some((call) => call[0] === "stop" && call[1] === 43));
   assert.ok(item.calls.some((call) => call[0] === "uninstall-hooks"));
 });
+
+for (const operation of ["backup", "restore"]) {
+  for (const fails of [false, true]) {
+    test(`${operation} preserves receipt ports when ${fails ? "data operation fails" : "data operation succeeds"}`, async () => {
+      const item = fixture();
+      if (fails) {
+        item.options.runImpl = async () => {
+          throw new Error("data operation failed");
+        };
+      }
+      const run = managePersonalMemory(operation, {
+        ...item.options,
+        input: "/safe/backup",
+        output: "/safe/backup",
+      });
+      if (fails) await assert.rejects(run, /data operation failed/u);
+      else await run;
+      const installation = item.calls.find((call) => call[0] === "install")[1];
+      assert.deepEqual(
+        [
+          installation.upstreamPort,
+          installation.gatewayPort,
+          installation.webPort,
+        ],
+        [8420, 8788, 4173],
+      );
+    });
+  }
+}
+
+for (const operation of ["restart", "backup", "restore"]) {
+  test(`${operation} preserves HTTP port 80 and targets its own upstream`, async () => {
+    const item = fixture();
+    item.receipt.upstreamHealthUrl = "http://127.0.0.1:80/health";
+    const environments = [];
+    item.options.runImpl = async (_command, args, options) => {
+      if (args.includes("data:backup") || args.includes("data:restore"))
+        environments.push(options.env);
+    };
+    await managePersonalMemory(operation, {
+      ...item.options,
+      input: "/safe/backup",
+      output: "/safe/backup",
+    });
+    assert.equal(
+      item.calls.find((call) => call[0] === "install")[1].upstreamPort,
+      80,
+    );
+    if (operation !== "restart") {
+      assert.equal(environments.length, 1);
+      assert.equal(
+        environments[0].PERSONALMEMORY_UPSTREAM_BASE_URL,
+        "http://127.0.0.1:80",
+      );
+    }
+  });
+  test(`${operation} rejects invalid ports before stopping services`, async () => {
+    const item = fixture();
+    item.receipt.upstreamHealthUrl = "http://127.0.0.1:0/health";
+    await assert.rejects(
+      managePersonalMemory(operation, item.options),
+      /Invalid managed service port/u,
+    );
+    assert.deepEqual(item.calls, []);
+  });
+}

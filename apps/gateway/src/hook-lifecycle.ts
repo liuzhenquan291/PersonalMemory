@@ -38,6 +38,10 @@ export interface HookCaptureSink {
   ): typeof HOOK_CAPTURE_COMMITTED;
 }
 
+export interface HookCaptureCommittedObserver {
+  notify(request: HookCaptureRequest, requestId: string): Promise<void> | void;
+}
+
 export class HookLifecycleCaptureError extends Error {
   constructor(options?: ErrorOptions) {
     super("The local hook capture sink is unavailable", options);
@@ -87,6 +91,7 @@ export class HookLifecycleService {
     private readonly captures: HookCaptureLedger,
     private readonly policy: HookLifecyclePolicy,
     private readonly captureSink?: HookCaptureSink,
+    private readonly captureCommittedObserver?: HookCaptureCommittedObserver,
   ) {}
 
   async recall(
@@ -194,6 +199,13 @@ export class HookLifecycleService {
         reason: "idempotency_conflict",
         retryable: false,
       };
+    }
+    if (this.captureCommittedObserver) {
+      queueMicrotask(() => {
+        void Promise.resolve(
+          this.captureCommittedObserver!.notify(request, requestId),
+        ).catch(() => undefined);
+      });
     }
     return {
       contract_version: PERSONAL_MEMORY_HOOK_CONTRACT_VERSION,

@@ -9,6 +9,7 @@ import {
   statfs,
   writeFile,
 } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout } from "node:timers/promises";
@@ -19,8 +20,10 @@ import {
   defaultStateRoot,
   installPersonalMemory,
 } from "./personalmemory-install-runtime.mjs";
+import { readManagedPorts } from "./personalmemory-install-options.mjs";
+import { installManagedCommand } from "./personalmemory-command-install.mjs";
 
-const TARGET_PRODUCT_VERSION = "0.1.1";
+const TARGET_PRODUCT_VERSION = "0.1.3";
 const TARGET_SCHEMA_VERSION = 7;
 const SPACE_MARGIN_BYTES = 128 * 1024 * 1024;
 
@@ -169,13 +172,33 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
     receipt.productVersion === TARGET_PRODUCT_VERSION &&
     receipt.schemaVersion === TARGET_SCHEMA_VERSION
   ) {
+    const command = await (
+      options.installManagedCommandImpl ?? installManagedCommand
+    )({
+      sourceRoot: root,
+      stateDirectory,
+      binDirectory: path.resolve(
+        options.commandBinDirectory ??
+          path.join(options.home ?? os.homedir(), ".local", "bin"),
+      ),
+    });
     return {
-      changed: false,
+      changed: command.changed,
       productVersion: TARGET_PRODUCT_VERSION,
       schemaVersion: TARGET_SCHEMA_VERSION,
     };
   }
 
+  const ports = readManagedPorts(receipt);
+  const dataEnvironment = {
+    ...process.env,
+    PERSONALMEMORY_DATA_DIR: dataDirectory,
+    ...(receipt.upstreamHealthUrl
+      ? {
+          PERSONALMEMORY_UPSTREAM_BASE_URL: `http://127.0.0.1:${ports.upstreamPort}`,
+        }
+      : {}),
+  };
   const runImpl = options.runImpl ?? defaultRun;
   const stopImpl = options.stopImpl ?? defaultStop;
   const installImpl =
@@ -213,7 +236,7 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
       {
         cwd: root,
         stdio: "inherit",
-        env: { ...process.env, PERSONALMEMORY_DATA_DIR: dataDirectory },
+        env: dataEnvironment,
       },
     );
     backupCreated = true;
@@ -228,11 +251,12 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
       {
         cwd: root,
         stdio: "inherit",
-        env: { ...process.env, PERSONALMEMORY_DATA_DIR: dataDirectory },
+        env: dataEnvironment,
       },
     );
     await removeReceipt(stateDirectory, receipt);
     const started = await installImpl({
+      ...ports,
       root,
       dataDirectory,
       stateDirectory,
@@ -271,7 +295,7 @@ async function upgradePersonalMemoryUnderLock(options = {}) {
           {
             cwd: root,
             stdio: "inherit",
-            env: { ...process.env, PERSONALMEMORY_DATA_DIR: dataDirectory },
+            env: dataEnvironment,
           },
         );
       } catch (error) {

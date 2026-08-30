@@ -29,6 +29,11 @@ import {
   readHookDoctorStatus,
   writeManagedHookRuntimeConfiguration,
 } from "./personalmemory-hook-managed.mjs";
+import { installManagedCommand } from "./personalmemory-command-install.mjs";
+import {
+  DEFAULT_INSTALL_PORTS,
+  readManagedPorts,
+} from "./personalmemory-install-options.mjs";
 
 const UPSTREAM_MODEL_ENVIRONMENT_KEYS = [
   "TDAI_LLM_ENABLED",
@@ -127,8 +132,9 @@ export function hookInstallationId(secret) {
 }
 
 const RECEIPT_VERSION = 3;
-const PRODUCT_VERSION = "0.1.1";
+const PRODUCT_VERSION = "0.1.3";
 const SCHEMA_VERSION = 7;
+const REINSTALL_FROM_STOPPED_RECEIPT = Symbol("reinstall-from-stopped-receipt");
 const SUPPORTED_AGENTS = ["codex", "claude-code"];
 
 function normalizeAgents(agents) {
@@ -421,10 +427,17 @@ export async function installPersonalMemory(options = {}) {
   const secretPath = path.join(runtimeDirectory, "gateway.env");
   const hookSecretPath = path.join(runtimeDirectory, "hooks", "secret");
   const logPath = path.join(runtimeDirectory, "personalmemory.log");
+  const commandBinDirectory = path.resolve(
+    options.commandBinDirectory ??
+      path.join(options.home ?? os.homedir(), ".local", "bin"),
+  );
+  const installManagedCommandImpl =
+    options.installManagedCommandImpl ?? installManagedCommand;
   const host = "127.0.0.1";
-  const upstreamPort = options.upstreamPort ?? 8420;
-  const gatewayPort = options.gatewayPort ?? 8787;
-  const webPort = options.webPort ?? 4173;
+  const upstreamPort =
+    options.upstreamPort ?? DEFAULT_INSTALL_PORTS.upstreamPort;
+  const gatewayPort = options.gatewayPort ?? DEFAULT_INSTALL_PORTS.gatewayPort;
+  const webPort = options.webPort ?? DEFAULT_INSTALL_PORTS.webPort;
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const run = options.run ?? defaultRun;
   const spawnImpl = options.spawnImpl ?? spawn;
@@ -444,7 +457,10 @@ export async function installPersonalMemory(options = {}) {
     options.writePrivateAtomicImpl ?? writePrivateAtomic;
   const startupTimeoutMs = options.startupTimeoutMs ?? 30_000;
 
-  if (await pathExists(receiptPath)) {
+  if (
+    (await pathExists(receiptPath)) &&
+    options[REINSTALL_FROM_STOPPED_RECEIPT] !== receiptPath
+  ) {
     const receiptInfo = await lstat(receiptPath);
     if (
       !receiptInfo.isFile() ||
@@ -484,15 +500,36 @@ export async function installPersonalMemory(options = {}) {
     ) {
       throw new Error(`Invalid installation receipt: ${receiptPath}`);
     }
-    if (
-      !isAliveImpl(receipt.upstreamPid) ||
-      !isAliveImpl(receipt.gatewayPid) ||
-      !isAliveImpl(receipt.webPid) ||
-      !isAliveImpl(receipt.hookWorkerPid)
-    ) {
+    const receiptPorts = readManagedPorts(receipt);
+    const managedProcessStates = [
+      receipt.upstreamPid,
+      receipt.gatewayPid,
+      receipt.webPid,
+      receipt.hookWorkerPid,
+    ].map((pid) => isAliveImpl(pid));
+    if (managedProcessStates.every((alive) => !alive)) {
+      return installPersonalMemory({
+        ...options,
+        upstreamPort: options.upstreamPort ?? receiptPorts.upstreamPort,
+        gatewayPort: options.gatewayPort ?? receiptPorts.gatewayPort,
+        webPort: options.webPort ?? receiptPorts.webPort,
+        [REINSTALL_FROM_STOPPED_RECEIPT]: receiptPath,
+      });
+    }
+    if (managedProcessStates.some((alive) => !alive)) {
       throw new Error(
-        `A stopped or partial installation exists at ${receiptPath}; remove only this stale receipt before retrying`,
+        `A partial installation exists at ${receiptPath}; stop all managed processes before retrying`,
       );
+    }
+    for (const [option, receiptPort, label] of [
+      [options.upstreamPort, receiptPorts.upstreamPort, "upstream"],
+      [options.gatewayPort, receiptPorts.gatewayPort, "gateway"],
+      [options.webPort, receiptPorts.webPort, "web"],
+    ]) {
+      if (option !== undefined && receiptPort !== option)
+        throw new Error(
+          `The running installation uses a different ${label} port; stop it before changing ports`,
+        );
     }
     await Promise.all([
       waitForHttp(receipt.upstreamHealthUrl, fetchImpl, 3_000),
@@ -527,6 +564,11 @@ export async function installPersonalMemory(options = {}) {
     });
     if (!hookInstall.installed)
       throw new Error("Managed Hook installation or worker is not healthy");
+    const commandInstall = await installManagedCommandImpl({
+      sourceRoot: root,
+      stateDirectory: runtimeDirectory,
+      binDirectory: commandBinDirectory,
+    });
     const updatedReceipt = {
       ...receipt,
       agents,
@@ -551,7 +593,12 @@ export async function installPersonalMemory(options = {}) {
     await pruneManagedHookEventReceiptsImpl(hookOptions);
     return {
       ...updatedReceipt,
-      changed: hookInstall.changed,
+      commandPath: commandInstall.commandPath,
+      commandPathConfigured:
+        (options.environment ?? process.env).PATH?.split(
+          path.delimiter,
+        ).includes(commandBinDirectory) ?? false,
+      changed: hookInstall.changed || commandInstall.changed,
       receiptPath,
     };
   }
@@ -591,6 +638,7 @@ export async function installPersonalMemory(options = {}) {
     path.join(runtimeDirectory, "hooks", "install.json"),
   );
   let hookInstallCompleted = false;
+  let rollbackManagedCommand;
   try {
     const common = {
       cwd: root,
@@ -625,6 +673,7 @@ export async function installPersonalMemory(options = {}) {
           ...buildManagedGatewayEnvironment(environment, gatewayEnvironment),
           PERSONALMEMORY_HOST: host,
           PERSONALMEMORY_PORT: String(gatewayPort),
+          PERSONALMEMORY_CORS_ORIGINS: `http://${host}:${webPort}`,
           PERSONALMEMORY_DATA_DIR: dataDirectory,
           PERSONALMEMORY_STATE_DIR: runtimeDirectory,
           PERSONALMEMORY_AUTH_ENABLED: "true",
@@ -708,6 +757,12 @@ export async function installPersonalMemory(options = {}) {
       clients: agents,
     });
     hookInstallCompleted = true;
+    const commandInstall = await installManagedCommandImpl({
+      sourceRoot: root,
+      stateDirectory: runtimeDirectory,
+      binDirectory: commandBinDirectory,
+    });
+    rollbackManagedCommand = commandInstall.rollback;
     const receipt = {
       version: RECEIPT_VERSION,
       productVersion: PRODUCT_VERSION,
@@ -730,21 +785,30 @@ export async function installPersonalMemory(options = {}) {
       hookReceiptPath: hookInstall.receiptPath,
       logPath,
     };
-    await writePrivateAtomicImpl(
-      receiptPath,
-      `${JSON.stringify(receipt, null, 2)}\n`,
-    );
     await pruneManagedHookEventReceiptsImpl({
       home: options.home,
       stateDirectory: runtimeDirectory,
       projectRoot: root,
       nodePath: process.execPath,
     });
+    await writePrivateAtomicImpl(
+      receiptPath,
+      `${JSON.stringify(receipt, null, 2)}\n`,
+    );
     upstream.unref();
     gateway.unref();
     web.unref();
     hookWorker.unref();
-    return { ...receipt, changed: true, receiptPath };
+    return {
+      ...receipt,
+      commandPath: commandInstall.commandPath,
+      commandPathConfigured:
+        (options.environment ?? process.env).PATH?.split(
+          path.delimiter,
+        ).includes(commandBinDirectory) ?? false,
+      changed: true,
+      receiptPath,
+    };
   } catch (error) {
     await stopStartedImpl(children);
     if (hookInstallCompleted && !hookReceiptExisted)
@@ -754,7 +818,10 @@ export async function installPersonalMemory(options = {}) {
         projectRoot: root,
         nodePath: process.execPath,
       }).catch(() => undefined);
-    await rm(receiptPath, { force: true });
+    if (rollbackManagedCommand)
+      await rollbackManagedCommand().catch(() => undefined);
+    if (options[REINSTALL_FROM_STOPPED_RECEIPT] !== receiptPath)
+      await rm(receiptPath, { force: true });
     throw error;
   } finally {
     await log.close();

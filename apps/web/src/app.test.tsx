@@ -516,6 +516,24 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByRole("button", { name: "重新加载" })).toBeEnabled();
   });
 
+  it("guides an unauthenticated browser to unlock memory management", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "UNAUTHORIZED" } }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    renderRoute("/memories");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "需要先解锁记忆管理",
+    );
+    expect(screen.getByRole("link", { name: "前往设置解锁" })).toHaveAttribute(
+      "href",
+      "/settings",
+    );
+  });
+
   it("supports keyboard navigation to settings", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(
       () => new Promise(() => undefined),
@@ -564,9 +582,7 @@ describe("PersonalMemory Web", () => {
     expect(screen.getByText("模型连接")).toBeVisible();
     expect(screen.getByText("关闭")).toBeVisible();
     expect(screen.getByRole("heading", { name: "Agent 接入" })).toBeVisible();
-    expect(
-      screen.getByText(/npm run lifecycle:product -- status/u),
-    ).toBeVisible();
+    expect(screen.getByText(/personalmemory status/u)).toBeVisible();
     expect(
       screen.getByRole("heading", {
         name: "日常管理用 Web，系统操作用受管命令",
@@ -667,6 +683,202 @@ describe("PersonalMemory Web", () => {
     ).toBeVisible();
   });
 
+  it("configures an OpenAI-compatible extraction model from settings", async () => {
+    sessionStorage.setItem("personalmemory.csrf", "csrf-local");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation((input, init) => {
+        if (String(input) === "/api/v1/config/status") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                authenticationConfigured: true,
+                modelConfigured: false,
+              }),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (String(input) === "/api/v1/model/configuration") {
+          const configured = init?.method === "POST";
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                configured
+                  ? {
+                      configuration: {
+                        enabled: true,
+                        provider: "openai-compatible",
+                        base_url: "https://models.example.test/v1",
+                        model_name: "test-model",
+                        api_key_configured: true,
+                      },
+                      disclosure: {
+                        version: 1,
+                        provider: "openai-compatible",
+                        targetOrigin: "https://models.example.test",
+                        sentFields: [
+                          "model input",
+                          "selected memory context",
+                          "imported conversation messages",
+                        ],
+                      },
+                      restart_required: true,
+                    }
+                  : {
+                      configuration: {
+                        enabled: false,
+                        api_key_configured: false,
+                      },
+                      restart_required: false,
+                    },
+              ),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        if (String(input) === "/api/v1/model/authorization") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify(
+                init?.method === "POST"
+                  ? {
+                      authorization: { status: "authorized", revision: 1 },
+                      restart_required: true,
+                    }
+                  : {
+                      disclosure: {
+                        version: 1,
+                        provider: "openai-compatible",
+                        targetOrigin: "https://models.example.test",
+                        sentFields: ["model input", "selected memory context"],
+                      },
+                      authorization: { status: "required", revision: 0 },
+                      restart_required: true,
+                    },
+              ),
+              { status: 200, headers: { "content-type": "application/json" } },
+            ),
+          );
+        }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              authorization: {
+                installation_id: "install-1",
+                authorization_revision: 1,
+                policy_revision: 1,
+                recall_enabled: false,
+                capture_enabled: false,
+                changed_at: "2026-08-26T00:00:00.000Z",
+              },
+              disclosure: {
+                version: 1,
+                recall: {
+                  data: "approved L1 memory text",
+                  timing: "before the model request",
+                  purpose: "provide relevant memory",
+                  destination: "the current agent model input",
+                  budget: "bounded",
+                  failure: "continue",
+                  revocation: "reject",
+                },
+                capture: {
+                  data: "raw user and assistant text",
+                  timing: "after response",
+                  purpose: "build local memory",
+                  destination: "local L0",
+                  budget: "bounded",
+                  failure: "continue",
+                  revocation: "reject",
+                },
+              },
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          ),
+        );
+      });
+    renderRoute("/settings");
+    const user = userEvent.setup();
+
+    await user.type(
+      await screen.findByLabelText("模型接口地址"),
+      "https://models.example.test/v1",
+    );
+    await user.type(screen.getByLabelText("API Key"), "private-model-key");
+    await user.type(screen.getByLabelText("模型名称"), "test-model");
+    await user.click(screen.getByRole("button", { name: "保存模型配置" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/configuration",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+        body: JSON.stringify({
+          provider: "openai-compatible",
+          base_url: "https://models.example.test/v1",
+          api_key: "private-model-key",
+          model_name: "test-model",
+        }),
+      }),
+    );
+    expect(
+      await screen.findByText(
+        /配置已保存。请运行受管重启命令后再授权模型外联/u,
+      ),
+    ).toBeVisible();
+    expect(screen.getByText("API Key 已配置")).toBeVisible();
+    const modelPanel = screen
+      .getByRole("heading", { name: "OpenAI-compatible 模型" })
+      .closest("section");
+    expect(modelPanel).toHaveTextContent(
+      /API Key 仅保存在本机权限为 0600 的 gateway\.env/u,
+    );
+    expect(modelPanel).toHaveTextContent(
+      /撤销模型外联不会删除 API Key、模型配置或既有记忆/u,
+    );
+    expect(modelPanel).toHaveTextContent(
+      /提炼请求和响应属于内部任务，不会再次写入 L0/u,
+    );
+    expect(
+      screen.queryByDisplayValue("private-model-key"),
+    ).not.toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", { name: "授权模型外联" }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/authorization",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+        body: JSON.stringify({
+          version: 1,
+          provider: "openai-compatible",
+          targetOrigin: "https://models.example.test",
+          sentFields: ["model input", "selected memory context"],
+        }),
+      }),
+    );
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    await user.click(
+      screen.getByRole("button", { name: "删除模型配置和 API Key" }),
+    );
+    expect(window.confirm).toHaveBeenCalledWith(
+      "删除本机保存的模型配置和 API Key？这不会删除已有记忆。",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/model/configuration",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({ "X-CSRF-Token": "csrf-local" }),
+      }),
+    );
+    expect(
+      await screen.findByText(/模型配置和 API Key 已从本机凭据文件删除/u),
+    ).toBeVisible();
+  });
+
   it("fails closed when the Hook authorization disclosure is incomplete", async () => {
     sessionStorage.setItem("personalmemory.csrf", "csrf-local");
     vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
@@ -739,7 +951,14 @@ describe("PersonalMemory Web", () => {
     renderRoute("/settings");
     const user = userEvent.setup();
     const tokenInput = await screen.findByLabelText("本地访问令牌");
-    await user.type(tokenInput, "local-secret");
+    expect(screen.getByText("personalmemory token show")).toBeVisible();
+    expect(screen.getByText(/浏览器安全会话默认有效 1 小时/u)).toBeVisible();
+    expect(screen.getByText(/gateway\.env/u)).toBeVisible();
+    expect(tokenInput).toHaveAttribute("type", "password");
+    await user.type(tokenInput, " local-secret ");
+    await user.click(screen.getByRole("button", { name: "显示本地访问令牌" }));
+    expect(tokenInput).toHaveAttribute("type", "text");
+    expect(tokenInput).toHaveValue(" local-secret ");
     await user.click(screen.getByRole("button", { name: "建立安全会话" }));
     expect(await screen.findByText(/访问令牌未保存在浏览器/)).toBeVisible();
     expect(fetchMock).toHaveBeenNthCalledWith(

@@ -1,6 +1,6 @@
 # PersonalMemory
 
-> MVP 首发版本：`personalmemory-v0.1.1`；已验证平台：macOS arm64、Linux arm64。
+> MVP 当前发布候选：`personalmemory-v0.1.3`；已验证平台：macOS arm64、Linux arm64。
 
 PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，基于
 [TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
@@ -19,7 +19,7 @@ PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，�
 
 ## 当前状态
 
-M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命周期、M4.6 模型/隐私门禁和 M4.7 现有承诺收口均已完成。M5.5 已在 macOS arm64 与 Linux arm64 真实源码分发物上重新验收双客户端 Hook、首条自动召回/捕获、升级、默认零外联、模型与 Hook 授权变化、敏感采集、故障/outbox 恢复、重复事件、长期运行、备份恢复和卸载；M5.6 已支持自动检测及单个或多个 Agent 安装。项目已恢复完整 MVP / 本地发布候选证据；移动 `main`、推送和对外发布仍需用户明确授权。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
+M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命周期、M4.6 模型/隐私门禁和 M4.7 现有承诺收口均已完成。M5.5 已在 macOS arm64 与 Linux arm64 真实源码分发物上重新验收双客户端 Hook、首条自动召回/捕获、升级、默认零外联、模型与 Hook 授权变化、敏感采集、故障/outbox 恢复、重复事件、长期运行、备份恢复和卸载；M5.6 已支持自动检测及单个或多个 Agent 安装。项目已恢复完整 MVP / 本地发布候选证据；0.1.2 修正版收口已完成，0.1.3 候选进一步修复备份/恢复端口保留。当前发布操作与核验状态见 [发布收尾记录](docs/implementation-records/M5.11.md)。详见 [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)。
 
 ## 使用手册导航
 
@@ -28,6 +28,9 @@ M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命�
 - [安装和首次启动](#安装和首次启动)
 - [首次使用](#首次使用)
 - [Web 日常使用](#web-日常使用)
+- [工作机制与提炼时机](#工作机制与提炼时机)
+- [配置记忆提炼模型](#配置记忆提炼模型)
+- [记忆如何被使用](#记忆如何被使用)
 - [查看状态和管理服务](#查看状态和管理服务)
 - [手动 MCP 工具](#手动-mcp-工具)
 - [升级](#升级)
@@ -35,6 +38,7 @@ M0–M5 的核心闭环与发布工程基线，以及 M4.5 自动 Agent 生命�
 - [卸载](#卸载)
 - [默认数据位置](#默认数据位置)
 - [当前能力边界](#当前能力边界)
+- [故障排查](#故障排查)
 
 ## 功能概览
 
@@ -54,6 +58,51 @@ PersonalMemory 按层组织信息，避免把全部历史对话直接塞回上�
 - **L3 Persona**：更高层的用户画像和长期倾向。
 
 当前 MVP 对 L0 和带真实引用的新 L1 提供可核对来源；旧 L1、L2、L3 没有可靠引用时会明确显示“来源未记录”，不会用相似搜索结果伪造来源关系。
+
+## 工作机制与提炼时机
+
+自动捕获成功只代表 L0 原文已经安全落盘，不代表立即产生 L1。实际链路是：
+
+1. 主 Agent 成功结束一轮后，Hook 提交本轮 user/assistant 原文。
+2. Gateway 在本地事务中完成授权、排除策略、敏感内容和幂等检查，然后写入 L0。
+3. L0 提交成功后，Gateway 在事务外异步通知上游提炼管线；Hook 不等待模型，通知失败也不会删除 L0。
+4. 管线根据新会话 warmup、累计轮数或空闲刷新等条件调度模型提炼。当前实现通常在新会话、后续累计约 5 轮或空闲约 10 分钟时触发，而不是承诺每轮立即生成 L1。
+5. 新 L1 进入“收件箱”，默认状态为 `pending`。只有人工批准后才可自动召回。
+
+L2/L3 由上游管线在更高层继续归纳。MVP 对它们以查看和诚实披露来源可用性为主，不承诺每段对话都会生成四层记忆。
+
+## 配置记忆提炼模型
+
+首版支持 OpenAI-compatible 接口。先在 Web“设置”页解锁浏览器会话，然后填写：
+
+- 模型接口地址（Base URL）；远端必须使用 HTTPS，本机回环地址可使用 HTTP；
+- API Key；
+- 模型名称。
+
+API Key 只写入本机权限为 `0600` 的受管 `gateway.env`，不会进入浏览器、状态接口、授权记录或记忆数据库。macOS 路径是 `~/Library/Application Support/PersonalMemory Runtime/gateway.env`；Linux 路径是 `${XDG_STATE_HOME:-~/.local/state}/personalmemory/gateway.env`。保存配置之后，Web 会显示模型外联的目标 origin 和可能发送的字段；点击“授权模型外联”是独立的明确授权。配置不等于授权，provider、origin 或发送字段变化会让旧授权失效。
+
+授权只允许 PersonalMemory 把当次披露的模型输入、选中记忆上下文和导入会话消息发送到目标模型服务，用于 L0→L1/L2/L3 提炼。撤销授权不会删除 API Key、模型配置、现有 L0 或既有记忆；它会追加一条撤销记录，并在受管重启后停止新的模型外联和需要模型的提炼。若要移除密钥，应在 Web 单独点击“删除模型配置和 API Key”；这会从 `gateway.env` 删除模型配置，但仍不会删除记忆。
+
+配置和授权完成后，在安装目录运行：
+
+```sh
+personalmemory restart
+```
+
+Web 不会自行重启本机进程。未配置、未授权或撤销授权时，自动捕获仍会保存 L0，但 L1–L3 提炼暂停。模型调用可能产生服务商费用，费用和数据处理规则由你选择的模型服务商决定。
+
+提炼任务由 PersonalMemory 管线直接调用模型接口，不经过 Agent 生命周期 Hook。提炼请求和响应不会再次写入 L0；解析后的模型输出只进入 L1–L3 流程，内部 memory pipeline session 也会被捕获入口排除，因此不会形成递归提炼或造成 L0 膨胀。
+
+## 记忆如何被使用
+
+- 自动召回发生在 Agent 模型处理当前提示之前。
+- 查询只返回已批准、仍有效、未删除且未被冲突或替代关系抑制的 L1。
+- 默认最多注入 5 项、4,000 字符、约 1,000 token，并受约 1 秒超时限制。
+- 注入内容标记为不可信记忆数据；Agent 应把它当作参考事实，而不是新的系统指令。
+- L0 原文、pending/rejected L1 默认不会自动注入。
+- 没有匹配项或 Gateway 超时、不可用时，当前提示继续执行，不因记忆失败阻断 Agent。
+
+用户可在设置中分别关闭自动召回和自动本地捕获；撤销模型外联只停止需要模型的提炼，不会删除已经存在的 L0 或已审核记忆。
 
 ### 审核与记忆治理
 
@@ -94,14 +143,16 @@ PersonalMemory 按层组织信息，避免把全部历史对话直接塞回上�
 - macOS 或 Linux；当前仅正式验证 arm64。
 - Node.js 22.19.0 或更高版本，以及 npm。
 - Codex、Claude Code 可以按需安装；没有安装的客户端不会影响核心服务运行。
-- 默认端口 `8420`、`8787`、`4173` 未被其他程序占用。
+- 默认端口 `17173`、`17175`、`17177` 未被其他程序占用。
 
 ### 使用 Git 固定版本安装
 
-MVP 首发版使用独立 Git tag `personalmemory-v0.1.1`，不要使用上游基线标签 `v1.0.1`。通过 HTTPS 获取并固定到首发版本：
+> 0.1.3 目前仅为本地候选，尚未推送远端标签。以下 0.1.3 远程安装命令暂不可执行，待标签正式公开后使用；当前可下载的 0.1.2 存在备份/恢复和升级端口保留缺陷，不建议据此验证自定义端口生命周期。
+
+MVP 当前候选使用独立 Git tag `personalmemory-v0.1.3`，不要使用上游基线标签 `v1.0.1`。`personalmemory-v0.1.1`、`personalmemory-v0.1.2` 保持不可移动；0.1.3 修复备份/恢复自动重启丢失端口的问题。正式发布状态见发布收尾记录。通过 HTTPS 获取并固定到当前版本：
 
 ```sh
-git clone --branch personalmemory-v0.1.1 --depth 1 \
+git clone --branch personalmemory-v0.1.3 --depth 1 \
   https://github.com/liuzhenquan291/PersonalMemory.git
 cd PersonalMemory
 ```
@@ -110,18 +161,18 @@ cd PersonalMemory
 
 ### 使用版本化源码包安装
 
-也可以从可信渠道取得 `PersonalMemory-0.1.1-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
+也可以从可信渠道取得 `PersonalMemory-0.1.3-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
 
 ```sh
-shasum -a 256 -c PersonalMemory-0.1.1-source.tar.gz.sha256
-tar -xzf PersonalMemory-0.1.1-source.tar.gz
-cd PersonalMemory-0.1.1
+shasum -a 256 -c PersonalMemory-0.1.3-source.tar.gz.sha256
+tar -xzf PersonalMemory-0.1.3-source.tar.gz
+cd PersonalMemory-0.1.3
 ```
 
 Linux 可将第一条命令替换为：
 
 ```sh
-sha256sum -c PersonalMemory-0.1.1-source.tar.gz.sha256
+sha256sum -c PersonalMemory-0.1.3-source.tar.gz.sha256
 ```
 
 Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
@@ -130,24 +181,25 @@ Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说�
 
 ### 一条命令安装
 
-通过 `curl` 获取首发 tag 中的轻量引导脚本，并显式指定 Git 地址、版本、安装目录和 Agent：
+以下命令须等 0.1.3 标签公开后才能执行；当前仅本地候选。通过 `curl` 获取固定 tag 中的轻量引导脚本，并显式指定 Git 地址、版本、安装目录和 Agent：
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.3/bootstrap-personalmemory.sh |
 sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
-  --version personalmemory-v0.1.1 \
-  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.1" \
+  --version personalmemory-v0.1.3 \
+  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.3" \
+  --gateway-port 17175 \
   --agent codex \
   --agent claude-code
 ```
 
-`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。四项都有默认行为：仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`，未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.3`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.3/bootstrap-personalmemory.sh |
 sh -s -- --help
 ```
 
@@ -182,6 +234,17 @@ sh -s -- --help
 
 支持的值为 `codex`、`claude-code`、`all` 和 `none`。重复的具体 Agent 会自动去重；`all` 或 `none` 不能和其他值组合，未知值会在安装前报错。
 
+源码安装入口也支持相同端口参数。例如仅把已占用的 PersonalMemory Gateway 默认端口改为 `8788`：
+
+```sh
+./install-personalmemory.sh \
+  --gateway-port 8788 \
+  --agent codex \
+  --agent claude-code
+```
+
+端口在该次受管安装中固定，并由后续 restart、backup/restore 和 upgrade 沿用。运行中的安装若要更换端口，必须先停止服务，再用新参数重新安装；安装器不会静默忽略端口差异。
+
 首次运行会按锁文件安装依赖、构建产品、创建私有数据目录并启动四个受管进程。重复运行用于检查、恢复安装或调整 Agent 集合，不会删除已有记忆。重新选择 Agent 时，安装器只新增所选的受管 Hook，并精确移除不再选择的 PersonalMemory Hook；不会删除客户端中的其他用户配置或自有 Hook。
 
 当前安装与运行不使用 Docker。四个服务由本机 Node.js 直接作为后台进程启动，只监听 `127.0.0.1`；Docker 不属于 MVP 首发版的安装依赖或运行时。
@@ -189,19 +252,36 @@ sh -s -- --help
 成功后终端会显示 Web 地址、健康检查地址、Codex/Claude Code Hook 状态、数据目录和日志位置。默认 Web 地址是：
 
 ```text
-http://127.0.0.1:4173
+http://127.0.0.1:17177
 ```
 
-### Hook 冲突
+### Hook 共存与冲突保护
 
-安装器不会覆盖所选 Agent 中已有的同名 `UserPromptSubmit`、`Stop` Hook。如果提示 `conflicts with the managed definition`，请先检查对应客户端的 Hook 配置，决定保留哪一套定义，再重新运行安装。未选择的 Agent 不参与冲突检查。不要直接删除不认识的 Hook。
+安装器允许所选 Agent 的 `UserPromptSubmit`、`Stop` 事件中已有其他 Hook。例如 Claude Code 的 usage-tracking `Stop` Hook 会保持原样，PersonalMemory 只追加自己的受管条目。重复安装、升级、切换 Agent 和卸载都通过私有回执中的定义摘要精确识别 PersonalMemory 条目，不会移除或改写其他 Hook。
+
+如果 PersonalMemory 自身的受管条目缺失、被修改或重复，安装器会拒绝继续，避免扩大管理范围。未选择的 Agent 不参与配置检查。不要直接删除不认识的 Hook。
 
 Codex 安装后还需在客户端使用 `/hooks` 核对 PersonalMemory 的精确定义并授予信任；未信任时状态可能显示 `installed_untrusted`，自动 Hook 不会正常生效。
 
 ## 首次使用
 
 1. 打开安装结果给出的 Web 地址。
-2. 在“设置”页解锁当前浏览器会话。
+2. 在终端读取只保存在本机私有文件中的访问令牌，然后在“设置”页粘贴它以解锁当前浏览器会话。令牌不会写入浏览器存储：
+
+   macOS：
+
+   ```bash
+   sed -n 's/^PERSONALMEMORY_AUTH_TOKEN=//p' "$HOME/Library/Application Support/PersonalMemory Runtime/gateway.env"
+   ```
+
+   Linux：
+
+   ```bash
+   sed -n 's/^PERSONALMEMORY_AUTH_TOKEN=//p' "${XDG_STATE_HOME:-$HOME/.local/state}/personalmemory/gateway.env"
+   ```
+
+   请把该令牌视为本机密码，不要发送给他人或写入项目文件。
+
 3. 分别决定是否授权“自动召回”和“自动本地捕获”。两项授权互相独立，也不同于模型外联授权。
 4. 在 Codex 或 Claude Code 中开始一次普通对话。无需说“保存这段话”：成功结束的主 Agent 对话会按授权自动捕获；失败、中断和子 Agent 轮次默认不捕获。
 5. 新提炼出的 L1 记忆默认进入“收件箱”等待审核。批准后，它才有资格被后续对话自动召回。
@@ -223,31 +303,51 @@ Web 是日常记忆治理入口：
 
 ## 查看状态和管理服务
 
-以下命令都应在当前安装包目录运行。
+正式安装会把用户级命令安装到 `~/.local/bin/personalmemory`。安装器不会修改 shell 配置；如果该目录不在 `PATH`，请按安装结果中的提示自行加入。
+
+查看命令帮助：
+
+```sh
+personalmemory help
+```
 
 查看脱敏状态，包括版本、数据目录及 Hook worker/backlog：
 
 ```sh
-npm run lifecycle:product -- status
+personalmemory status
+```
+
+打开仅监听本机回环地址的 Web 设置页：
+
+```sh
+personalmemory open
 ```
 
 重启全部受管服务：
 
 ```sh
-npm run lifecycle:product -- restart
+personalmemory restart
 ```
 
 停止服务：
 
 ```sh
-npm run lifecycle:product -- stop
+personalmemory stop
 ```
 
-停止会移除当前运行回执。需要再次启动时运行：
+停止会保留经过校验的安装信息，因此之后可以直接运行：
 
 ```sh
-./install-personalmemory.sh
+personalmemory restart
 ```
+
+Web 首次建立安全会话时，可以在交互式终端显式读取本地访问令牌：
+
+```sh
+personalmemory token show
+```
+
+令牌不会进入状态输出、日志或命令安装回执。不要把它粘贴到聊天、工单或公开终端记录中。
 
 ## 手动 MCP 工具
 
@@ -292,7 +392,7 @@ npm run data:export -- --format json --output personalmemory-export-20260827.jso
 完整备份是当前支持的迁移和灾难恢复介质。生命周期命令会安全停止服务、生成并校验备份，然后自动重新启动：
 
 ```sh
-npm run lifecycle:product -- backup --output personalmemory-backup-20260827
+personalmemory backup --output personalmemory-backup-20260827
 ```
 
 可单独复验备份：
@@ -350,10 +450,38 @@ Linux：
 - 完整备份可以恢复；JSON/Markdown 可读导出目前不能导入。
 - Skill、Wiki、CodeGraph、多用户和多设备同步不属于当前 Chat Memory MVP。
 
+## 故障排查
+
+### L0 没有记录
+
+1. 在 Web 设置中确认已授权“自动本地捕获”。
+2. 运行 `npm run lifecycle:product -- status`，确认目标 Agent Hook 已安装、Codex Hook 已信任、worker 正常且 outbox 没有持续积压。
+3. 只有主 Agent 成功完成、包含有效 user/assistant 成对文本的轮次才会捕获；中断、失败、子 Agent 和命中敏感内容阻断的轮次不会写入。
+4. 查看安装结果给出的 Hook worker 与 Gateway 日志，但不要公开 Hook secret 或对话正文。
+
+### 有 L0，但没有 L1
+
+1. 这不一定是故障：提炼是异步触发，不保证每轮立即产生 L1。
+2. 在 Web 设置中确认模型配置完整、模型外联已授权，并在配置或授权变化后执行过受管重启。
+3. 确认 Base URL 可达、模型名称正确、API Key 有效且模型服务商余额/配额可用。
+4. 等待新会话 warmup、累计轮数或空闲刷新触发；失败时 L0 会保留，可修复配置后继续处理。
+
+### 有 L1，但 Agent 没有使用
+
+1. 确认该 L1 已在收件箱批准，而不是 pending、rejected、失效或已删除。
+2. 确认已授权“自动召回”，Hook 已安装并信任。
+3. 召回按当前提示的相关性和硬预算筛选；存在记忆不代表每轮都会注入。
+4. 运行状态命令检查 Gateway 和 Hook；召回失败采用 fail-open，Agent 不会报错中断。
+
+### Web 显示无法读取记忆或要求令牌
+
+确认 Gateway 正常后，在设置页使用受管 `gateway.env` 中的本地访问令牌建立短期会话。令牌不会持久写入浏览器；浏览器重启、会话过期或 Gateway 重启后可能需要重新解锁。不要把模型 API Key 当成本地访问令牌。
+
 发生问题时，先保存安装命令输出和安装结果给出的日志路径，再运行 `npm run lifecycle:product -- status` 获取脱敏状态。不要公开数据目录内容、模型密钥或 Hook secret。
 
 ## 项目文档
 
+- [整体技术方案](docs/TECHNICAL_DESIGN.md)
 - [源码包分发说明](docs/RELEASE_DISTRIBUTION.md)
 - [MVP 用户边界](docs/architecture/MVP_USER_BOUNDARIES.md)
 - [可移植数据说明](docs/architecture/PORTABLE_DATA.md)
@@ -362,8 +490,9 @@ Linux：
 - [开发计划](docs/DEVELOPMENT_PLAN.md)
 - [实施计划](docs/IMPLEMENTATION_PLAN.md)
 - [MVP 缺口与后续路线](docs/MVP_GAPS_AND_ROADMAP.md)
+- [MVP 后续待办](docs/POST_MVP_TODO.md)
 - [实施记录](docs/implementation-records/README.md)
-- [上游中文文档](README_CN.md)
+- [上游 TencentDB-Agent-Memory 中文参考文档（不是 PersonalMemory 使用说明）](README_CN.md)
 
 ## 项目名称
 

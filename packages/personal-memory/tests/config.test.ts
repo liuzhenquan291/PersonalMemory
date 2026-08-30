@@ -23,13 +23,16 @@ describe("PersonalMemory configuration", () => {
     expect(loaded.config).toMatchObject({
       server: {
         host: "127.0.0.1",
-        port: 8787,
+        port: 17175,
         authenticationEnabled: false,
       },
       dataDirectory: "/home/alice/.local/share/personalmemory",
       telemetryEnabled: false,
       model: { enabled: false, allowedOrigins: [] },
     });
+    expect(loaded.config.server.upstreamBaseUrl.href).toBe(
+      "http://127.0.0.1:17173/",
+    );
   });
 
   it("uses environment variables over file configuration", () => {

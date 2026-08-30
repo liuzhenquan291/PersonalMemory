@@ -17,6 +17,9 @@ function fixture(overrides = {}) {
     dataDirectory,
     gatewayPid: 2001,
     webPid: 2002,
+    upstreamHealthUrl: "http://127.0.0.1:28173/health",
+    gatewayHealthUrl: "http://127.0.0.1:28175/health",
+    webUrl: "http://127.0.0.1:28177/memories",
     secretPath: path.join(stateDirectory, "gateway.env"),
     logPath: path.join(stateDirectory, "personalmemory.log"),
   };
@@ -43,6 +46,7 @@ function fixture(overrides = {}) {
         gatewayPid: 3001,
         webPid: 3002,
       }),
+      installManagedCommandImpl: async () => ({ changed: false }),
       lifecycleMutex: {
         acquire: () => ({ token: "fixture-upgrade-token", release: () => {} }),
       },
@@ -94,6 +98,24 @@ test("is idempotent when product and schema versions are current", async () => {
   item.receipt.schemaVersion = upgradeTarget.schemaVersion;
   assert.equal((await upgradePersonalMemory(item.options)).changed, false);
   assert.deepEqual(item.calls, []);
+});
+
+test("repairs the managed command for an otherwise current installation", async () => {
+  const item = fixture({
+    installManagedCommandImpl: async (options) => {
+      item.calls.push(["install-command", options]);
+      return { changed: true };
+    },
+  });
+  item.receipt.version = 3;
+  item.receipt.upstreamPid = 2000;
+  item.receipt.hookWorkerPid = 2003;
+  item.receipt.hookWorkerGeneration = "a".repeat(32);
+  item.receipt.hookReceiptPath = "/safe/state/hooks/install.json";
+  item.receipt.productVersion = upgradeTarget.productVersion;
+  item.receipt.schemaVersion = upgradeTarget.schemaVersion;
+  assert.equal((await upgradePersonalMemory(item.options)).changed, true);
+  assert.equal(item.calls[0][0], "install-command");
 });
 
 test("upgrades a current v2 receipt to the four-process managed Hook lifecycle", async () => {
@@ -169,4 +191,42 @@ test("fails closed when the receipt expands the managed path scope", async () =>
     /expands the managed upgrade scope/,
   );
   assert.deepEqual(item.calls, []);
+});
+
+test("upgrade preserves custom ports and checks only its own upstream", async () => {
+  const item = fixture();
+  item.receipt.upstreamHealthUrl = "http://127.0.0.1:80/health";
+  let installation;
+  const environments = [];
+  item.options.installImpl = async (options) => {
+    installation = options;
+    return item.receipt;
+  };
+  item.options.runImpl = async (_command, args, options) => {
+    if (args.includes("data:backup")) environments.push(options.env);
+  };
+  await upgradePersonalMemory(item.options);
+  assert.deepEqual(
+    [installation.upstreamPort, installation.gatewayPort, installation.webPort],
+    [80, 28175, 28177],
+  );
+  assert.equal(
+    environments[0].PERSONALMEMORY_UPSTREAM_BASE_URL,
+    "http://127.0.0.1:80",
+  );
+});
+
+test("upgrade rollback checks the receipt upstream after migration failure", async () => {
+  const item = fixture();
+  let rollbackEnvironment;
+  item.options.runImpl = async (_command, args, options) => {
+    if (args.includes("scripts/personalmemory-migrate.ts"))
+      throw new Error("migration failure");
+    if (args.includes("data:restore")) rollbackEnvironment = options.env;
+  };
+  await assert.rejects(upgradePersonalMemory(item.options), /Upgrade failed/u);
+  assert.equal(
+    rollbackEnvironment.PERSONALMEMORY_UPSTREAM_BASE_URL,
+    "http://127.0.0.1:28173",
+  );
 });

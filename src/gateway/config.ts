@@ -374,7 +374,7 @@ export function loadGatewayConfig(overrides?: Partial<GatewayConfig>): GatewayCo
 
   // Server config
   const serverConfig = obj(fileConfig, "server");
-  const port = envInt("TDAI_GATEWAY_PORT") ?? num(serverConfig, "port") ?? 8420;
+  const port = envInt("TDAI_GATEWAY_PORT") ?? num(serverConfig, "port") ?? 17173;
   const host = env("TDAI_GATEWAY_HOST") ?? str(serverConfig, "host") ?? "127.0.0.1";
 
   // Optional auth / CORS — both default to "disabled" so existing setups keep

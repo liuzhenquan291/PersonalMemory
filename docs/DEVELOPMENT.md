@@ -18,15 +18,15 @@ npm run dev
 
 启动成功后终端会显示：
 
-- Web：`http://127.0.0.1:4173/memories`
-- PersonalMemory Gateway 健康检查：`http://127.0.0.1:8787/health`
+- Web：`http://127.0.0.1:17177/memories`
+- PersonalMemory Gateway 健康检查：`http://127.0.0.1:17175/health`
 - 本轮隔离数据目录；它位于仓库的 `.personalmemory-dev/` 下，仅供本次开发运行使用。
 
-按 `Ctrl+C` 会同时停止 Web 与 Gateway，并删除本轮临时数据。开发命令不会启动腾讯上游 `8420` 服务；当前 Web 壳和 Gateway 状态可独立工作，M2 接入真实记忆操作时再加入上游核心生命周期。
+按 `Ctrl+C` 会同时停止 Web、PersonalMemory Gateway 与上游核心 Gateway，并删除本轮临时数据。上游核心 Gateway 默认监听 `17173`。
 
 ## 端口占用
 
-启动器会先检查两个端口。端口被占用时直接失败，不会终止或复用未知进程。可以先停止已有进程，或显式换用端口：
+启动器会先检查三个端口。端口被占用时直接失败，不会终止或复用未知进程。可以先停止已有进程，或显式换用端口：
 
 ```bash
 PERSONALMEMORY_DEV_GATEWAY_PORT=18787 \
@@ -34,7 +34,7 @@ PERSONALMEMORY_DEV_WEB_PORT=14173 \
 npm run dev
 ```
 
-两个变量只接受 `1`–`65535` 的整数；Web 代理会同步使用指定的 Gateway 端口。
+也可用 `PERSONALMEMORY_DEV_UPSTREAM_PORT` 覆盖上游核心端口。三个变量只接受 `1`–`65535` 的整数；Web 代理会同步使用指定的 Gateway 端口。
 
 ## 失败与清理
 

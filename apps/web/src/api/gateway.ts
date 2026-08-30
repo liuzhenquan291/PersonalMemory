@@ -3,6 +3,32 @@ export interface GatewayStatus {
   readonly modelConfigured: boolean;
 }
 
+export interface ModelConfigurationStatus {
+  readonly configuration: {
+    readonly enabled: boolean;
+    readonly provider?: "openai-compatible";
+    readonly base_url?: string;
+    readonly model_name?: string;
+    readonly api_key_configured: boolean;
+  };
+  readonly disclosure?: {
+    readonly version: 1;
+    readonly provider: "openai-compatible";
+    readonly targetOrigin: string;
+    readonly sentFields: readonly string[];
+  };
+  readonly restart_required: boolean;
+}
+
+export interface ModelAuthorizationStatus {
+  readonly disclosure: NonNullable<ModelConfigurationStatus["disclosure"]>;
+  readonly authorization: {
+    readonly status: "required" | "authorized" | "revoked";
+    readonly revision: number;
+  };
+  readonly restart_required: boolean;
+}
+
 export interface HookAuthorization {
   readonly installation_id: string;
   readonly authorization_revision: number;
@@ -75,6 +101,128 @@ function isHookAuthorizationDisclosure(
 }
 
 const CSRF_STORAGE_KEY = "personalmemory.csrf";
+
+function isModelConfigurationStatus(
+  value: unknown,
+): value is ModelConfigurationStatus {
+  if (!value || typeof value !== "object") return false;
+  const configuration = Reflect.get(value, "configuration");
+  if (!configuration || typeof configuration !== "object") return false;
+  return (
+    typeof Reflect.get(configuration, "enabled") === "boolean" &&
+    typeof Reflect.get(configuration, "api_key_configured") === "boolean" &&
+    typeof Reflect.get(value, "restart_required") === "boolean"
+  );
+}
+
+async function modelConfigurationRequest(
+  init: RequestInit,
+): Promise<ModelConfigurationStatus> {
+  const response = await fetch("/api/v1/model/configuration", {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...init.headers,
+    },
+    credentials: "same-origin",
+  });
+  const body: unknown = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new GatewayRequestError(
+      response.status,
+      "MODEL_CONFIGURATION_FAILED",
+    );
+  if (!isModelConfigurationStatus(body))
+    throw new Error("Gateway 返回了无法识别的模型配置状态");
+  return body;
+}
+
+export function fetchModelConfiguration(
+  signal?: AbortSignal,
+): Promise<ModelConfigurationStatus> {
+  return modelConfigurationRequest(signal ? { signal } : {});
+}
+
+export function saveModelConfiguration(input: {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+}): Promise<ModelConfigurationStatus> {
+  const csrfToken = sessionStorage.getItem(CSRF_STORAGE_KEY);
+  return modelConfigurationRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    body: JSON.stringify({
+      provider: "openai-compatible",
+      base_url: input.baseUrl,
+      api_key: input.apiKey,
+      model_name: input.modelName,
+    }),
+  });
+}
+
+export function disableModelConfiguration(): Promise<ModelConfigurationStatus> {
+  const csrfToken = sessionStorage.getItem(CSRF_STORAGE_KEY);
+  return modelConfigurationRequest({
+    method: "DELETE",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+  });
+}
+
+async function modelAuthorizationRequest(
+  init: RequestInit,
+): Promise<ModelAuthorizationStatus> {
+  const response = await fetch("/api/v1/model/authorization", {
+    ...init,
+    headers: { Accept: "application/json", ...init.headers },
+    credentials: "same-origin",
+  });
+  const body = (await response
+    .json()
+    .catch(() => ({}))) as ModelAuthorizationStatus;
+  const requiresFullStatus = !init.method || init.method === "GET";
+  const validFullStatus =
+    !!body.disclosure &&
+    typeof body.disclosure.targetOrigin === "string" &&
+    Array.isArray(body.disclosure.sentFields) &&
+    !!body.authorization &&
+    typeof body.authorization.status === "string";
+  if (!response.ok || (requiresFullStatus && !validFullStatus))
+    throw new GatewayRequestError(
+      response.status,
+      "MODEL_AUTHORIZATION_FAILED",
+    );
+  return body;
+}
+
+export function fetchModelAuthorization(signal?: AbortSignal) {
+  return modelAuthorizationRequest(signal ? { signal } : {});
+}
+
+export function authorizeModel(
+  disclosure: ModelAuthorizationStatus["disclosure"],
+) {
+  const csrfToken = sessionStorage.getItem(CSRF_STORAGE_KEY);
+  return modelAuthorizationRequest({
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "X-CSRF-Token": csrfToken } : {}),
+    },
+    body: JSON.stringify(disclosure),
+  });
+}
+
+export function revokeModelAuthorization() {
+  const csrfToken = sessionStorage.getItem(CSRF_STORAGE_KEY);
+  return modelAuthorizationRequest({
+    method: "DELETE",
+    headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+  });
+}
 
 export function hasBrowserSession(): boolean {
   return Boolean(sessionStorage.getItem(CSRF_STORAGE_KEY));
@@ -494,7 +642,11 @@ export async function fetchMemories(
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    throw new Error(`记忆列表请求失败（${response.status}）`);
+    const body = (await response.json().catch(() => ({}))) as ErrorBody;
+    throw new GatewayRequestError(
+      response.status,
+      body.error?.code ?? "MEMORY_LIST_FAILED",
+    );
   }
   const body: unknown = await response.json();
   if (

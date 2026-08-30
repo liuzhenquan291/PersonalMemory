@@ -27,7 +27,7 @@ async function createReleaseFixture(base) {
   await chmod(installer, 0o755);
   await git(repository, "add", "install-personalmemory.sh");
   await git(repository, "commit", "-m", "test release");
-  await git(repository, "tag", "-a", "personalmemory-v0.1.1", "-m", "test");
+  await git(repository, "tag", "-a", "personalmemory-v0.1.2", "-m", "test");
   return repository;
 }
 
@@ -37,6 +37,7 @@ test("shows bootstrap parameters without accessing a repository", async () => {
   assert.match(stdout, /--version <tag>/u);
   assert.match(stdout, /--install-dir <path>/u);
   assert.match(stdout, /--agent <name>/u);
+  assert.match(stdout, /--gateway-port <port>/u);
 });
 
 test("clones an exact tag and forwards repeatable Agent parameters", async () => {
@@ -49,13 +50,15 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
     "--repo",
     repository,
     "--version",
-    "personalmemory-v0.1.1",
+    "personalmemory-v0.1.2",
     "--install-dir",
     installDirectory,
     "--agent",
     "claude-code",
     "--agent",
     "codex",
+    "--gateway-port",
+    "8788",
   ];
   const environment = {
     ...process.env,
@@ -65,20 +68,37 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
   await execFileAsync("sh", args, { env: environment });
   assert.equal(
     await readFile(capture, "utf8"),
-    "--agent\ncodex\n--agent\nclaude-code\n",
+    "--agent\ncodex\n--agent\nclaude-code\n--upstream-port\n17173\n--gateway-port\n8788\n--web-port\n17177\n",
   );
   const { stdout: head } = await git(installDirectory, "rev-parse", "HEAD");
   const { stdout: tag } = await git(
     installDirectory,
     "rev-parse",
-    "personalmemory-v0.1.1^{}",
+    "personalmemory-v0.1.2^{}",
   );
   assert.equal(head, tag);
 
   await execFileAsync("sh", args, { env: environment });
   assert.equal(
     await readFile(capture, "utf8"),
-    "--agent\ncodex\n--agent\nclaude-code\n",
+    "--agent\ncodex\n--agent\nclaude-code\n--upstream-port\n17173\n--gateway-port\n8788\n--web-port\n17177\n",
+  );
+
+  await writeFile(path.join(repository, "release-note.txt"), "replacement\n");
+  await git(repository, "add", "release-note.txt");
+  await git(repository, "commit", "-m", "replacement release");
+  await git(
+    repository,
+    "tag",
+    "-f",
+    "-a",
+    "personalmemory-v0.1.2",
+    "-m",
+    "replacement",
+  );
+  await assert.rejects(
+    execFileAsync("sh", args, { env: environment }),
+    /does not match remote tag/u,
   );
 });
 
@@ -89,6 +109,8 @@ test("rejects ambiguous Agents and unsafe version or installation inputs", async
     ["--version", "personalmemory-v1.foo.2"],
     ["--version", "personalmemory-v01.2.3"],
     ["--install-dir", "relative/path"],
+    ["--gateway-port", "0"],
+    ["--gateway-port", "17173"],
     ["--unknown"],
   ]) {
     await assert.rejects(

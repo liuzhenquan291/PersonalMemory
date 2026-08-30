@@ -304,13 +304,16 @@ a {
 
 .search-action,
 .pagination button,
-.memory-state button {
+.memory-state button,
+.memory-state .button-link {
+  display: inline-block;
   padding: 0.72rem 0.9rem;
   border: 1px solid var(--night);
   border-radius: 0.65rem;
   color: #fff;
   background: var(--night);
   cursor: pointer;
+  text-decoration: none;
 }
 
 .level-tabs {
@@ -364,7 +367,8 @@ a {
   font-size: 1.2rem;
 }
 
-.memory-state button {
+.memory-state button,
+.memory-state .button-link {
   justify-self: center;
   margin-top: 0.4rem;
 }
@@ -1127,6 +1131,19 @@ a {
   border: 1px solid var(--line);
   border-radius: 0.55rem;
   font: inherit;
+}
+
+.secret-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.secret-input .secret-input-toggle {
+  justify-self: stretch;
+  white-space: nowrap;
+  padding-inline: 0.85rem;
 }
 
 .session-form button {

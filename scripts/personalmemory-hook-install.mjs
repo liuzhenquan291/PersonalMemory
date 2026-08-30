@@ -193,12 +193,6 @@ function inspectConfig(config, managed) {
     if (matching.length > 1)
       throw new Error(`Managed Hook ${event} is duplicated`);
     if (matching.length === 1) present += 1;
-    if (matching.length === 0 && entries.length > 0)
-      throw new Error(
-        `Hook event ${event} conflicts with the managed definition`,
-      );
-    if (matching.length === 1 && entries.length !== 1)
-      throw new Error(`Hook event ${event} contains a conflicting duplicate`);
   }
   if (present !== 0 && present !== EVENTS.length)
     throw new Error("Managed Hook installation is partial or modified");
@@ -207,7 +201,8 @@ function inspectConfig(config, managed) {
 
 function addManaged(config, managed) {
   const hooks = { ...(config.hooks ?? {}) };
-  for (const event of EVENTS) hooks[event] = [managed[event]];
+  for (const event of EVENTS)
+    hooks[event] = [...(hooks[event] ?? []), managed[event]];
   return { ...config, hooks };
 }
 
@@ -215,9 +210,16 @@ function removeManagedByDigest(config, definitions) {
   const hooks = { ...(config.hooks ?? {}) };
   for (const event of EVENTS) {
     const entries = hooks[event] ?? [];
-    if (entries.length !== 1 || digest(entries[0]) !== definitions[event])
+    const matchingIndexes = entries.flatMap((entry, index) =>
+      digest(entry) === definitions[event] ? [index] : [],
+    );
+    if (matchingIndexes.length !== 1)
       throw new Error(`Managed Hook ${event} was modified`);
-    delete hooks[event];
+    const remaining = entries.filter(
+      (_entry, index) => index !== matchingIndexes[0],
+    );
+    if (remaining.length === 0) delete hooks[event];
+    else hooks[event] = remaining;
   }
   return Object.keys(hooks).length === 0
     ? Object.fromEntries(
@@ -340,8 +342,8 @@ function assertReceiptConfig(config, definitions) {
     const entries = config.hooks?.[event];
     if (
       !Array.isArray(entries) ||
-      entries.length !== 1 ||
-      digest(entries[0]) !== definitions[event]
+      entries.filter((entry) => digest(entry) === definitions[event]).length !==
+        1
     )
       throw new Error(`Managed Hook ${event} is partial or modified`);
   }
@@ -444,11 +446,16 @@ export async function installManagedHooks(options = {}) {
     const nextConfigs = {};
     for (const client of CLIENTS) {
       const key = configKey(client);
-      nextConfigs[key] = clients.includes(client)
-        ? addManaged(configs[key], paths.managed[client])
-        : receipt.clients.includes(client)
+      if (clients.includes(client)) {
+        const withoutPrevious = receipt.clients.includes(client)
           ? removeManagedByDigest(configs[key], receipt.definitions[key])
           : configs[key];
+        nextConfigs[key] = addManaged(withoutPrevious, paths.managed[client]);
+      } else {
+        nextConfigs[key] = receipt.clients.includes(client)
+          ? removeManagedByDigest(configs[key], receipt.definitions[key])
+          : configs[key];
+      }
     }
     const written = [];
     try {

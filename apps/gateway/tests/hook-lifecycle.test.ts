@@ -17,6 +17,7 @@ import {
   HookLifecycleService,
   RecallService,
   type HookLifecyclePolicy,
+  type HookCaptureCommittedObserver,
 } from "../src/index.js";
 import type { UpstreamGatewayClient } from "../src/types.js";
 
@@ -66,6 +67,7 @@ function createService(options: {
   allowsSource?: boolean;
   capture?: () => void;
   sensitiveCategory?: string;
+  observer?: HookCaptureCommittedObserver;
 }) {
   const database = new DatabaseSync(":memory:");
   migrateDatabase(database, defaultMigrations);
@@ -111,6 +113,7 @@ function createService(options: {
       new HookCaptureLedger(database),
       policy,
       options.capture ? { capture: options.capture } : undefined,
+      options.observer,
     ),
   };
 }
@@ -218,6 +221,26 @@ describe("HookLifecycleService", () => {
     await expect(
       service.capture(captureRequest, "request-1"),
     ).rejects.toBeInstanceOf(HookLifecycleCaptureError);
+    database.close();
+  });
+
+  it("notifies extraction only after a new L0 capture commits", async () => {
+    const notify = vi.fn(async () => undefined);
+    const { database, service } = createService({
+      capture: () => HOOK_CAPTURE_COMMITTED,
+      observer: { notify },
+    });
+    await expect(
+      service.capture(captureRequest, "request-1"),
+    ).resolves.toMatchObject({
+      outcome: "captured",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(notify).toHaveBeenCalledOnce();
+
+    await service.capture(captureRequest, "request-2");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(notify).toHaveBeenCalledOnce();
     database.close();
   });
 

@@ -29,6 +29,7 @@ describe("PersonalMemory core baseline", () => {
     vi.stubEnv("TDAI_LLM_MODEL", "inherited-model");
 
     expect(loadGatewayConfig().llm.enabled).toBe(false);
+    expect(loadGatewayConfig().server.port).toBe(17173);
   });
 
   it("rejects model execution before any outbound request when disabled", async () => {

@@ -65,6 +65,45 @@ const MAX_FAILED_AUTH_ATTEMPTS_PER_MINUTE = 120;
 const MAX_IMPORT_ROUNDS = 500;
 const MAX_MCP_DELETION_HANDOFFS = 32;
 
+const modelConfigurationSchema = z
+  .object({
+    provider: z.literal("openai-compatible"),
+    base_url: z.url(),
+    api_key: z
+      .string()
+      .trim()
+      .min(1)
+      .max(16_384)
+      .regex(/^[^\r\n]+$/u),
+    model_name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(256)
+      .regex(/^[^\r\n]+$/u),
+  })
+  .strict();
+
+function modelConfigurationResponse(
+  status: NonNullable<GatewayAppOptions["modelConfiguration"]> extends {
+    status(): infer T;
+  }
+    ? T
+    : never,
+) {
+  return {
+    configuration: {
+      enabled: status.enabled,
+      ...(status.provider ? { provider: status.provider } : {}),
+      ...(status.baseUrl ? { base_url: status.baseUrl } : {}),
+      ...(status.modelName ? { model_name: status.modelName } : {}),
+      api_key_configured: status.apiKeyConfigured,
+    },
+    ...(status.disclosure ? { disclosure: status.disclosure } : {}),
+    restart_required: status.restartRequired,
+  };
+}
+
 const auditQuerySchema = z
   .object({
     action: z
@@ -523,6 +562,7 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
           options.hookCaptures,
           options.hookPolicy,
           options.hookCaptureSink,
+          options.hookCaptureCommittedObserver,
         )
       : undefined;
   const memoryBrowser = new MemoryBrowser(
@@ -1391,7 +1431,9 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
   };
 
   const requireModelDisclosure = () => {
-    const disclosure = getModelOutboundDisclosure(options.config);
+    const managed = options.modelConfiguration?.status();
+    const disclosure =
+      managed?.disclosure ?? getModelOutboundDisclosure(options.config);
     if (!disclosure) {
       throw new GatewayHttpError(
         409,
@@ -1406,16 +1448,82 @@ export function createGatewayApp(options: GatewayAppOptions): Hono<GatewayEnv> {
         "Model authorization storage is unavailable",
       );
     }
-    return { disclosure, ledger: options.modelAuthorizations };
+    return {
+      disclosure,
+      ledger: options.modelAuthorizations,
+      restartRequired: managed?.restartRequired ?? false,
+    };
   };
+
+  app.post("/api/v1/model/configuration", async (context) => {
+    authenticateMemoryRequest(context);
+    if (!options.modelConfiguration) {
+      throw new GatewayHttpError(
+        503,
+        "MODEL_CONFIGURATION_UNAVAILABLE",
+        "Model configuration storage is unavailable",
+      );
+    }
+    const input = await readLimitedJson(
+      context.req.raw,
+      options.config.server.requestBodyLimitBytes,
+    );
+    const parsed = modelConfigurationSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new GatewayHttpError(
+        400,
+        "INVALID_REQUEST",
+        "Request body does not match the model configuration contract",
+      );
+    }
+    const status = await options.modelConfiguration.configure({
+      provider: parsed.data.provider,
+      baseUrl: parsed.data.base_url,
+      apiKey: parsed.data.api_key,
+      modelName: parsed.data.model_name,
+    });
+    return context.json(modelConfigurationResponse(status));
+  });
+
+  app.get("/api/v1/model/configuration", (context) => {
+    authenticateMemoryRequest(context, false);
+    if (!options.modelConfiguration) {
+      throw new GatewayHttpError(
+        503,
+        "MODEL_CONFIGURATION_UNAVAILABLE",
+        "Model configuration storage is unavailable",
+      );
+    }
+    return context.json(
+      modelConfigurationResponse(options.modelConfiguration.status()),
+    );
+  });
+
+  app.delete("/api/v1/model/configuration", async (context) => {
+    authenticateMemoryRequest(context);
+    if (!options.modelConfiguration) {
+      throw new GatewayHttpError(
+        503,
+        "MODEL_CONFIGURATION_UNAVAILABLE",
+        "Model configuration storage is unavailable",
+      );
+    }
+    const current = options.modelConfiguration.status();
+    if (current.disclosure && options.modelAuthorizations) {
+      options.modelAuthorizations.revoke(current.disclosure);
+    }
+    return context.json(
+      modelConfigurationResponse(await options.modelConfiguration.disable()),
+    );
+  });
 
   app.get("/api/v1/model/authorization", (context) => {
     authenticateMemoryRequest(context, false);
-    const { disclosure, ledger } = requireModelDisclosure();
+    const { disclosure, ledger, restartRequired } = requireModelDisclosure();
     return context.json({
       disclosure,
       authorization: ledger.status(disclosure),
-      restart_required: false,
+      restart_required: restartRequired,
     });
   });
 

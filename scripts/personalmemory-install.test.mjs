@@ -36,6 +36,10 @@ const readyWorker = async ({ pid }) => ({
   workerPid: pid,
   lastMaintenanceAt: Date.now(),
 });
+const fakeManagedCommand = async () => ({
+  commandPath: "/test/bin/personalmemory",
+  changed: false,
+});
 
 function fakeChild(pid) {
   const child = new EventEmitter();
@@ -200,6 +204,7 @@ test("maps only a currently authorized private model configuration upstream", as
   const environments = [];
   let nextPid = 2_050_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -283,13 +288,14 @@ test("builds, starts, writes private state, and reports a healthy installation",
   const calls = [];
   let nextPid = 2_000_000;
   const result = await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
     dataDirectory,
     stateDirectory: path.join(root, "state"),
-    gatewayPort: 0,
-    webPort: 0,
+    gatewayPort: 28175,
+    webPort: 28177,
     run: async (...args) => calls.push(args),
     assertPortAvailableImpl: async () => undefined,
     spawnImpl: (...args) => {
@@ -311,7 +317,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.equal(calls[1][2].env.TDAI_LLM_BASE_URL, undefined);
   assert.equal(calls[1][2].env.TDAI_LLM_API_KEY, undefined);
   assert.equal(calls[1][2].env.TDAI_LLM_MODEL, undefined);
-  assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "0");
+  assert.equal(calls[3][2].env.PERSONALMEMORY_DEV_GATEWAY_PORT, "28175");
   assert.equal(
     calls[2][2].env.PERSONALMEMORY_STATE_DIR,
     path.join(root, "state"),
@@ -328,6 +334,7 @@ test("builds, starts, writes private state, and reports a healthy installation",
   );
 
   const repeatOptions = {
+    installManagedCommandImpl: fakeManagedCommand,
     root,
     home: path.join(root, "home"),
     dataDirectory,
@@ -350,6 +357,36 @@ test("builds, starts, writes private state, and reports a healthy installation",
   assert.deepEqual(reconfigured.agents, ["codex"]);
   assert.equal(reconfigured.claudeHookStatus, "not_installed");
   assert.equal((await installPersonalMemory(repeatOptions)).changed, false);
+  await assert.rejects(
+    installPersonalMemory({ ...repeatOptions, gatewayPort: 8788 }),
+    /different gateway port/u,
+  );
+
+  const migratedCalls = [];
+  const migrated = await installPersonalMemory({
+    ...repeatOptions,
+    upstreamPort: 17173,
+    gatewayPort: 17175,
+    webPort: 17177,
+    isAliveImpl: () => false,
+    waitForHookWorkerImpl: readyWorker,
+    run: async (...args) => migratedCalls.push(args),
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: (...args) => {
+      migratedCalls.push(args);
+      return fakeChild(nextPid++);
+    },
+  });
+  assert.equal(migrated.changed, true);
+  assert.equal(migrated.upstreamHealthUrl, "http://127.0.0.1:17173/health");
+  assert.equal(migrated.gatewayHealthUrl, "http://127.0.0.1:17175/health");
+  assert.equal(migrated.webUrl, "http://127.0.0.1:17177/memories");
+  repeatOptions.readHookDoctorStatusImpl = async () => ({
+    worker: "healthy",
+    workerPid: migrated.hookWorkerPid,
+    workerGeneration: migrated.hookWorkerGeneration,
+    lastMaintenanceAt: Date.now(),
+  });
 
   const hookReceipt = JSON.parse(
     await readFile(path.join(root, "state", "hooks", "install.json"), "utf8"),
@@ -403,6 +440,7 @@ test("does not install dependencies when they are already present", async () => 
   const commands = [];
   let nextPid = 2_100_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -419,6 +457,86 @@ test("does not install dependencies when they are already present", async () => 
         : { ok: true },
   });
   assert.deepEqual(commands, [["npm", ["run", "build:products"]]]);
+  await rm(root, { recursive: true });
+});
+
+test("preserves a stopped receipt and its custom ports when reinstall preflight fails", async () => {
+  const root = await realpath(
+    await mkdtemp(path.join(os.tmpdir(), "personalmemory-stopped-reinstall-")),
+  );
+  const dataDirectory = path.join(root, "data");
+  const stateDirectory = path.join(root, "state");
+  await mkdir(path.join(root, "node_modules", "vite", "bin"), {
+    recursive: true,
+  });
+  let nextPid = 3_000_000;
+  const installed = await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
+    waitForHookWorkerImpl: readyWorker,
+    root,
+    home: path.join(root, "home"),
+    dataDirectory,
+    stateDirectory,
+    agents: [],
+    upstreamPort: 18420,
+    gatewayPort: 18787,
+    webPort: 14173,
+    run: async () => undefined,
+    assertPortAvailableImpl: async () => undefined,
+    spawnImpl: () => fakeChild(nextPid++),
+    fetchImpl: async (_url, options) =>
+      options?.method === "POST"
+        ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+        : { ok: true },
+  });
+  const originalReceipt = await readFile(installed.receiptPath, "utf8");
+  const checkedPorts = [];
+  await assert.rejects(
+    installPersonalMemory({
+      installManagedCommandImpl: fakeManagedCommand,
+      root,
+      home: path.join(root, "home"),
+      dataDirectory,
+      stateDirectory,
+      agents: [],
+      isAliveImpl: () => false,
+      assertPortAvailableImpl: async (_host, port) => {
+        checkedPorts.push(port);
+        if (port === 14173) throw new Error("replacement port unavailable");
+      },
+    }),
+    /replacement port unavailable/u,
+  );
+  assert.deepEqual(checkedPorts, [18420, 18787, 14173]);
+  assert.equal(await readFile(installed.receiptPath, "utf8"), originalReceipt);
+
+  await assert.rejects(
+    installPersonalMemory({
+      installManagedCommandImpl: fakeManagedCommand,
+      root,
+      home: path.join(root, "home"),
+      dataDirectory,
+      stateDirectory,
+      agents: [],
+      upstreamPort: 17173,
+      gatewayPort: 17175,
+      webPort: 17177,
+      isAliveImpl: () => false,
+      waitForHookWorkerImpl: readyWorker,
+      run: async () => undefined,
+      assertPortAvailableImpl: async () => undefined,
+      spawnImpl: () => fakeChild(nextPid++),
+      fetchImpl: async (_url, options) =>
+        options?.method === "POST"
+          ? { ok: true, json: async () => ({ degraded_levels: [] }) }
+          : { ok: true },
+      pruneManagedHookEventReceiptsImpl: async () => {
+        throw new Error("hook receipt pruning failed");
+      },
+    }),
+    /hook receipt pruning failed/u,
+  );
+  assert.equal(await readFile(installed.receiptPath, "utf8"), originalReceipt);
   await rm(root, { recursive: true });
 });
 
@@ -442,6 +560,7 @@ test("reuses a valid private credential when restarting without a receipt", asyn
   const environments = [];
   let nextPid = 2_150_000;
   await installPersonalMemory({
+    installManagedCommandImpl: fakeManagedCommand,
     waitForHookWorkerImpl: readyWorker,
     root,
     home: path.join(root, "home"),
@@ -461,6 +580,10 @@ test("reuses a valid private credential when restarting without a receipt", asyn
         : { ok: true },
   });
   assert.equal(environments[1].PERSONALMEMORY_AUTH_TOKEN, token);
+  assert.equal(
+    environments[1].PERSONALMEMORY_CORS_ORIGINS,
+    "http://127.0.0.1:0",
+  );
   await rm(root, { recursive: true });
 });
 
