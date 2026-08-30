@@ -2,7 +2,7 @@
 set -eu
 
 DEFAULT_REPOSITORY="https://github.com/liuzhenquan291/PersonalMemory.git"
-DEFAULT_VERSION="personalmemory-v0.1.1"
+DEFAULT_VERSION="personalmemory-v0.1.2"
 
 repository=$DEFAULT_REPOSITORY
 version=$DEFAULT_VERSION
@@ -110,7 +110,7 @@ case "$repository" in
 esac
 
 if ! printf '%s\n' "$version" | grep -Eq '^personalmemory-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'; then
-  echo "--version must be a PersonalMemory release tag such as personalmemory-v0.1.1." >&2
+  echo "--version must be a PersonalMemory release tag such as personalmemory-v0.1.2." >&2
   exit 2
 fi
 

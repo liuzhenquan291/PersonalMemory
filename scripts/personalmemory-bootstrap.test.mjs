@@ -27,7 +27,7 @@ async function createReleaseFixture(base) {
   await chmod(installer, 0o755);
   await git(repository, "add", "install-personalmemory.sh");
   await git(repository, "commit", "-m", "test release");
-  await git(repository, "tag", "-a", "personalmemory-v0.1.1", "-m", "test");
+  await git(repository, "tag", "-a", "personalmemory-v0.1.2", "-m", "test");
   return repository;
 }
 
@@ -50,7 +50,7 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
     "--repo",
     repository,
     "--version",
-    "personalmemory-v0.1.1",
+    "personalmemory-v0.1.2",
     "--install-dir",
     installDirectory,
     "--agent",
@@ -74,7 +74,7 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
   const { stdout: tag } = await git(
     installDirectory,
     "rev-parse",
-    "personalmemory-v0.1.1^{}",
+    "personalmemory-v0.1.2^{}",
   );
   assert.equal(head, tag);
 
@@ -92,7 +92,7 @@ test("clones an exact tag and forwards repeatable Agent parameters", async () =>
     "tag",
     "-f",
     "-a",
-    "personalmemory-v0.1.1",
+    "personalmemory-v0.1.2",
     "-m",
     "replacement",
   );

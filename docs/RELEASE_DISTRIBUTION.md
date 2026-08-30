@@ -1,11 +1,11 @@
 # PersonalMemory MVP 首发与源码分发
 
-MVP 首发版本为 `personalmemory-v0.1.1`。该 annotated Git tag 指向包含首发文档和实现的固定提交，与上游基线标签 `v1.0.1` 含义不同，不得混用或移动。
+MVP 当前发布版本为 annotated Git tag `personalmemory-v0.1.2`。早期 lightweight tag `personalmemory-v0.1.1` 保持不可移动；两个 PersonalMemory tag 都与上游基线标签 `v1.0.1` 含义不同，不得混用。
 
 用户可以直接检出固定 tag：
 
 ```sh
-git clone --branch personalmemory-v0.1.1 --depth 1 \
+git clone --branch personalmemory-v0.1.2 --depth 1 \
   https://github.com/liuzhenquan291/PersonalMemory.git
 cd PersonalMemory
 ./install-personalmemory.sh
@@ -15,10 +15,10 @@ cd PersonalMemory
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.2/bootstrap-personalmemory.sh |
 sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
-  --version personalmemory-v0.1.1 \
+  --version personalmemory-v0.1.2 \
   --gateway-port 17175 \
   --agent codex \
   --agent claude-code
@@ -34,7 +34,7 @@ sh -s -- \
 npm run release:check
 npm run release:package
 cd release
-shasum -a 256 -c PersonalMemory-0.1.1-source.tar.gz.sha256
+shasum -a 256 -c PersonalMemory-0.1.2-source.tar.gz.sha256
 ```
 
 Linux 可使用 `sha256sum -c` 校验同一个文件。发布产物默认写入被 Git 忽略的 `release/` 目录。

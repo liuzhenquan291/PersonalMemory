@@ -12,7 +12,7 @@ function fixture() {
   const stateDirectory = "/safe/state";
   const receipt = {
     version: 2,
-    productVersion: "0.1.1",
+    productVersion: "0.1.2",
     schemaVersion: 7,
     upstreamPid: 40,
     gatewayPid: 41,
@@ -330,7 +330,7 @@ test("reports and uninstalls managed Hook v3 state with the worker lifecycle", a
   const item = fixture();
   const receipt = {
     version: 3,
-    productVersion: "0.1.1",
+    productVersion: "0.1.2",
     schemaVersion: 7,
     upstreamPid: 40,
     gatewayPid: 41,

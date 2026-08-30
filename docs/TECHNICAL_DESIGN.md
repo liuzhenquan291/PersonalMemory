@@ -1,7 +1,7 @@
 # PersonalMemory 技术方案
 
 > 状态：当前产品技术事实源  
-> 适用版本：`personalmemory-v0.1.1` 之后的当前开发分支
+> 适用版本：`personalmemory-v0.1.2`
 
 本文描述 PersonalMemory 的整体运行机制。用户安装与操作以根目录
 [README](../README.md) 为准；不可变产品决策以

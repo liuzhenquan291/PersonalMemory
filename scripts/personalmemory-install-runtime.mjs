@@ -129,7 +129,7 @@ export function hookInstallationId(secret) {
 }
 
 const RECEIPT_VERSION = 3;
-const PRODUCT_VERSION = "0.1.1";
+const PRODUCT_VERSION = "0.1.2";
 const SCHEMA_VERSION = 7;
 const REINSTALL_FROM_STOPPED_RECEIPT = Symbol("reinstall-from-stopped-receipt");
 const SUPPORTED_AGENTS = ["codex", "claude-code"];

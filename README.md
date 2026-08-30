@@ -1,6 +1,6 @@
 # PersonalMemory
 
-> MVP 首发版本：`personalmemory-v0.1.1`；已验证平台：macOS arm64、Linux arm64。
+> MVP 当前发布版本：`personalmemory-v0.1.2`；已验证平台：macOS arm64、Linux arm64。
 
 PersonalMemory 是一个面向个人的、本地优先的 AI 记忆工作台，基于
 [TencentDB-Agent-Memory](https://github.com/TencentCloud/TencentDB-Agent-Memory)
@@ -147,10 +147,10 @@ Web 不会自行重启本机进程。未配置、未授权或撤销授权时，�
 
 ### 使用 Git 固定版本安装
 
-MVP 首发版使用独立 Git tag `personalmemory-v0.1.1`，不要使用上游基线标签 `v1.0.1`。通过 HTTPS 获取并固定到首发版本：
+MVP 当前版使用独立 Git tag `personalmemory-v0.1.2`，不要使用上游基线标签 `v1.0.1`。`personalmemory-v0.1.1` 保持为不可移动的早期候选。通过 HTTPS 获取并固定到当前版本：
 
 ```sh
-git clone --branch personalmemory-v0.1.1 --depth 1 \
+git clone --branch personalmemory-v0.1.2 --depth 1 \
   https://github.com/liuzhenquan291/PersonalMemory.git
 cd PersonalMemory
 ```
@@ -159,18 +159,18 @@ cd PersonalMemory
 
 ### 使用版本化源码包安装
 
-也可以从可信渠道取得 `PersonalMemory-0.1.1-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
+也可以从可信渠道取得 `PersonalMemory-0.1.2-source.tar.gz` 和同目录的 `.sha256` 文件。先校验摘要，再解压：
 
 ```sh
-shasum -a 256 -c PersonalMemory-0.1.1-source.tar.gz.sha256
-tar -xzf PersonalMemory-0.1.1-source.tar.gz
-cd PersonalMemory-0.1.1
+shasum -a 256 -c PersonalMemory-0.1.2-source.tar.gz.sha256
+tar -xzf PersonalMemory-0.1.2-source.tar.gz
+cd PersonalMemory-0.1.2
 ```
 
 Linux 可将第一条命令替换为：
 
 ```sh
-sha256sum -c PersonalMemory-0.1.1-source.tar.gz.sha256
+sha256sum -c PersonalMemory-0.1.2-source.tar.gz.sha256
 ```
 
 Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说明](docs/RELEASE_DISTRIBUTION.md)。
@@ -183,21 +183,21 @@ Git tag、发布包生成、SHA-256 校验和支持平台见[源码包分发说�
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.2/bootstrap-personalmemory.sh |
 sh -s -- \
   --repo https://github.com/liuzhenquan291/PersonalMemory.git \
-  --version personalmemory-v0.1.1 \
-  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.1" \
+  --version personalmemory-v0.1.2 \
+  --install-dir "$HOME/.local/share/personalmemory-installations/personalmemory-v0.1.2" \
   --gateway-port 17175 \
   --agent codex \
   --agent claude-code
 ```
 
-`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.1`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
+`--repo` 指定 Git 仓库，`--version` 必须是 `personalmemory-v<主版本>.<次版本>.<修订版本>` 格式的真实 tag，`--install-dir` 必须是绝对路径，`--agent` 可以重复。服务端口可分别用 `--upstream-port`、`--gateway-port` 和 `--web-port` 指定，必须是三个互不相同的 1–65535 端口，默认分别为 `17173`、`17175` 和 `17177`。仓库默认为本项目，版本默认为 `personalmemory-v0.1.2`，安装目录默认为 `$HOME/.local/share/personalmemory-installations/<版本>`；未传 Agent 时自动检测 Codex 和 Claude Code。查看全部参数：
 
 ```sh
 curl -fsSL \
-  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.1/bootstrap-personalmemory.sh |
+  https://raw.githubusercontent.com/liuzhenquan291/PersonalMemory/personalmemory-v0.1.2/bootstrap-personalmemory.sh |
 sh -s -- --help
 ```
 

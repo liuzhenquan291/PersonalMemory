@@ -22,7 +22,7 @@ import {
 } from "./personalmemory-install-runtime.mjs";
 import { installManagedCommand } from "./personalmemory-command-install.mjs";
 
-const TARGET_PRODUCT_VERSION = "0.1.1";
+const TARGET_PRODUCT_VERSION = "0.1.2";
 const TARGET_SCHEMA_VERSION = 7;
 const SPACE_MARGIN_BYTES = 128 * 1024 * 1024;
 
