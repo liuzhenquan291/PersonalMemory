@@ -56,7 +56,7 @@
 | M5.8     | completed   | [同事件 Hook 安全共存](M5.8.md)                       |
 | M5.9     | completed   | [可配置本地服务端口](M5.9.md)                         |
 | M5.10    | completed   | [MVP 0.1.2 修正版发布收口](M5.10.md)                  |
-| M5.11    | in_progress | [发布文档、名称核查与远端收尾](M5.11.md)              |
+| M5.11    | blocked     | [发布文档、名称核查与远端收尾](M5.11.md)              |
 
 历史合并前快照见 [MVP 合并前审计](MVP_MERGE_READINESS.md)；当前发布状态与本次授权见 [M5.11](M5.11.md)。
 
